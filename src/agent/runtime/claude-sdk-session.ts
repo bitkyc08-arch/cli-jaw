@@ -14,7 +14,7 @@ import { createClaudeClose } from './claude-sdk-close.js';
 import { createClaudeMetadata, type ClaudeResultMetadata } from './claude-sdk-metadata.js';
 import { claudeForegroundHooks } from './claude-sdk-hooks.js';
 import type { ClaudeRootWaitOptions } from './claude-sdk-roots.js';
-import { RuntimeProjection } from './projection.js';
+import { RuntimeProjection, type RuntimeEnd } from './projection.js';
 import { ClaudeSdkEvents } from './claude-sdk-events.js';
 
 export interface ClaudeTurnContext extends RuntimeEventContext { isCurrent(): boolean }
@@ -27,6 +27,7 @@ export interface ClaudeSessionOptions {
     closeTimeoutMs?: number;
     registry?: RuntimeRequests;
     signal?: AbortSignal;
+    deferTurnEnd?: boolean;
     onMetadata?(context: Readonly<ClaudeTurnContext>, metadata: ClaudeResultMetadata): void;
     queryFactory?(input: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): ClaudeQuery;
     record?(context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent | null;
@@ -35,6 +36,7 @@ type Turn = {
     context: Readonly<ClaudeTurnContext>; onEvent(event: RuntimeEvent): void;
     resolve(result: RuntimeTurnResult): void; timer: ReturnType<typeof setTimeout>;
     mapper: ClaudeSdkEvents; uuid: ReturnType<typeof randomUUID>; offered: boolean;
+    passiveFinalizing: boolean;
 };
 const MAX_PROMPT_BYTES = 1024 * 1024;
 const RESULT_TYPES = new Set(['success', 'error_during_execution', 'error_max_turns',
@@ -60,6 +62,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private readonly exits = new Set<(code: number | null) => void>();
     private turn: Turn | null = null;
     private finishing = false;
+    private pendingFinal: { turn: Turn; outcome: RuntimeTurnResult; failed?: boolean; claimed?: Readonly<RuntimeTurnResult> } | null = null;
     private id = '';
     private closing = false;
     private closeOperation: (() => Promise<void>) | undefined;
@@ -68,6 +71,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     private exited = false;
     private readonly registry: RuntimeRequests;
     private readonly terminalIds = new Set<string>();
+    private readonly deferredTurnIds = new Set<string>();
     private readonly readMetadata = createClaudeMetadata();
 
     constructor(private readonly options: ClaudeSessionOptions) {
@@ -87,7 +91,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         } catch (error) { this.failure = true; await this.close(); throw error; }
     }
     get alive(): boolean { return this.query !== undefined && !this.closing && !this.failure; }
-    get idle(): boolean { return this.alive && this.turn === null && !this.finishing; }
+    get idle(): boolean { return this.alive && this.turn === null && this.pendingFinal === null && !this.finishing; }
     get nativeSessionId(): string { return this.id; }
     get activeProcessCount(): number { return this.processes.activeCount; }
     get stderrBytes(): number { return this.processes.stderrBytes; }
@@ -99,7 +103,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     async send(prompt: RuntimePrompt, onEvent: (event: RuntimeEvent) => void): Promise<RuntimeTurnResult> {
         if (!this.alive) throw new Error('claude_session_closed');
         if (this.terminalIds.size >= 512) throw new Error('claude_terminal_capacity');
-        if (this.turn || this.finishing) throw new Error('claude_session_busy');
+        if (this.turn || this.pendingFinal || this.finishing) throw new Error('claude_session_busy');
         if (typeof prompt.text !== 'string' || Buffer.byteLength(prompt.text) > MAX_PROMPT_BYTES) throw new Error('claude_prompt_limit');
         if (prompt.images?.length) throw new Error('claude_images_unavailable');
         const context = Object.freeze({ ...this.options.getTurnContext() });
@@ -107,10 +111,15 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         if (!parseRuntimeEvent({ ...context, version: 1, seq: 1, kind: 'turn-start', provider: 'claude' })) {
             throw new Error('claude_invalid_context');
         }
+        if (this.options.deferTurnEnd) {
+            if (this.deferredTurnIds.has(context.turnId)) throw new Error('claude_turn_identity_reused');
+            if (this.deferredTurnIds.size >= 512) throw new Error('claude_turn_identity_capacity');
+            this.deferredTurnIds.add(context.turnId);
+        }
         let resolve!: (value: RuntimeTurnResult) => void;
         const result = new Promise<RuntimeTurnResult>(yes => { resolve = yes; });
         const projection = new RuntimeProjection(context, (_context, body) => this.recordEvent(turn, body));
-        const turn: Turn = { context, onEvent, resolve, mapper: new ClaudeSdkEvents(projection), uuid: randomUUID(), offered: false,
+        const turn: Turn = { context, onEvent, resolve, mapper: new ClaudeSdkEvents(projection), uuid: randomUUID(), offered: false, passiveFinalizing: false,
             timer: setTimeout(() => this.fail('claude_prompt_timeout'), this.options.promptTimeoutMs) };
         this.turn = turn;
         projection.start('claude');
@@ -131,9 +140,38 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         if (!this.turn || !this.alive) throw new Error('request_not_current');
         this.registry.respond(requestId, this.turn.context, response);
     }
-    interrupt(): Promise<void> { return this.close(); }
-    cancel(): Promise<void> { return this.close(); }
-    kill(): void { void this.close().catch(() => console.warn('[claude-native] cleanup_failed')); }
+    interrupt(): Promise<void> { return this.cancel(); }
+    cancel(): Promise<void> {
+        if (this.pendingFinal && !this.pendingFinal.claimed && !this.pendingFinal.failed && !this.failure) {
+            this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'stopped', finalText: null };
+        }
+        return this.close();
+    }
+    getTurnOutcome(turnId: string): RuntimeTurnResult | null {
+        const pending = this.pendingFinal;
+        return pending?.turn.context.turnId === turnId ? { ...(pending.claimed ?? pending.outcome) } : null;
+    }
+    /** Captured completion authority only: claiming never reopens input admission. */
+    claimTurnOutcome(turnId: string): RuntimeTurnResult | null {
+        const pending = this.pendingFinal;
+        if (!pending || pending.turn.context.turnId !== turnId) return null;
+        pending.claimed ??= Object.freeze({ ...pending.outcome });
+        return pending.claimed;
+    }
+    finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
+        const pending = this.pendingFinal;
+        if (!pending || pending.turn.context.turnId !== turnId || !pending.claimed) return false;
+        if (pending.claimed.status !== 'done' && end.status === 'done') return false;
+        if (end.status !== 'done' && end.finalText !== null) return false;
+        if (end.finalText !== null && (typeof end.finalText !== 'string' || end.finalText.length > FULLTEXT_MAX_CHARS)) return false;
+        this.pendingFinal = null;
+        this.finishing = true; pending.turn.passiveFinalizing = true;
+        try { pending.turn.mapper.finish({ ...pending.claimed, status: end.status, finalText: end.finalText }, end); }
+        finally { pending.turn.passiveFinalizing = false; this.finishing = false; }
+        if (this.deferredTurnIds.size >= 512) void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
+        return true;
+    }
+    kill(): void { void this.cancel().catch(() => console.warn('[claude-native] cleanup_failed')); }
     onExit(cb: (code: number | null) => void): () => void {
         if (this.exited) { cb(this.failure ? 1 : 0); return () => {}; }
         this.exits.add(cb); return () => { this.exits.delete(cb); };
@@ -142,7 +180,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
         try { return context.isCurrent() === true; } catch { return false; }
     }
     private recordEvent(turn: Turn, body: RuntimeEventBody): RuntimeEvent | null {
-        if (!this.current(turn.context)) return null;
+        if (!turn.passiveFinalizing && !this.current(turn.context)) return null;
         try {
             const event = (this.options.record ?? recordRuntimeEvent)(turn.context, body);
             if (event) { try { turn.onEvent(event); } catch { console.warn('[claude-native] observer_failed'); } }
@@ -160,16 +198,21 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                 this.failure = true; this.failureCode ??= 'claude_request_cleanup_failed';
                 outcome = { status: 'error', finalText: null, partialText: outcome.partialText };
             }
-            turn.mapper.finish(outcome);
+            if (this.options.deferTurnEnd) this.pendingFinal = { turn, outcome, failed: outcome.status === 'error' };
+            else turn.mapper.finish(outcome);
         } finally {
             this.finishing = false;
             turn.resolve(outcome);
-            if (this.failure || this.terminalIds.size >= 512) this.kill();
+            if (this.failure || this.terminalIds.size >= 512) void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
         }
     }
     private fail(reason: string): void {
         this.failureCode ??= reason;
         this.failure = true;
+        if (this.pendingFinal && !this.pendingFinal.claimed) {
+            this.pendingFinal.failed = true;
+            this.pendingFinal.outcome = { ...this.pendingFinal.outcome, status: 'error', finalText: null };
+        }
         this.settle({ status: 'error', finalText: null, partialText: this.turn?.mapper.partialText ?? '' });
         this.kill();
     }
@@ -209,7 +252,7 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                 if (typeof resultId === 'string') {
                     if (this.terminalIds.size >= 512) { this.fail('claude_terminal_capacity'); break; }
                     this.terminalIds.add(resultId);
-                    if (!turn && this.terminalIds.size >= 512) this.kill();
+                    if (!turn && this.terminalIds.size >= 512) void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
                 }
                 if (!turn) continue;
                 if (raw['type'] === 'result' && raw['subtype'] === 'success' && raw['is_error'] === false

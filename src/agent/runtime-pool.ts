@@ -8,6 +8,11 @@ import { createGrokSession, type GrokSessionOptions } from './runtime/acp/grok-s
 import { grokAcpArgs } from './runtime/acp/grok-options.js';
 import { validateAcpSessionOptions, type AcpSession } from './runtime/acp/session.js';
 import { normalizeNativePermissions } from './runtime/acp/permissions.js';
+import type { ManagedRuntime, AcquireWaiter, PoolEntry, RuntimeLease, RuntimePoolAccess,
+    RuntimePoolEntry as AnyEntry, RuntimePoolStore as EngineStore } from './runtime-pool-contract.js';
+import { acquireClaudeRuntimeLease, retireClaudePoolEntry, type ClaudeAcquireOptions, type ClaudeLease } from './claude-runtime-pool.js';
+export type { ManagedRuntime, RuntimeLease, RuntimePoolAccess, RuntimePoolEntry, RuntimePoolStore } from './runtime-pool-contract.js';
+export type { ClaudeAcquireOptions, ClaudeLease } from './claude-runtime-pool.js';
 import {
     normalizePiSettings,
     spawnPersistentPiRpc,
@@ -28,31 +33,6 @@ export interface CodexAppPoolKey {
     fastMode: boolean;
 }
 
-export interface ManagedRuntime {
-    readonly alive: boolean;
-    readonly supportsInterrupt: boolean;
-    close(): Promise<void> | void;
-    interrupt(): Promise<void>;
-    kill(): void;
-    onExit(cb: (code: number | null) => void): () => void;
-}
-
-type AcquireWaiter = {
-    id: number;
-    resolve: () => void;
-    reject: (err: Error) => void;
-    timer: NodeJS.Timeout;
-    cleanup?: () => void;
-};
-
-type PoolEntry<R extends ManagedRuntime, S> =
-    | { state: 'creating'; scopeKey: string; waiters: AcquireWaiter[]; lastUsedAt: number;
-        abortCreate?: () => void; nativeOwner?: SessionOwnerToken }
-    | { state: 'ready'; scopeKey: string; runtime: R; sessionId: S | null;
-        busy: boolean; dead: boolean; waiters: AcquireWaiter[]; lastUsedAt: number;
-        disposeExit: () => void; nativeOwner?: SessionOwnerToken; leaseOwner?: symbol;
-        cursorRetirement?: Promise<void> };
-
 type ReadyEntry<R extends ManagedRuntime, S> = Extract<PoolEntry<R, S>, { state: 'ready' }>;
 
 export interface AcquireOptions {
@@ -64,14 +44,6 @@ export interface AcquireOptions {
     instructions?: string;
     forceNew?: boolean;
     waitMs?: number;
-}
-
-export interface RuntimeLease<R extends ManagedRuntime, S> {
-    runtime: R;
-    sessionId: S;
-    reused: boolean;
-    release(): void;
-    cancel(): Promise<void>;
 }
 
 export interface CodexAppLease extends RuntimeLease<ManagedRuntime, string> {
@@ -124,12 +96,7 @@ export interface GrokAcquireOptions extends Omit<CursorAcquireOptions, 'createSe
     createSession?: (options: GrokSessionOptions) => Promise<AcpSession>;
 }
 
-type Engine = 'codex-app' | 'pi' | 'cursor' | 'grok';
-type AnyEntry = PoolEntry<ManagedRuntime, unknown>;
-type EngineStore = {
-    entries: Map<string, AnyEntry>;
-    scopeIndex: Map<string, Set<string>>;
-};
+type Engine = 'codex-app' | 'pi' | 'cursor' | 'grok' | 'claude';
 
 const stores = new Map<Engine, EngineStore>();
 let nextWaiterId = 1;
@@ -854,6 +821,16 @@ async function acquireAcpRuntime(input: CursorAcquireOptions, engine: 'cursor' |
     }
 }
 
+function claudePoolAccess(): RuntimePoolAccess {
+    return { store: storeFor('claude'), wait: waitForEntry, remove: removeEntry,
+        wake: entry => drainWaiters(entry, 'wake') };
+}
+
+export function acquireClaudeRuntime(input: ClaudeAcquireOptions): Promise<ClaudeLease> {
+    startPoolReaper();
+    return acquireClaudeRuntimeLease(claudePoolAccess(), input);
+}
+
 export function startPoolReaper(idleMs = DEFAULT_POOL_IDLE_MS): void {
     if (reaper) return;
     reaper = setInterval(() => {
@@ -862,6 +839,7 @@ export function startPoolReaper(idleMs = DEFAULT_POOL_IDLE_MS): void {
             for (const [key, entry] of store.entries) {
                 if (entry.state === 'ready' && !entry.busy && now - entry.lastUsedAt >= idleMs) {
                     if (engine === 'cursor' || engine === 'grok') void retireCursorEntry(store, key, entry, new Error('runtime pool idle timeout'));
+                    else if (engine === 'claude') void retireClaudePoolEntry(claudePoolAccess(), key, entry, new Error('runtime pool idle timeout'));
                     else closeEntry(store, key, entry, new Error('runtime pool idle timeout'));
                 }
             }

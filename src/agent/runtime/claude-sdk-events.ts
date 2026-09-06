@@ -1,5 +1,5 @@
 import type { RuntimeTurnResult } from './session.js';
-import type { RuntimeProjection } from './projection.js';
+import type { RuntimeProjection, RuntimeEnd } from './projection.js';
 import { ClaudeSdkMessages, CLAUDE_MAX_BLOCKS, CLAUDE_INPUT_BYTES, CLAUDE_TEXT_BYTES,
     type ClaudeBlock } from './claude-sdk-messages.js';
 
@@ -60,12 +60,12 @@ export class ClaudeSdkEvents {
         return undefined;
     }
 
-    finish(outcome: RuntimeTurnResult): void {
+    finish(outcome: RuntimeTurnResult, end?: RuntimeEnd): void {
         if (this.finished) return;
         this.finished = true;
         this.outcome = outcome;
         if (outcome.finalText !== null) this.projection.text('message', this.messages.finalRef, outcome.finalText, 'replace', 'final');
-        this.projection.close({ kind: 'turn-end', status: outcome.status, finalText: outcome.finalText,
+        this.projection.close(end ?? { kind: 'turn-end', status: outcome.status, finalText: outcome.finalText,
             ...(outcome.status === 'error' ? { error: 'Claude turn failed' } : {}) });
     }
 
