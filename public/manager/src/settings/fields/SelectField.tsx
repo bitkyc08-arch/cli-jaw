@@ -94,14 +94,16 @@ export function SelectField({ id, label, value, options, onChange, disabled, err
             else setOpen(true);
             return;
         }
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            setOpen(false);
-        }
     };
 
     return (
-        <div className="settings-field settings-field-select" ref={rootRef}>
+        <div className="settings-field settings-field-select" ref={rootRef} onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !open) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            rootRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]')?.focus();
+        }}>
             <span className="settings-field-label" id={labelId}>{label}</span>
             <button
                 id={id}
