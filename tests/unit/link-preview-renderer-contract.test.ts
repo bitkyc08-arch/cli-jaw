@@ -9,8 +9,6 @@ function read(path: string): string {
 }
 
 const postRenderSrc = read('public/js/render/post-render.ts');
-const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 
 test.afterEach(() => {
     resetWebUiDom();
@@ -80,10 +78,8 @@ test('link preview skips same-origin, private, media, and already attached links
     assert.equal(wrapper.querySelectorAll('.link-preview-card').length, 0);
 });
 
-test('link preview hydration is wired through finalization, live, and history paths', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('link preview remains included in scheduled finalization', () => {
     assert.match(postRenderSrc, /hydrateLinkPreviewCards\(msgContainer\)/);
-    assert.match(messageHistorySrc, /hydrateLinkPreviewCards\(el\)/);
-    assert.match(messageHistorySrc, /hydrateLinkPreviewCards\(viewport\)/);
-    assert.match(chatMessagesSrc, /hydrateLinkPreviewCards\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateLinkPreviewCards\(viewport\)/);
 });

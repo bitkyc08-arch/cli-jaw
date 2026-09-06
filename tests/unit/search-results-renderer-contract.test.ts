@@ -11,8 +11,6 @@ function read(path: string): string {
 const markdownSrc = read('public/js/render/markdown.ts');
 const sanitizeSrc = read('public/js/render/sanitize.ts');
 const postRenderSrc = read('public/js/render/post-render.ts');
-const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 
 test.afterEach(() => {
     resetWebUiDom();
@@ -116,14 +114,12 @@ test('hydration caps search results at ten and dedupes normalized URLs', async (
     assert.doesNotMatch(wrapper.textContent || '', /Result 12/);
 });
 
-test('search results hydration is wired through finalization, live, and history paths', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('search results parser, sanitizer and scheduled-finalization contracts remain', () => {
     assert.match(markdownSrc, /renderSearchResultsPlaceholder/);
     assert.match(sanitizeSrc, /'data-search-results-kind'/);
     assert.match(sanitizeSrc, /'data-search-results-spec'/);
     assert.match(sanitizeSrc, /'data-search-results-hydrated'/);
     assert.match(postRenderSrc, /hydrateSearchResultsBlocks\(msgContainer\)/);
-    assert.match(messageHistorySrc, /hydrateSearchResultsBlocks\(el\)/);
-    assert.match(messageHistorySrc, /hydrateSearchResultsBlocks\(viewport\)/);
-    assert.match(chatMessagesSrc, /hydrateSearchResultsBlocks\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateSearchResultsBlocks\(viewport\)/);
 });

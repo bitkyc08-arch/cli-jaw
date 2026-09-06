@@ -10,8 +10,6 @@ function read(path: string): string {
 
 const markdownSrc = read('public/js/render/markdown.ts');
 const postRenderSrc = read('public/js/render/post-render.ts');
-const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 const structuredFenceSrc = read('src/shared/structured-fence.ts');
 
 test.afterEach(() => {
@@ -76,13 +74,11 @@ test('chart-json malformed JSON fails closed', async () => {
     assert.doesNotMatch(wrapper.innerHTML, /not-json/);
 });
 
-test('chart-json wiring is present across render paths', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('chart-json parser, scheduled finalization and structured-fence contracts remain', () => {
     assert.match(markdownSrc, /renderChartJsonPlaceholder/);
     assert.match(postRenderSrc, /hydrateChartJsonBlocks\(msgContainer\)/);
-    assert.match(messageHistorySrc, /hydrateChartJsonBlocks\(el\)/);
-    assert.match(messageHistorySrc, /hydrateChartJsonBlocks\(viewport\)/);
-    assert.match(chatMessagesSrc, /hydrateChartJsonBlocks\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateChartJsonBlocks\(viewport\)/);
     assert.match(structuredFenceSrc, /'chart-json'/);
 });
 

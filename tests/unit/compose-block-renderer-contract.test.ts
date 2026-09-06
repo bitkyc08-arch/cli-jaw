@@ -11,8 +11,6 @@ function read(path: string): string {
 const markdownSrc = read('public/js/render/markdown.ts');
 const sanitizeSrc = read('public/js/render/sanitize.ts');
 const postRenderSrc = read('public/js/render/post-render.ts');
-const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 const delegationsSrc = read('public/js/render/delegations.ts');
 const structuredFenceSrc = read('src/shared/structured-fence.ts');
 
@@ -315,16 +313,14 @@ test('compose-block bodyLines array renders line-separated draft text', async ()
     assert.equal(wrapper.querySelector<HTMLTextAreaElement>('.compose-body')?.value, 'Line one\nLine two');
 });
 
-test('compose-block wiring is present across render paths', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('compose-block parser, sanitizer, delegation and scheduled-finalization contracts remain', () => {
     assert.match(markdownSrc, /renderComposeBlockPlaceholder/);
     assert.match(sanitizeSrc, /'data-compose-block-kind'/);
     assert.match(sanitizeSrc, /'data-compose-block-spec'/);
     assert.match(sanitizeSrc, /'data-compose-block-hydrated'/);
     assert.match(postRenderSrc, /hydrateComposeBlocks\(msgContainer\)/);
-    assert.match(messageHistorySrc, /hydrateComposeBlocks\(el\)/);
-    assert.match(messageHistorySrc, /hydrateComposeBlocks\(viewport\)/);
-    assert.match(chatMessagesSrc, /hydrateComposeBlocks\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateComposeBlocks\(viewport\)/);
     assert.match(delegationsSrc, /ensureComposeBlockDelegation\(\)/);
     assert.match(structuredFenceSrc, /'compose-block'/);
 });

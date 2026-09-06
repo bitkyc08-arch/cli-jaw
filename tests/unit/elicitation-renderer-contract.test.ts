@@ -13,7 +13,6 @@ const sanitizeSrc = read('public/js/render/sanitize.ts');
 const postRenderSrc = read('public/js/render/post-render.ts');
 const delegationsSrc = read('public/js/render/delegations.ts');
 const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 const elicitationSrc = read('public/js/features/elicitation.ts');
 const elicitationStateSrc = read('public/js/features/elicitation-state.ts');
 const idbCacheSrc = read('public/js/features/idb-cache.ts');
@@ -106,22 +105,14 @@ test('sanitizer preserves only the placeholder data attributes required for hydr
     assert.match(sanitizeSrc, /FORBID_TAGS:\s*\[[\s\S]*'form'[\s\S]*'input'/);
 });
 
-test('hydration is wired through render finalization, live messages, and virtual scroll history', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('elicitation parser, scheduled finalization, delegation and history completion seeds remain', () => {
     assert.match(markdownSrc, /renderElicitationPlaceholder/);
     assert.match(postRenderSrc, /hydrateElicitationBlocks\(msgContainer\)/);
     assert.match(delegationsSrc, /ensureElicitationDelegation\(\)/);
     assert.match(messageHistorySrc, /seedCompletedElicitationsFromMessages\(safeMsgs\)/);
     assert.match(messageHistorySrc, /seedCompletedElicitationsFromMessages\(safeCached\)/);
-
-    const lazyIdx = messageHistorySrc.indexOf('vs.onLazyRender = ');
-    const postIdx = messageHistorySrc.indexOf('vs.onPostRender = ');
-    assert.ok(lazyIdx >= 0, 'message-history must define onLazyRender');
-    assert.ok(postIdx >= 0, 'message-history must define onPostRender');
-    assert.match(messageHistorySrc.slice(lazyIdx, lazyIdx + 1400), /hydrateElicitationBlocks\(el\)/);
-    assert.match(messageHistorySrc.slice(postIdx, postIdx + 700), /hydrateElicitationBlocks\(viewport\)/);
-
-    assert.match(chatMessagesSrc, /hydrateElicitationBlocks\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateElicitationBlocks\(viewport\)/);
 });
 
 test('completion persistence uses stable turn indexes across history, cache, and virtual promotion', () => {

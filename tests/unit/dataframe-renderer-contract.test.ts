@@ -10,8 +10,6 @@ function read(path: string): string {
 
 const markdownSrc = read('public/js/render/markdown.ts');
 const postRenderSrc = read('public/js/render/post-render.ts');
-const messageHistorySrc = read('public/js/features/message-history.ts');
-const chatMessagesSrc = read('public/js/features/chat-messages.ts');
 const delegationsSrc = read('public/js/render/delegations.ts');
 const structuredFenceSrc = read('src/shared/structured-fence.ts');
 
@@ -116,13 +114,11 @@ test('dataframe malformed JSON fails closed', async () => {
     assert.doesNotMatch(wrapper.innerHTML, /not-json/);
 });
 
-test('dataframe wiring is present across render paths', () => {
+// Live/fresh-VS and lazy history hydration, scoped counts and recycling are exercised
+// through real entrypoints in web-structured-hydration.test.ts.
+test('dataframe parser, delegation and scheduled-finalization contracts remain', () => {
     assert.match(markdownSrc, /renderDataframePlaceholder/);
     assert.match(postRenderSrc, /hydrateDataframeBlocks\(msgContainer\)/);
-    assert.match(messageHistorySrc, /hydrateDataframeBlocks\(el\)/);
-    assert.match(messageHistorySrc, /hydrateDataframeBlocks\(viewport\)/);
-    assert.match(chatMessagesSrc, /hydrateDataframeBlocks\(div\)/);
-    assert.match(chatMessagesSrc, /hydrateDataframeBlocks\(viewport\)/);
     assert.match(delegationsSrc, /ensureDataframeDelegation\(\)/);
     assert.match(structuredFenceSrc, /'dataframe'/);
 });
