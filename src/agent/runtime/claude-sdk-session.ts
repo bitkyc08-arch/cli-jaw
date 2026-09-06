@@ -161,12 +161,15 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
     finalizeTurn(turnId: string, end: RuntimeEnd): boolean {
         const pending = this.pendingFinal;
         if (!pending || pending.turn.context.turnId !== turnId || !pending.claimed) return false;
+        if (!end || end.kind !== 'turn-end' || !['done', 'error', 'stopped'].includes(end.status)) return false;
         if (pending.claimed.status !== 'done' && end.status === 'done') return false;
-        if (end.status !== 'done' && end.finalText !== null) return false;
         if (end.finalText !== null && (typeof end.finalText !== 'string' || end.finalText.length > FULLTEXT_MAX_CHARS)) return false;
+        if (end.error !== undefined && typeof end.error !== 'string') return false;
+        const terminal: RuntimeEnd = { kind: 'turn-end', status: end.status, finalText: end.finalText,
+            ...(end.error === undefined ? {} : { error: end.error }) };
         this.pendingFinal = null;
         this.finishing = true; pending.turn.passiveFinalizing = true;
-        try { pending.turn.mapper.finish({ ...pending.claimed, status: end.status, finalText: end.finalText }, end); }
+        try { pending.turn.mapper.finish({ ...pending.claimed, status: terminal.status, finalText: terminal.finalText }, terminal); }
         finally { pending.turn.passiveFinalizing = false; this.finishing = false; }
         if (this.deferredTurnIds.size >= 512) void this.close().catch(() => console.warn('[claude-native] cleanup_failed'));
         return true;

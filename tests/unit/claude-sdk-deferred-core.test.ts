@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.ts';
 import { FULLTEXT_MAX_CHARS } from '../../src/agent/events/fulltext-bound.ts';
+import { lifecycleRuntimeOutcome } from '../../src/agent/runtime/outcome.ts';
+import type { RuntimeEnd } from '../../src/agent/runtime/projection.ts';
 mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => null } });
 const { createClaudeSdkSession } = await import('../../src/agent/runtime/claude-sdk-session.ts');
 
@@ -138,10 +140,26 @@ test('512 distinct deferred turns retire neutrally only after final publication'
     f.nextTurn('turn-overflow'); await assert.rejects(f.session.send({ text: 'overflow' }, () => {}), /closed/);
 });
 
-test('invalid final overrides cannot publish successful text under error or exceed the final bound', async t => {
+test('invalid terminal kind/status/error or oversized final cannot consume the claim', async t => {
     const f = await fixture(t); await f.candidate(); f.session.claimTurnOutcome('turn-1');
-    assert.equal(f.session.finalizeTurn('turn-1', end('error', 'not authoritative')), false);
-    assert.equal(f.session.finalizeTurn('turn-1', end('stopped', 'not authoritative')), false);
+    for (const invalid of [null, { ...end('done', null), kind: 'message' },
+        { ...end('done', null), status: 'running' }, { ...end('done', null), status: 'unknown' },
+        { ...end('done', null), error: 42 }]) {
+        assert.equal(f.session.finalizeTurn('turn-1', invalid as unknown as RuntimeEnd), false);
+        assert.equal(f.session.claimTurnOutcome('turn-1')?.status, 'done');
+    }
     assert.equal(f.session.finalizeTurn('turn-1', end('done', 'x'.repeat(FULLTEXT_MAX_CHARS + 1))), false);
     assert.equal(f.session.finalizeTurn('turn-1', end('done', 'FINAL')), true);
+});
+
+for (const finalText of ['', 'COMMITTED']) test(`post-claim Stop retains authoritative ${JSON.stringify(finalText)} through existing lifecycle`, async t => {
+    const f = await fixture(t); await f.candidate({ result: finalText });
+    const claimed = f.session.claimTurnOutcome('turn-1')!;
+    await f.session.cancel();
+    const terminal = lifecycleRuntimeOutcome({ runtimeOutcome: claimed }, true)!;
+    assert.equal(terminal.status, 'stopped'); assert.equal(terminal.finalText, finalText);
+    assert.equal(f.session.finalizeTurn('turn-1', end(terminal.status, terminal.finalText)), true);
+    const ends = f.events.filter(event => event.kind === 'turn-end');
+    assert.equal(ends.length, 1); assert.equal(ends[0]?.status, 'stopped'); assert.equal(ends[0]?.finalText, finalText);
+    assert.equal(f.session.claimTurnOutcome('turn-1'), null);
 });

@@ -171,6 +171,8 @@ snapshot에 남는다고 명시한다.
 
 ### Mid-run 메시지 정책 (midRunPolicy)
 
+Claude native main keeps SDK input sequential: queued capability is not immediate steering. The existing `steer` policy hard-closes its query, persists interrupted partial output before the captured exit-settle barrier, and resumes with that context; explicit `followup`/`collect` uses the existing queue. No same-turn steer hook is registered. The shared host claims a deferred result once before lifecycle delivery, then publishes its captured canonical terminal. An already claimed final can remain present when a later Stop changes the lifecycle status; an unfinished partial cannot become final. Pre-acquisition Stop and setup failure establish their fallback start before compatibility completion. Stop acknowledgment is not proof of physical cleanup, and native worker/approval/image/child parity is not enabled by this main-only path.
+
 실행 중인 agent에 새 메시지가 도착하면 (`isAgentBusy` && multiSession enabled)
 gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 요청 `meta.midRunPolicy` > 세션 `active_run_policy` > `settings.multiSession.midRunPolicy`

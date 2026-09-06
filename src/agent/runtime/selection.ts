@@ -24,7 +24,7 @@ export function isNativeSessionBucket(bucket: string): boolean {
 
 /** Compiled adapter support, not binary availability or authentication proof. */
 export function isNativeAdapterImplemented(cli: string): boolean {
-    return cli === 'codex-app' || cli === 'pi' || cli === 'cursor' || cli === 'grok';
+    return cli === 'codex-app' || cli === 'pi' || cli === 'cursor' || cli === 'grok' || cli === 'claude';
 }
 
 /** Independent of main support; switchable workers are enabled only with ownership support. */
