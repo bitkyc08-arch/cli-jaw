@@ -96,7 +96,7 @@ test('accepted answer focuses the next verified request input with no draft carr
     answer(host); await until(() => root.querySelector('h2')!.textContent === 'Question two');
     const input = root.querySelector('textarea')!;
     assert.notEqual(input, old); assert.equal(input.value, ''); assert.equal(document.activeElement, input);
-    assert.match(announcer.textContent!, /Response accepted/);
+    assert.equal(announcer.textContent, 'Runtime is waiting for your response.');
     await panel.refresh(); assert.equal(document.activeElement, input);
 });
 
@@ -119,7 +119,7 @@ test('remote settlement restores composer or next control only when removed form
         root.querySelector('textarea')!.focus(); serve = async () => listed(next);
         await panel.refresh();
         assert.equal(document.activeElement, next.length ? root.querySelector('textarea') : composer);
-        assert.match(announcer.textContent!, /no longer pending/);
+        assert.equal(announcer.textContent, next.length ? 'Runtime is waiting for your response.' : 'Request is no longer pending.');
         assert.equal(postCount, 0); panel.dispose(); host.remove();
     }
 });

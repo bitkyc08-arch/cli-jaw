@@ -29,6 +29,10 @@ Classic `presentation-preference.ts` shares initial-load/event generations, coal
 
 Classic consumes parsed canonical events through the existing SSE dispatcher. Activity is the default presentation: one closed native disclosure groups tools, commentary, reasoning and explicitly unknown-phase output; the existing message body owns the full final answer. Legacy remains reversible during a turn because CSS hides, rather than deletes, its existing bounded preview. Requests stay outside disclosure in either mode.
 
+Legacy exposes the existing canonical Stopped/Failed status and bounded error summary even while Activity details remain hidden. It does not manufacture an answer for an interrupted empty turn. Initial virtual-history bootstrap keeps the exact current live message element outside the history copy, including when server events precede the user echo; completed text/empty rows still enter history, and the live row is promoted only on normal settlement.
+
+Native request feedback follows the full selected form identity (including view, excluding expiry). A newly selected request does not inherit a previous request's success/expiry text. Empty-list polite outcome announcements and the same form's unconfirmed feedback/draft remain; this changes no freshness, focus, response payload or automatic retry policy.
+
 `src/shared/activity-state.ts` owns the pure preview reducer (128 entries,4096 chars each,65536 combined chars,16 request notices,32768-char final preview). `activity-replay.ts` coordinates bounded state; it does not fetch history. `features/activity-view.ts` renders40 rows/page and retains128 explicit item choices. `activity-live.ts` retains16 turn models/64 choice groups and receives existing renderer actions through a host port; it must not import the legacy ui/state/VS/Trace dependency cycle.
 
 `ws.ts` admits events only against the snapshot bridge's accepted session/scope and current stream readiness. Pre-admission events and gap notices share256 entries/1MiB; foreign identities are ignored, overflow and missing starts are visibly incomplete. Capacity fallback preserves the compatibility answer. Native-input/cancel-reprompt receipts are not terminals. A new run resets only the previous legacy presentation singleton, not the runtime.
@@ -355,6 +359,7 @@ browser, dev Electron or packaged-sidecar QA.
 | `manager/src/settings/pages/components/pi-profile.ts` | Pi profile/model option pure helper |
 
 - Pi model field는 발견된 모델이 있으면 `SelectField`를 사용하고, 목록이 비어 있을 때만 free-text `TextField`로 fallback한다.
+- Pi 전용 grid는 provider/model/effort를 bounded 1:2:1 트랙에 두고 긴 설명을 줄바꿈한다. 720px 이하의 기존 한 열 배치는 유지하며 다른 CLI grid나 설정 값/콜백은 바꾸지 않는다.
 - 이미 수락된 등록이 완료되면 현재 instance의 `onPiRegistered`가 `perCli.pi.provider/model` intent를 반영한다. 페이지 저장 중에도 이 완료 처리는 허용하지만, 일반 입력은 차단하고 retired instance의 완료는 무시한다. Optional `settings.pi` metadata는 응답에 있을 때만 반영하며, 기존 dialog의 `ok/data` envelope 처리에 따른 metadata refresh 한계는 별개다. 새 provider/model 선택 반영을 전체 profile/discovery metadata 갱신 보장으로 해석하지 않는다.
 | `manager/src/jaw-ceo/` | Jaw CEO console panels, orchestration-control actions, voice, virtual timeline |
 | `manager/src/goal-status/` `manager/src/background-tasks/` `manager/src/workers/` | Manager runtime-observability monitors for goal/PABCD, background tasks, web-ai bgtask bridges, worker progress, durable worker runs, shared status-category display contracts, safe event timelines, and explicit bounded raw-output drill-down |

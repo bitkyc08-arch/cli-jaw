@@ -98,6 +98,103 @@ test('approval sends exact opaque option and binding once; cancellation sends nu
     assert.deepEqual(body(1), { ...binding, response: { optionId: null } });
 });
 
+for (const transition of ['empty then B', 'direct B'] as const) {
+    test(`accepted A feedback does not prefix distinct pending B (${transition})`, { timeout: 10000 }, async () => {
+        const a = pending();
+        const b = pending({ requestId: 'request/b', runId: 'run-b', turnId: 'turn-b',
+            view: { title: 'Distinct B permission', fields: [field({ options: [{ id: 'b-only', label: 'Allow B' }] })] } });
+        const { host, panel, root } = await mounted([a]);
+        const announcer = host.querySelector('.native-request-announcer')!;
+        const status = root.querySelector('.native-request-status')!;
+        let listedItems = transition === 'empty then B' ? [] : [b];
+        serve = async (_url, init) => init.method === 'POST' ? accepted() : listed(listedItems);
+        button(host, 'Allow once').click();
+        if (transition === 'empty then B') {
+            await until(() => root.hidden);
+            assert.equal(announcer.getAttribute('aria-live'), 'polite');
+            assert.equal(announcer.textContent, 'Response accepted.', 'closed state retains the accepted announcement');
+            await panel.refresh();
+            assert.equal(root.hidden, true);
+            assert.equal(announcer.textContent, 'Response accepted.', 'another empty read must not erase the closed outcome');
+            listedItems = [b];
+            await panel.refresh();
+        } else {
+            await until(() => root.querySelector('.native-request-title')?.textContent === b.view.title
+                && root.querySelector('form') !== null && root.getAttribute('aria-busy') === 'false');
+        }
+        assert.equal(root.hidden, false);
+        assert.equal(root.querySelector('.native-request-title')!.textContent, b.view.title);
+        assert.equal(root.querySelector('.native-request-context')!.textContent, `Execution scope: ${identity.scope} · Run: run-b`);
+        assert.equal(button(host, 'Allow B').disabled, false);
+        assert.equal(posts().length, 1, 'selecting B must not send another response');
+        assert.deepEqual(body(), { ...binding, response: { optionId: 'opaque/yes' } });
+        assert.equal(status.textContent, 'Runtime is waiting for your response.', 'B has no accepted response of its own');
+        assert.equal(announcer.textContent, 'Runtime is waiting for your response.', 'B must not announce A as accepted');
+    });
+}
+
+test('same pending question retains unconfirmed feedback and draft across failed and repeated reads', { timeout: 10000 }, async () => {
+    const item = question([field({ allowFreeform: true, multiSelect: true })]);
+    const { host, panel, root } = await mounted([item]);
+    const text = host.querySelector('textarea')!;
+    const choice = host.querySelector<HTMLInputElement>('input')!;
+    const status = root.querySelector('.native-request-status')!;
+    const announcer = host.querySelector('.native-request-announcer')!;
+    const feedback = 'Response could not be confirmed. Check pending requests before trying again.';
+    text.value = 'same request draft'; choice.click();
+    serve = async (_url, init) => init.method === 'POST' ? json({ ok: false }, 503) : listed([item]);
+    submit(host);
+    await until(() => status.textContent === feedback && root.getAttribute('aria-busy') === 'false'
+        && root.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled === false);
+    assert.equal(announcer.textContent, feedback);
+    assert.equal(host.querySelector('textarea'), text);
+    assert.equal(text.value, 'same request draft'); assert.equal(choice.checked, true);
+    assert.deepEqual(body(), { ...binding, response: { answers: { field: {
+        selected: ['opaque/yes'], text: 'same request draft',
+    } } } });
+    serve = async () => json({ ok: false }, 503);
+    await panel.refresh();
+    assert.match(status.textContent!, /Pending requests could not be loaded/);
+    assert.equal(host.querySelector('textarea'), text);
+    assert.equal(text.value, 'same request draft'); assert.equal(choice.checked, true);
+    assert.equal(button(host, 'Submit answers').disabled, true);
+    serve = async () => listed([{ ...item, expiresAt: item.expiresAt + 1000 }]);
+    for (let read = 0; read < 2; read++) {
+        await panel.refresh();
+        assert.ok(status.textContent!.includes(feedback), 'same identity/form must keep its own unconfirmed outcome');
+        assert.match(status.textContent!, /Runtime is waiting for your response/);
+        assert.doesNotMatch(status.textContent!, /Response accepted/);
+        assert.equal(announcer.textContent, status.textContent);
+        assert.equal(host.querySelector('textarea'), text);
+        assert.equal(text.value, 'same request draft'); assert.equal(choice.checked, true);
+        assert.equal(button(host, 'Submit answers').disabled, false);
+        assert.equal(posts().length, 1, 'reads must not retry the unconfirmed POST');
+    }
+});
+
+test('changed question view with the same binding does not inherit the previous form outcome', { timeout: 10000 }, async () => {
+    const item = question([field({ options: [], allowFreeform: true })]);
+    const { host, panel, root } = await mounted([item]);
+    const oldText = host.querySelector('textarea')!; oldText.value = 'old form draft';
+    const status = root.querySelector('.native-request-status')!;
+    serve = async (_url, init) => init.method === 'POST' ? json({ ok: false }, 503) : listed([item]);
+    submit(host);
+    await until(() => status.textContent === 'Response could not be confirmed. Check pending requests before trying again.'
+        && root.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled === false);
+    const revised = { ...item, view: { title: 'Revised question', fields: [field({
+        label: 'Revised answer', options: [], allowFreeform: true,
+    })] } };
+    serve = async () => listed([revised]);
+    await panel.refresh();
+    assert.equal(root.querySelector('.native-request-title')!.textContent, 'Revised question');
+    assert.notEqual(host.querySelector('textarea'), oldText);
+    assert.equal(host.querySelector('textarea')!.value, '');
+    assert.equal(button(host, 'Submit answers').disabled, false);
+    assert.equal(posts().length, 1);
+    assert.equal(status.textContent, 'Runtime is waiting for your response.', 'view is part of feedback identity, not just requestId');
+    assert.equal(host.querySelector('.native-request-announcer')!.textContent, status.textContent);
+});
+
 test('all question fields are required and single/multi selection submits only view IDs', async () => {
     const { host } = await mounted([question([field(), field({ id: 'multi', multiSelect: true })])]);
     submit(host); assert.equal(posts().length, 0);

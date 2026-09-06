@@ -294,6 +294,9 @@ export function mountNativeRequests(host: HTMLElement, identity: ActivityIdentit
             manual = mode === 'manual';
             root.hidden = !selected && !unavailable && health === 'healthy';
             if (selected) {
+                // Retention uses the full form key, excluding expiry. Keep closed
+                // announcements and same-form feedback; a new form owns neither.
+                if (!retained) lastOutcome = null;
                 announce(canAnswer(selected) ? (lastOutcome ? lastOutcome + ' ' : '') + 'Runtime is waiting for your response.'
                     : 'This request cannot be answered here. Refresh requests or use Stop.');
                 if (!retained) render(selected);

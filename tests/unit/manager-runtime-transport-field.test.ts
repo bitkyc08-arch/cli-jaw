@@ -203,6 +203,54 @@ test('temporary row disable keeps an existing Pi dialog and its unsubmitted draf
     assert.deepEqual(view.http, []); assert.deepEqual(view.entries, []);
 });
 
+test('Pi layout modifier is mounted only on the Pi grid, not other CLI rows', async t => {
+    // Structure/routing contract only: jsdom cannot prove physical track widths.
+    for (const cli of ['pi', 'claude', 'cursor', 'grok', 'ai-e', 'codex-app', 'Pi']) {
+        const view = await mountRow(t, cli);
+        const grid = view.container.querySelector('.settings-percli-grid');
+        assert.ok(grid);
+        assert.equal(grid.classList.contains('settings-percli-grid--pi'), cli === 'pi', cli);
+        assert.equal(view.container.querySelectorAll('.settings-percli-grid--pi').length, cli === 'pi' ? 1 : 0);
+        assert.deepEqual(view.values, []); assert.deepEqual(view.entries, []); assert.deepEqual(view.http, []);
+    }
+});
+
+test('Pi layout preserves full model/provider, effort note, model edits and inert dialog draft', async t => {
+    const view = await mountRow(t, 'pi');
+    const original = { ...view.original, provider: 'progrok', model: 'grok-composer-2.5-fast', effort: 'medium' };
+    const note = 'A long Pi effort explanation remains available without replacing the selected provider or model.';
+    await view.render({ original, value: original,
+        meta: { ...meta, efforts: ['low', 'medium', 'high'], effortNote: note },
+        pi: { defaultProfileId: 'progrok', profiles: [], discoveredModels: { progrok: ['grok-4.6'] } },
+    });
+    const grid = view.container.querySelector('.settings-percli-grid')!;
+    assert.deepEqual([...grid.querySelectorAll('[role="combobox"]')].map(node => node.id),
+        ['percli-pi-provider', 'percli-pi-model', 'percli-pi-effort']);
+    assert.equal(view.control('Provider').querySelector('.settings-select-value')?.textContent, 'progrok');
+    assert.equal(view.control('Model').querySelector('.settings-select-value')?.textContent, 'grok-composer-2.5-fast');
+    assert.equal(grid.querySelector('.settings-percli-effort .settings-percli-note')?.textContent, note);
+    assert.deepEqual(view.dirty.saveBundle(), {});
+    await view.choose('grok-4.6', 'Model');
+    assert.deepEqual(view.values, [{ ...original, model: 'grok-4.6' }]);
+    assert.deepEqual(view.entries, [{ key: 'perCli.pi.model', entry: {
+        value: 'grok-4.6', original: 'grok-composer-2.5-fast', valid: true,
+    } }]);
+    const settings = [...grid.querySelectorAll<HTMLButtonElement>(':scope > button')].find(node => node.textContent === 'Settings');
+    assert.ok(settings);
+    await act(async () => { settings.click(); });
+    const dialog = view.container.querySelector('[role="dialog"]'); assert.ok(dialog);
+    await view.choose('anthropic', 'Mode');
+    await view.render({ disabled: true });
+    assert.equal(settings.disabled, true);
+    assert.ok([...grid.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, [role="combobox"]')].every(node => node.disabled));
+    assert.equal(view.container.querySelector('[role="dialog"]'), dialog);
+    assert.ok(dialog.closest('[inert]'));
+    await view.render({ disabled: false });
+    assert.equal(view.control('Mode').querySelector('.settings-select-value')?.textContent, 'anthropic');
+    assert.deepEqual(view.dirty.saveBundle(), { 'perCli.pi.model': 'grok-4.6' });
+    assert.deepEqual(view.http, []);
+});
+
 for (const cli of ['ai-e', 'pi']) {
     test(`${cli}: already-open provider option is guarded and existing provider behavior resumes`, async t => {
         const view = await mountRow(t, cli);

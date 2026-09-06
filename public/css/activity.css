@@ -1,8 +1,20 @@
 /* Presentation changes visibility only; the existing message owns the answer. */
 :root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-key] .process-block,
 :root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-key][data-activity-live="true"] .msg-content,
-:root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-recovering="true"]:not([data-activity-saved="true"]) .msg-content,
+:root:not([data-presentation-mode="legacy"]) .msg-agent[data-activity-recovering="true"]:not([data-activity-saved="true"]) .msg-content {
+    display: none;
+}
 :root[data-presentation-mode="legacy"] .activity-turn {
+    display: none;
+}
+
+/* Legacy keeps its transcript/tools, but an interrupted or failed native turn
+   still needs a readable outcome even when no final answer exists. */
+:root[data-presentation-mode="legacy"] .activity-turn[data-status="stopped"],
+:root[data-presentation-mode="legacy"] .activity-turn[data-status="error"] {
+    display: block;
+}
+:root[data-presentation-mode="legacy"] .activity-turn > :not(.activity-status):not(.activity-error) {
     display: none;
 }
 

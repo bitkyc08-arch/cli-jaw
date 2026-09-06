@@ -58,7 +58,7 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, dirt
     return (
         <div className="settings-percli-row" data-cli={cli}>
             <h3 className="settings-percli-title">{meta.label}</h3>
-            <div className="settings-percli-grid">
+            <div className={`settings-percli-grid${isPi ? ' settings-percli-grid--pi' : ''}`}>
                 {isPi && piProfileOptions(pi, provider).length ? (
                     <SelectField
                         id={`percli-${cli}-provider`}
