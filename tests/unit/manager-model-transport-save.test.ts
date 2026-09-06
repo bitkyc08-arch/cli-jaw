@@ -31,10 +31,12 @@ function fixture(t: TestContext, name: string) {
     let registry: Record<string, unknown> = { cursor: { label: name + '-registry', models: [name + '-catalog'], efforts: ['high'] } };
     let failure: Error | null = null;
     let putGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+    let registrationGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
     const readGates = new Map<string, ReturnType<typeof Promise.withResolvers<void>>>();
     const gates: Array<ReturnType<typeof Promise.withResolvers<void>>> = [];
     const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
     const reads: string[] = [];
+    const posts: Array<Record<string, unknown>> = [];
     const client: SettingsClient = {
         async get<T>(path: string) {
             assert.ok(path === '/api/settings' || path === '/api/cli-registry'); reads.push(path);
@@ -52,14 +54,24 @@ function fixture(t: TestContext, name: string) {
             snapshot = { ...snapshot, ...patch, perCli };
             return { ok: true, data: structuredClone(snapshot) } as T;
         },
-        async post() { throw Error('Unexpected POST'); }, async delete() { throw Error('Unexpected DELETE'); },
+        async post<T>(path: string, body: unknown) {
+            assert.equal(path, '/api/pi/profiles/register'); assert.ok(registrationGate, 'only explicitly admitted fixture registration');
+            const value = body as Record<string, string>; posts.push(structuredClone(value));
+            await registrationGate.promise;
+            const profile = { id: value.id, label: value.id, model: value.model, mode: value.mode, endpoint: value.endpoint };
+            // The real route commits both profile and selection before replying.
+            snapshot = { ...snapshot, pi: { defaultProfileId: value.id, profiles: [profile] },
+                perCli: { ...snapshot.perCli as Record<string, unknown>, pi: { provider: value.id, model: value.model } } };
+            return { models: [value.model], settings: { pi: snapshot.pi } } as T;
+        }, async delete() { throw Error('Unexpected DELETE'); },
     };
     t.after(async () => { await act(async () => { for (const gate of gates) gate.resolve(); }); });
-    return { client, writes, reads, snapshot: () => snapshot,
+    return { client, writes, reads, posts, snapshot: () => snapshot,
         fail(error: Error | null) { failure = error; },
         setSnapshot(value: Record<string, unknown>) { snapshot = value; },
         setRegistry(value: Record<string, unknown>) { registry = value; },
         deferPut() { putGate = Promise.withResolvers<void>(); gates.push(putGate); return putGate; },
+        deferRegistration() { registrationGate = Promise.withResolvers<void>(); gates.push(registrationGate); return registrationGate; },
         deferRead(path: '/api/settings' | '/api/cli-registry') {
             const gate = Promise.withResolvers<void>(); readGates.set(path, gate); gates.push(gate); return gate;
         },
@@ -236,4 +248,57 @@ test('a retired A save error cannot surface on the current B form', bounded, asy
     await act(async () => { gate.resolve(); await work; });
     assert.equal(view.model().value, 'B-model'); assert.doesNotMatch(view.container.textContent!, /RETIRED A ERROR/);
     assert.deepEqual(b.writes, []);
+});
+
+function withPi(name: string) {
+    return { ...initial(name), perCli: { ...initial(name).perCli, pi: { provider: 'old-profile', model: 'old-model' } },
+        pi: { defaultProfileId: 'old-profile', profiles: [{ id: 'old-profile', label: 'Old', mode: 'basic', endpoint: 'http://fixture.invalid', model: 'old-model' }] } };
+}
+
+async function registerNewPi(view: Awaited<ReturnType<typeof mount>>) {
+    const button = [...view.container.querySelectorAll<HTMLButtonElement>('[data-cli="pi"] button')].find(node => node.textContent === 'Settings')!;
+    assert.ok(button); await act(async () => button.click());
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
+    await act(async () => {
+        for (const [id, value] of [['pi-profile-id', 'new-profile'], ['pi-profile-model', 'new-model']]) {
+            const input = view.container.querySelector<HTMLInputElement>('#' + id)!; assert.ok(input);
+            setter.call(input, value); input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+        }
+    });
+    const register = [...view.container.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(node => node.textContent === 'Register')!;
+    assert.ok(register); await act(async () => register.click());
+}
+
+for (const saveFails of [true, false]) test(`admitted Pi registration stays visible when overlapping page save ${saveFails ? 'fails' : 'succeeds'}`, bounded, async t => {
+    const api = fixture(t, 'A'); api.setSnapshot(withPi('A'));
+    const view = await mount(t, api.client); await view.edit();
+    const registration = api.deferRegistration(), page = api.deferPut();
+    await registerNewPi(view);
+    assert.equal(api.posts.length, 1); assert.equal(api.posts[0]!.id, 'new-profile');
+    let save!: Promise<void>;
+    await act(async () => { save = view.handler()(); void save.catch(() => {}); });
+    if (saveFails) api.fail(Error('PAGE SAVE FAILED'));
+    await act(async () => registration.resolve());
+    assert.equal((api.snapshot().perCli as Record<string, Record<string, string>>).pi!.provider, 'new-profile');
+    await act(async () => { page.resolve(); if (saveFails) await assert.rejects(save, /PAGE SAVE FAILED/); else await save; });
+    const piRow = view.container.querySelector('[data-cli="pi"]')!;
+    assert.ok(piRow); assert.match(piRow.textContent!, /new-profile/); assert.match(piRow.textContent!, /new-model/);
+    assert.equal(view.dirty.pending.get('perCli.pi.provider')?.value, 'new-profile');
+    assert.equal(view.dirty.pending.get('perCli.pi.model')?.value, 'new-model');
+});
+
+for (const returnToA of [false, true]) test(`retired Pi registration cannot write current ${returnToA ? 'A after B' : 'B'} draft`, bounded, async t => {
+    const a = fixture(t, 'A'), b = fixture(t, 'B'); a.setSnapshot(withPi('A')); b.setSnapshot(withPi('B'));
+    const view = await mount(t, a.client), registration = a.deferRegistration();
+    await registerNewPi(view); assert.equal(a.posts.length, 1);
+    await view.render(b.client, 43226);
+    if (returnToA) await view.render(a.client, 43225);
+    const current = nativeEntry(); await view.edit(current, 'perCli.grok.transport');
+    await act(async () => registration.resolve());
+    assert.equal((a.snapshot().perCli as Record<string, Record<string, string>>).pi!.provider, 'new-profile', 'the old admitted server mutation did finish');
+    assert.doesNotMatch(view.container.querySelector('[data-cli="pi"]')?.textContent ?? '', /new-profile|new-model/);
+    assert.equal(view.dirty.pending.get('perCli.pi.provider'), undefined);
+    assert.equal(view.dirty.pending.get('perCli.pi.model'), undefined);
+    assert.equal(view.dirty.pending.get('perCli.grok.transport'), current);
+    assert.deepEqual(b.posts, []); assert.deepEqual(b.writes, []);
 });

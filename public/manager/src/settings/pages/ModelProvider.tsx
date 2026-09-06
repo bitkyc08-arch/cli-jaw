@@ -13,7 +13,7 @@ import {
     usePageSnapshot,
     type SnapshotState,
 } from './page-shell';
-import { PerCliRow } from './components/PerCliRow';
+import { PerCliRow, type PiRegistration } from './components/PerCliRow';
 import { metaFor, normalizeCliMetaRegistry } from './components/agent/agent-meta';
 import type { CliMeta, PerCliEntry } from './components/agent/agent-meta';
 import type { PiSettingsView } from './components/pi-profile';
@@ -116,10 +116,19 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
-        setPerCliDraft({ ...(state.data.perCli || {}) });
+        const nextPerCli = { ...(state.data.perCli || {}) };
+        const ownBundle = Object.fromEntries(Object.entries(dirty.saveBundle()).filter(([key]) => ownsModelKey(key)));
+        const pending = expandPatch(ownBundle)['perCli'];
+        if (pending && typeof pending === 'object' && !Array.isArray(pending)) {
+            for (const [cli, entry] of Object.entries(pending)) {
+                if (entry && typeof entry === 'object' && !Array.isArray(entry))
+                    nextPerCli[cli] = { ...nextPerCli[cli], ...entry };
+            }
+        }
+        setPerCliDraft(nextPerCli);
         setPiDraft(state.data.pi);
         setFallback([...(state.data.fallbackOrder || [])]);
-        const codex = state.data.perCli?.['codex'] || {};
+        const codex = nextPerCli['codex'] || {};
         const nextCodexCtx: typeof codexCtx = {};
         if (typeof codex.contextWindowSize === 'number') {
             nextCodexCtx.contextWindowSize = codex.contextWindowSize;
@@ -128,7 +137,18 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
             nextCodexCtx.contextWindowCompactLimit = codex.contextWindowCompactLimit;
         }
         setCodexCtx(nextCodexCtx);
-    }, [state]);
+    }, [state, dirty]);
+
+    const onPiRegistered = useCallback((next: PiRegistration) => {
+        if (activeInstance.current !== instance) return;
+        // This is completion of an already-admitted server mutation, not a new
+        // edit to admit while page input is locked. Keep newer entry identities.
+        const original = state.kind === 'ready' ? state.data.perCli?.['pi'] : undefined;
+        if (next.pi) setPiDraft(next.pi);
+        setPerCliDraft(current => ({ ...current, pi: { ...current['pi'], provider: next.provider, model: next.model } }));
+        dirty.set('perCli.pi.provider', { value: next.provider, original: original?.provider ?? 'progrok', valid: true });
+        dirty.set('perCli.pi.model', { value: next.model, original: original?.model ?? '', valid: true });
+    }, [dirty, instance, state]);
 
     useEffect(() => {
         return () => {
@@ -246,6 +266,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                             client={client}
                             pi={piDraft}
                             setPi={(next) => { if (canEdit()) setPiDraft(next); }}
+                            onPiRegistered={onPiRegistered}
                         />
                     ))
                 )}
