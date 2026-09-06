@@ -294,6 +294,7 @@ test.mock.module('../../src/agent/runtime-pool.js', {
         acquirePiRuntime: async () => forbiddenProviderAcquire('Pi'),
         acquireCursorRuntime: async () => forbiddenProviderAcquire('Cursor'),
         acquireGrokRuntime: async () => forbiddenProviderAcquire('Grok'),
+        acquireClaudeRuntime: async () => forbiddenProviderAcquire('Claude'),
     },
 });
 
