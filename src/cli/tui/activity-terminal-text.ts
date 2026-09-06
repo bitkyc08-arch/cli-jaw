@@ -35,6 +35,9 @@ function afterControlSequence(value: string, start: number, csi: boolean): numbe
  * OSC; other control strings remain hidden until ST, even with malformed payloads.
  */
 export function safeActivityTerminalText(value: string): string {
+    // LF and ordinary Unicode already have their final display representation.
+    // Avoid staging millions of one-character strings for large saved answers.
+    if (!/[\x00-\x09\x0b-\x1f\x7f-\x9f\p{Bidi_Control}]/u.test(value)) return value;
     const out: string[] = [];
     let pos = 0;
     while (pos < value.length) {

@@ -228,3 +228,20 @@ for (const released of [true, false]) {
         } finally { cleanup(ctx); globalThis.fetch = original; }
     });
 }
+
+for (const status of ['error', 'stopped', 'done'] as const) {
+    test(`missing journal and blank diagnostic show honest terminal status: ${status}`, async () => {
+        for (const text of [undefined, '', ' \n']) {
+            const ctx = context(); const original = globalThis.fetch;
+            globalThis.fetch = async () => saved(null);
+            try {
+                done(ctx, { runtimeFinality: 'absent', runtimeStatus: status, text }); await idle(ctx);
+                done(ctx, { runtimeFinality: 'absent', runtimeStatus: status, text });
+                const diagnostics = ctx.store.transcript.items.filter(i => i.type === 'command' && i.activityDiagnosticKey);
+                assert.equal(diagnostics.length, status === 'done' ? 0 : 1);
+                if (status !== 'done') assert.match(diagnostics[0]!.text, status === 'error' ? /Run failed without a final answer/ : /Run stopped without a final answer/);
+                assert.equal(answers(ctx)[0]?.activityFinality, 'absent'); assert.equal(answers(ctx)[0]?.text, '');
+            } finally { cleanup(ctx); globalThis.fetch = original; }
+        }
+    });
+}

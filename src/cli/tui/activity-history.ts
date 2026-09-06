@@ -55,6 +55,7 @@ export function sliceActivityAnswerViewport(text: string, columns: number, offse
     const cols = Number.isFinite(columns) ? Math.max(1, Math.floor(columns)) : 1;
     const capacity = Number.isFinite(height) ? Math.max(0, Math.floor(height)) : 0;
     const safe = safeActivityTerminalText(text);
+    const ascii = !/[^\x20-\x7e\n]/.test(safe);
     function scan(start: number, end: number, rows?: string[]): number {
         let row = 0, width = 0, value = '';
         const finish = () => {
@@ -65,14 +66,28 @@ export function sliceActivityAnswerViewport(text: string, columns: number, offse
         do {
             const newline = safe.indexOf('\n', from);
             const lineEnd = newline < 0 ? safe.length : newline;
-            for (const { segment } of segmenter.segment(safe.slice(from, lineEnd))) {
-                const fitted = fitCellGrapheme(segment, cols);
-                if (width > 0 && width + fitted.width > cols) finish();
-                if (rows && row >= end) return row;
-                if (rows && row >= start) value += fitted.text;
-                width += fitted.width;
+            if (ascii) {
+                // Empty logical lines (including terminal LF) each own one row;
+                // an exact-width nonempty line owns no additional blank row.
+                const count = Math.max(1, Math.ceil((lineEnd - from) / cols));
+                if (rows) {
+                    const first = Math.max(0, start - row);
+                    const last = Math.min(count, end - row);
+                    for (let index = first; index < last; index++) {
+                        rows.push(safe.slice(from + index * cols, Math.min(lineEnd, from + (index + 1) * cols)));
+                    }
+                }
+                row += count;
+            } else {
+                for (const { segment } of segmenter.segment(safe.slice(from, lineEnd))) {
+                    const fitted = fitCellGrapheme(segment, cols);
+                    if (width > 0 && width + fitted.width > cols) finish();
+                    if (rows && row >= end) return row;
+                    if (rows && row >= start) value += fitted.text;
+                    width += fitted.width;
+                }
+                finish();
             }
-            finish();
             if (rows && row >= end) return row;
             if (newline < 0) break;
             from = newline + 1;
@@ -259,7 +274,7 @@ export function renderActivityHistory(panel: ActivityHistoryPanel, columns: numb
     if (panel.incomplete) header.push(line('Retained history incomplete; earlier records may be unavailable.'));
     if (panel.loss) header.push(line(`Durable gap: ${panel.loss}`));
     if (panel.discoveryLimited) header.push(line('Run list limited; N loads the next list.'));
-    const legend = cols <= 30 ? ['Arrows Enter Esc/F6', 'A answer Pg R retry N more']
+    const legend = cols <= 30 ? ['Arrows Enter Esc/F6', 'A Pg R retry N more']
         : cols < 60 ? ['Arrows Enter detail Esc/F6 close', 'A saved answer Pg R reload N more'] : LEGEND;
     const footer = legend.map(line)
         .slice(0, Math.min(2, Math.max(0, rows - 2)));
@@ -270,14 +285,15 @@ export function renderActivityHistory(panel: ActivityHistoryPanel, columns: numb
         const selected = panel.events[index];
         if (panel.answerView) {
             const answer = panel.answer;
-            body.push(line('Saved answer (MESSAGE, read-only)'));
+            body.push(line(cols <= 30 ? 'Saved (read-only)'
+                : cols < 60 ? 'Saved answer (read-only)' : 'Saved answer (MESSAGE, read-only)'));
             if (answer.kind === 'saved') {
-                if (answer.message.content === '') body.push(line('Saved answer: authoritative empty'));
+                if (answer.message.content === '') body.push(line(cols < 60 ? 'Saved: empty' : 'Saved answer: authoritative empty'));
                 else body.push(...savedViewport(panel, cols, Math.max(0, available - 1)).rows);
             } else {
                 const message = answer.kind === 'loading' ? 'Loading saved answer…'
-                    : answer.kind === 'absent' ? 'No saved answer (MESSAGE is absent).'
-                    : answer.kind === 'unavailable' ? 'Saved answer unavailable. R retries.'
+                    : answer.kind === 'absent' ? (cols < 60 ? 'No saved answer' : 'No saved answer (MESSAGE is absent).')
+                    : answer.kind === 'unavailable' ? (cols < 60 ? 'Read failed: R retry' : 'Saved answer unavailable. R retries.')
                     : 'Saved answer not loaded. R loads it.';
                 body.push(line(message));
             }

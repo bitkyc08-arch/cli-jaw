@@ -222,9 +222,14 @@ function settleMissingJournal(ctx: TuiContext, wire: Record<string, unknown>): b
 }
 
 function retainAbsentDiagnostic(ctx: TuiContext, key: string, wire: Record<string, unknown>): void {
-    if (wire['runtimeFinality'] !== 'absent' || typeof wire['text'] !== 'string' || !wire['text'].trim()) return;
+    if (wire['runtimeFinality'] !== 'absent') return;
+    const supplied = typeof wire['text'] === 'string' ? wire['text'] : '';
+    const diagnostic = supplied.trim() ? supplied : wire['runtimeStatus'] === 'stopped'
+        ? 'Run stopped without a final answer.' : wire['runtimeStatus'] === 'error'
+            ? 'Run failed without a final answer.' : '';
+    if (!diagnostic) return;
     if (ctx.store.transcript.items.some(row => row.type === 'command' && row.activityDiagnosticKey === key)) return;
-    const text = safeActivityTerminalText(wire['text'].slice(0, 4096));
+    const text = safeActivityTerminalText(diagnostic.slice(0, 4096));
     ctx.store.transcript.items.push({ type: 'command', text, commandName: 'Runtime diagnostic', ok: false,
         activityDiagnosticKey: key, timestamp: Date.now() });
     if (ctx.displayMode === 'line') process.stdout.write('\nDiagnostic:\n' + wrapActivityTerminalText(text, process.stdout.columns || 80).join('\n') + '\n');

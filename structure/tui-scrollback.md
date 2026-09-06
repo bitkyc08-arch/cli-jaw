@@ -110,6 +110,14 @@ affect only uncommitted rows; already emitted scrollback is never rewritten.
 Different saved bytes after delivered compatibility get an explicit Updated answer,
 while equal digests upgrade provenance without resurrecting released text.
 
+Coupled Activity regressions drive `computeStablePrefixIndex`, Viewport and Screen:
+TERM=dumb/Zellij refusal retains payload/frontier; accepted-but-deferred queue
+does not release; actual flush releases once; pending answer reads form barriers.
+Read-only old-scope F6 selection, live updates, presentation changes and resize keep
+the committed sentinel. Actual OS-PTY qualification separately exercises repeated
+turns, retained record/long-answer navigation and the Appearance → Legacy write.
+Terminal-model tests are not a substitute for that driven surface or font testing.
+
 ## Research
 
 Full design history at `devlog/_plan/260618_cli_jaw_jwc_unified_roadmap/04_260615_native_scrollback_commit/` (21 documents including 4x GPT Pro audits).

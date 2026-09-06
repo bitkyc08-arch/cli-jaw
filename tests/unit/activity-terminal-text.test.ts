@@ -1,10 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
 import {
     safeActivityTerminalText,
     wrapActivityTerminalText,
     activityTerminalWidth,
 } from '../../src/cli/tui/activity-terminal-text.js';
+
+test('ordinary text fast path preserves exact LF, CJK, decomposed and ZWJ bytes', () => {
+    for (const value of ['plain ASCII', 'two\nlines\n', '한글 👩‍💻 e\u0301 한', '\n\n', ''])
+        assert.equal(safeActivityTerminalText(value), value);
+});
 
 test('unfinished VT sequences suppress their payload through the accumulated end', () => {
     for (const tail of ['\x1b', '\x1b[', '\x1b[38;2;255', '\x1b(',

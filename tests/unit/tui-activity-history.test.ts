@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { RuntimeEvent } from '../../src/shared/runtime-contract.js';
 import { createActivityItem, updateActivityItem } from '../../src/cli/tui/activity.js';
+import { wrapActivityTerminalText } from '../../src/cli/tui/activity-terminal-text.js';
 import {
     createActivityHistoryPanel, openActivityHistory, moveActivityHistory, moveActivityTurn,
     renderActivityHistory, createActivityPasteDrain, consumeActivityHistoryInput,
@@ -375,5 +376,88 @@ test('incremental viewport matches independent hand-counted grapheme/control row
         assert.ok(rows.length <= height);
         assert.doesNotMatch(rows.join('\n'), /SECRET|\x1b/);
     }
-    assert.match(renderActivityHistory(panel, 30, 14).join('\n'), /A answer/);
+    assert.match(renderActivityHistory(panel, 30, 14).join('\n'), /A Pg R retry N more/);
+});
+
+test('narrow saved view keeps complete read-only heading, key legend and distinct empty/absent/failure labels', () => {
+    const panel = retained(); panel.answerView = true;
+    for (const columns of [20, 30, 31, 40, 59, 60, 80]) {
+        const heading = columns <= 30 ? 'Saved (read-only)'
+            : columns < 60 ? 'Saved answer (read-only)' : 'Saved answer (MESSAGE, read-only)';
+        for (const [kind, narrow, wide] of [
+            ['absent', 'No saved answer', 'No saved answer (MESSAGE is absent).'],
+            ['unavailable', 'Read failed: R retry', 'Saved answer unavailable. R retries.'],
+        ] as const) {
+            setActivityHistoryAnswer(panel, { kind });
+            const rows = renderActivityHistory(panel, columns, 12);
+            assert.equal(rows[1], heading);
+            assert.equal(rows[2], columns < 60 ? narrow : wide);
+            if (columns <= 30) assert.deepEqual(rows.slice(-2), ['Arrows Enter Esc/F6', 'A Pg R retry N more']);
+        }
+        setActivityHistoryAnswer(panel, { kind: 'saved', message: {
+            id: 1, role: 'assistant', content: '', trace_run_id: 'run', session_id: 'chat',
+        } });
+        const rows = renderActivityHistory(panel, columns, 12);
+        assert.equal(rows[1], heading);
+        assert.equal(rows[2], columns < 60 ? 'Saved: empty' : 'Saved answer: authoritative empty');
+        assert.equal(rows.length, 5, 'copy changes cannot change viewport capacity');
+    }
+});
+
+test('ASCII/LF viewport matches literal independent rows across widths, offsets and capacities', () => {
+    const tables: Array<{ text: string; width: number; rows: string[] }> = [
+        { text: '', width: 1, rows: [''] },
+        { text: '\n', width: 2, rows: ['', ''] },
+        { text: 'AB\n\nCD\n', width: 1, rows: ['A', 'B', '', 'C', 'D', ''] },
+        { text: 'AB\n\nCD\n', width: 2, rows: ['AB', '', 'CD', ''] },
+        { text: 'ABC\nD', width: 2, rows: ['AB', 'C', 'D'] },
+        { text: '  ~!\n ', width: 2, rows: ['  ', '~!', ' '] },
+        { text: '12345678901234567890X\n', width: 20, rows: ['12345678901234567890', 'X', ''] },
+        { text: '1234567890123456789012345678901234567890\nEND', width: 40,
+            rows: ['1234567890123456789012345678901234567890', 'END'] },
+        { text: '12345678901234567890123456789012345678901234567890123456789012345678901234567890\n', width: 80,
+            rows: ['12345678901234567890123456789012345678901234567890123456789012345678901234567890', ''] },
+    ];
+    for (const { text, width, rows } of tables) {
+        assert.deepEqual(wrapActivityTerminalText(text, width), rows, 'existing wrapper independently agrees with fixture');
+        for (const offset of [0, 1, rows.length - 1, Number.MAX_SAFE_INTEGER]) for (const capacity of [0, 1, 12]) {
+            const first = Math.min(offset, Math.max(0, rows.length - capacity));
+            assert.deepEqual(sliceActivityAnswerViewport(text, width, offset, capacity), {
+                rows: rows.slice(first, first + capacity), totalRows: rows.length, offset: first,
+            }, `${JSON.stringify(text)} width=${width} offset=${offset} capacity=${capacity}`);
+        }
+    }
+});
+
+test('ASCII viewport preserves nonfinite/fractional dimension normalization and sanitized fallback parity', () => {
+    const cases: Array<[number, number, number, string[], number, number]> = [
+        [NaN, Infinity, 1, ['A'], 3, 0],
+        [Infinity, NaN, 12, ['A', 'B', ''], 3, 0],
+        [0, -2, -1, [], 3, 0],
+        [-1, 99, 0, [], 3, 3],
+        [0.5, 1.9, 1.9, ['B'], 3, 1],
+        [2.9, 99, 1, [''], 2, 1],
+        [2, 99, NaN, [], 2, 2],
+        [2, 99, Infinity, [], 2, 2],
+    ];
+    for (const [width, offset, height, rows, totalRows, first] of cases)
+        assert.deepEqual(sliceActivityAnswerViewport('AB\n', width, offset, height), { rows, totalRows, offset: first });
+    for (const text of ['A\r\nB\r', 'A\tB\n', 'A\x1b]52;c;SECRET\x07B', 'A\u202eB', '한글 é 👩‍💻\n한']) {
+        for (const width of [1, 2, 20, 40, 80]) {
+            const rows = wrapActivityTerminalText(text, width);
+            for (const offset of [0, 1, 99]) for (const height of [0, 1, 12]) {
+                const first = Math.min(offset, Math.max(0, rows.length - height));
+                assert.deepEqual(sliceActivityAnswerViewport(text, width, offset, height), {
+                    rows: rows.slice(first, first + height), totalRows: rows.length, offset: first,
+                });
+            }
+        }
+    }
+});
+
+test('printable ASCII plus LF uses row arithmetic without invoking grapheme segmentation', t => {
+    t.mock.method(Intl.Segmenter.prototype, 'segment', () => { throw new Error('ASCII must not segment per character'); });
+    assert.deepEqual(sliceActivityAnswerViewport('ABCD\n\nEF\n', 2, 1, 3), {
+        rows: ['CD', '', 'EF'], totalRows: 5, offset: 1,
+    });
 });

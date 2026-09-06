@@ -38,6 +38,14 @@ retains only a viewport, not a full wrapped row array. Terminal sanitation and s
 grapheme cell policy preserve raw stored bytes while preventing provider VT controls.
 Native scrollback releases payload only after actual flush; see `tui-scrollback.md`.
 
+Saved viewport rendering has same-output fast paths: ordinary text/LF bypasses
+per-character sanitizer staging; sanitized printable ASCII/LF uses logical-line
+row arithmetic and slices only the requested viewport. Unicode/control fallback
+still uses the shared parser/grapheme policy. This is not a whole-process memory
+or constant-time Unicode guarantee. Compact F6 labels retain read-only, absent,
+empty and failed-read meanings at20columns. An absent error/stopped terminal with
+no diagnostic still has a generic status notice; it never becomes a final answer.
+
 ---
 
 ## 파일 구조
