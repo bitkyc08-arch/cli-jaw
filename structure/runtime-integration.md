@@ -34,6 +34,14 @@ Native Cursor main captures these same owner fields at its trace admission, alon
 the four existing Copilot/Pi/Codex App/ordinary print admissions. Explicit captured
 execution bindings remain authoritative even when multi-session is disabled.
 
+Cursor setup failures admit the captured run before compatibility completion, then
+attempt canonical termination and close its still-running trace header independently.
+The fallback reuses one projection, including its persistence-failure latch. A later
+cleanup failure cannot rewrite an already settled header. Diagnostics remain separate
+from the absent model final (`finalText: null`); no assistant MESSAGE is invented.
+When journal writes fail, compatibility diagnostics and header settlement still run,
+while canonical history reports a gap/incomplete result.
+
 `trace/activity-journal.ts` commits a bounded body and one mutable control row atomically
 before SSE publication. Limits are32KiB/body,4096 rows/4MiB/run,20000 rows/32MiB global,
 plus configured trace row admission. Loss closes projection admission without interrupting
