@@ -238,7 +238,7 @@
 }
 
 .settings-field-error {
-    color: #ff8a8a;
+    color: var(--error-text);
 }
 
 .settings-field-row {
