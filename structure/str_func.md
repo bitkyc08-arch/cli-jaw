@@ -397,7 +397,7 @@ cli-jaw/
 │   │   ├── quota.ts          ← Copilot/Claude/Codex/Grok/OpenCode quota helper readers + Grok weekly credits + credential-scoped Claude cache (634L)
 │   │   ├── quota-native-window.ts ← Codex duration-aware and Claude model-scoped quota parsers (122L)
 │   │   ├── quota-wire.ts ← Bounded upstream bodies, finite percentages and reset normalization (84L)
-│   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (239L)
+│   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (201L)
 │   │   ├── quota-agy-reverse.ts ← AGY reverse quota reader (153L)
 │   │   ├── quota-cursor-dashboard.ts ← Cursor dashboard quota reader (334L)
 │   │   ├── goal.ts           ← goal CRUD + kickGoalContinuation route (registerGoalRoutes) (183L)
