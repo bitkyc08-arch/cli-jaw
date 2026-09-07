@@ -21,8 +21,10 @@ export function buildBaseUrl(port: number): string {
     return `/i/${port}`;
 }
 
-export function createSettingsClient(port: number): SettingsClient {
-    const base = buildBaseUrl(port);
+export function createSettingsClient(port: number, options: {
+    base?: string; getHeaders?: () => Promise<Record<string, string>>;
+} = {}): SettingsClient {
+    const base = options.base ?? buildBaseUrl(port);
     const headers: HeadersInit = { 'content-type': 'application/json' };
 
     async function request<T>(
@@ -34,11 +36,12 @@ export function createSettingsClient(port: number): SettingsClient {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         try {
+            const requestHeaders = new Headers(headers);
+            for (const [key, value] of Object.entries(await options.getHeaders?.() ?? {})) requestHeaders.set(key, value);
+            new Headers(init?.headers).forEach((value, key) => requestHeaders.set(key, value));
             const fetchInit: RequestInit = {
-                method,
-                headers,
+                ...init, method, headers: requestHeaders,
                 signal: init?.signal || controller.signal,
-                ...init,
             };
             if (body !== undefined) fetchInit.body = JSON.stringify(body);
             const response = await fetch(`${base}${path}`, fetchInit);

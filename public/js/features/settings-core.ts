@@ -8,13 +8,7 @@ import { syncStoredLocale } from '../locale.js';
 import { t } from './i18n.js';
 import { API_BASE, api, apiJson, apiFire, getAuthToken } from '../api.js';
 import { shouldHydrateRuntimeMigrationResponse, type PerCliConfig, type SettingsData } from './settings-types.js';
-import { setCachedPi, syncPiProviderDropdown, syncPiModelDropdown, piDiscoveredModels } from './pi-settings.js';
-import { initSttSettings } from './settings-stt.js';
-import { loadTelegramSettings } from './settings-telegram.js';
-import { loadDiscordSettings } from './settings-discord.js';
-import { loadSlackSettings } from './settings-slack.js';
-import { loadActiveChannel, loadFallbackOrder } from './settings-channel.js';
-import { loadMcpServers } from './settings-mcp.js';
+import { setCachedPi } from './pi-settings.js';
 import { providerIcon, providerLabel } from '../provider-icons.js';
 import { postPreviewInvalidate } from '../preview-parent-origin.js';
 import { formatProjectLabel } from './project-label.js';
@@ -168,26 +162,6 @@ export async function waitForSettingsSaveIdle(): Promise<void> {
     while (activeSettingsSaves.size) await Promise.all(activeSettingsSaves);
 }
 
-function toDomSuffix(cli: string): string {
-    return cli
-        .split(/[^a-zA-Z0-9]+/)
-        .filter(Boolean)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-        .join('');
-}
-
-function getModelSelect(cli: string): HTMLSelectElement | null {
-    return document.getElementById('model' + toDomSuffix(cli)) as HTMLSelectElement | null;
-}
-
-function getCustomModelInput(cli: string): HTMLInputElement | null {
-    return document.getElementById('customModel' + toDomSuffix(cli)) as HTMLInputElement | null;
-}
-
-function getEffortSelect(cli: string): HTMLSelectElement | null {
-    return document.getElementById('effort' + toDomSuffix(cli)) as HTMLSelectElement | null;
-}
-
 function setSelectOptions(selectEl: HTMLSelectElement | null, values: string[], { includeCustom = false, includeDefault = false, selected = '' } = {}): void {
     if (!selectEl) return;
     const defaultHtml = includeDefault ? '<option value="default">default</option>' : '';
@@ -298,63 +272,6 @@ function resolveDefaultEffort(meta: CliEntry | null, model: string, provider?: s
         ?? '';
 }
 
-function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
-    for (const cli of getCliKeys()) {
-        const meta = getCliMeta(cli);
-        const cliProvider = (cli !== 'pi' && meta?.providers?.length) ? getSelectedCliProvider(cli) : '';
-        const modelSel = getModelSelect(cli);
-        if (modelSel) {
-            if (meta?.modelNote) {
-                modelSel.innerHTML = `<option value="">${escapeHtml(meta.modelNote)}</option>`;
-                modelSel.title = meta.modelNote;
-                modelSel.disabled = true;
-            } else {
-                const raw = settings?.perCli?.[cli]?.model || modelSel.value || '';
-                const selected = normalizeModelForDisplay(cli, raw);
-                const piProvider = cli === 'pi' ? (settings?.perCli?.['pi']?.provider || '') : '';
-                const piModels = cli === 'pi' && piProvider ? piDiscoveredModels(settings?.pi, piProvider) : [];
-                const models = cli === 'pi' && piModels.length
-                    ? piModels
-                    : cliProvider
-                    ? (meta?.modelsByProvider?.[cliProvider] || MODEL_MAP[cli] || [])
-                    : (MODEL_MAP[cli] || []);
-                setSelectOptions(modelSel, models, { includeCustom: true, selected });
-                if (selected && !Array.from(modelSel.options).some(o => o.value === selected)) {
-                    appendCustomOption(modelSel, selected);
-                    modelSel.value = selected;
-                }
-                modelSel.disabled = false;
-            }
-        }
-
-        const effortSel = getEffortSelect(cli);
-        if (effortSel) {
-            const providerEfforts = cliProvider
-                ? (meta?.effortsByProvider?.[cliProvider] || [])
-                : null;
-            const selectedModel = normalizeModelForDisplay(cli, settings?.perCli?.[cli]?.model || getModelSelect(cli)?.value || '');
-            const effortsList = resolveEffortChoices(meta, selectedModel, providerEfforts, cliProvider || undefined);
-            const options = [''].concat(effortsList);
-            const saved = settings?.perCli?.[cli]?.effort ?? effortSel.value ?? '';
-            // Drop a saved effort the current model does not support — it would
-            // otherwise reach the wire as `-c model_reasoning_effort=<bad>`.
-            const selected = !saved || effortsList.includes(saved)
-                ? saved
-                : resolveDefaultEffort(meta, selectedModel, cliProvider || undefined);
-            const unique = [...new Set(options)];
-            const noneLabel = (unique.length === 1 && !unique[0] && meta?.effortNote) ? meta.effortNote : '— none';
-            effortSel.innerHTML = unique.map(v => {
-                if (!v) return `<option value="">${escapeHtml(noneLabel)}</option>`;
-                return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
-            }).join('');
-            if (meta?.effortNote) effortSel.title = meta.effortNote;
-            // A model with an explicitly EMPTY effort set takes no effort at all.
-            effortSel.disabled = (unique.length === 1 && !unique[0]);
-            if (Array.from(effortSel.options).some(o => o.value === selected)) effortSel.value = selected;
-        }
-    }
-}
-
 function getActiveEffortValue(): string {
     return (document.getElementById('selEffort') as HTMLSelectElement | null)?.value || '';
 }
@@ -407,9 +324,8 @@ function syncAiEProviderOptions(select: HTMLSelectElement | null, current: strin
 
 function getSelectedCliProvider(cli: string): string {
     const select = document.getElementById('selCliProvider') as HTMLSelectElement | null;
-    const perCliSelect = document.getElementById(`provider${cli.charAt(0).toUpperCase() + cli.slice(1).replace(/-./g, m => m[1]!.toUpperCase())}`) as HTMLSelectElement | null;
     const meta = getCliMeta(cli);
-    return select?.value || perCliSelect?.value || meta?.defaultProvider || '';
+    return select?.value || meta?.defaultProvider || '';
 }
 
 function syncCliProviderControl(settings: SettingsData | null, cli: string): string {
@@ -447,10 +363,7 @@ export async function loadSettings(): Promise<void> {
     syncStoredLocale(s.locale ?? '');
     syncCliOptionSelects(s);
     setCachedPi(s.pi);
-    syncPiProviderDropdown(s.pi, s.perCli?.['pi']?.provider);
-    if (s.perCli?.['pi']?.provider) syncPiModelDropdown(s.perCli['pi'].provider, s.pi);
     syncCliProviderControl(s, s.cli || '');
-    syncPerCliModelAndEffortControls(s);
 
     const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
     if (selCli && Array.from(selCli.options).some(o => o.value === s.cli)) {
@@ -469,39 +382,6 @@ export async function loadSettings(): Promise<void> {
     await loadHeaderGitStatus();
     if (permissionRead === permissionRevision && !permissionSavePending) setPerm(s.permissions, false);
 
-    if (s.perCli) {
-        for (const [cli, cfg] of Object.entries(s.perCli) as [string, PerCliConfig][]) {
-            const modelEl = getModelSelect(cli);
-            const effortEl = getEffortSelect(cli);
-            if (modelEl && cfg.model) {
-                const displayModel = normalizeModelForDisplay(cli, cfg.model);
-                appendCustomOption(modelEl, displayModel);
-                modelEl.value = displayModel;
-            }
-            if (effortEl) effortEl.value = cfg.effort || '';
-            if (cli === 'codex' && cfg.fastMode !== undefined) {
-                document.getElementById('codexFastOn')?.classList.toggle('active', cfg.fastMode);
-                document.getElementById('codexFastOff')?.classList.toggle('active', !cfg.fastMode);
-            }
-            if (cli === 'codex') {
-                const ctxOn = !!cfg.contextWindow;
-                document.getElementById('codexCtxOn')?.classList.toggle('active', ctxOn);
-                document.getElementById('codexCtxOff')?.classList.toggle('active', !ctxOn);
-                const valDiv = document.getElementById('codexCtxValues');
-                if (valDiv) valDiv.style.display = ctxOn ? '' : 'none';
-                const winInput = document.getElementById('codexCtxWindow') as HTMLInputElement | null;
-                const compInput = document.getElementById('codexCtxCompact') as HTMLInputElement | null;
-                if (winInput && cfg.contextWindowSize) winInput.value = String(cfg.contextWindowSize);
-                if (compInput && cfg.contextCompactLimit) compInput.value = String(cfg.contextCompactLimit);
-            }
-            if (cli === 'claude') {
-                const is1m = !!(cfg.model && String(cfg.model).endsWith('[1m]'));
-                document.getElementById('claude1mOn')?.classList.toggle('active', is1m);
-                document.getElementById('claude1mOff')?.classList.toggle('active', !is1m);
-            }
-        }
-    }
-
     onCliChange(false);
     const ao = s.activeOverrides?.[s.cli] || {};
     const pc = s.perCli?.[s.cli] || {};
@@ -516,14 +396,6 @@ export async function loadSettings(): Promise<void> {
         selModel.value = displayModel;
     }
     syncActiveEffortOptions(s.cli, activeEffort);
-
-    loadTelegramSettings(s);
-    loadDiscordSettings(s);
-    loadSlackSettings(s);
-    loadActiveChannel(s);
-    loadFallbackOrder(s);
-    loadMcpServers();
-    initSttSettings(s.stt || {});
 }
 
 export async function updateSettings(): Promise<void> {
@@ -603,92 +475,6 @@ export async function setPerm(p: unknown, save = true): Promise<void> {
             renderConfiguredPermission();
         }
     })());
-}
-
-export function getModelValue(cli: string): string {
-    const sel = getModelSelect(cli);
-    if (!sel) return 'default';
-    if (sel.value === '__custom__') {
-        const inp = getCustomModelInput(cli);
-        return inp?.value?.trim() || sel.options[0]?.value || 'default';
-    }
-    return sel.value;
-}
-
-export function handleModelSelect(cli: string, selectEl: HTMLSelectElement): void {
-    const customInput = getCustomModelInput(cli);
-    if (!customInput) return;
-    if (selectEl.value === '__custom__') {
-        customInput.style.display = 'block';
-        customInput.focus();
-    } else {
-        customInput.style.display = 'none';
-        if (cli === 'claude') syncClaude1mToggle(selectEl.value);
-        savePerCli();
-    }
-}
-
-/** Sync Claude 1M toggle button state to match current model value */
-function syncClaude1mToggle(model: string): void {
-    const is1m = !!(model && model.endsWith('[1m]'));
-    document.getElementById('claude1mOn')?.classList.toggle('active', is1m);
-    document.getElementById('claude1mOff')?.classList.toggle('active', !is1m);
-}
-
-export function applyCustomModel(cli: string, inputEl: HTMLInputElement): void {
-    const val = inputEl.value.trim();
-    if (!val) return;
-    const select = getModelSelect(cli);
-    if (!select) return;
-    appendCustomOption(select, val);
-    select.value = val;
-    inputEl.style.display = 'none';
-    if (cli === 'claude') syncClaude1mToggle(val);
-    savePerCli();
-}
-
-export function onPerCliProviderChange(): void {
-    const activeCli = (document.getElementById('selCli') as HTMLSelectElement | null)?.value || '';
-    const provider = getSelectedCliProvider(activeCli);
-    const activeProvider = document.getElementById('selCliProvider') as HTMLSelectElement | null;
-    if (activeProvider && Array.from(activeProvider.options).some(o => o.value === provider)) {
-        activeProvider.value = provider;
-    }
-    syncPerCliModelAndEffortControls(null);
-    const meta = getCliMeta(activeCli);
-    if (meta?.providers?.length) onCliChange(false);
-    savePerCli();
-}
-
-export async function savePerCli(): Promise<void> {
-    const perCli: Record<string, PerCliConfig> = {};
-    for (const cli of getCliKeys()) {
-        const modelEl = getModelSelect(cli);
-        if (!modelEl) continue;
-        const effortEl = getEffortSelect(cli);
-        const entry: PerCliConfig = {
-            model: getModelValue(cli),
-            effort: effortEl ? effortEl.value : '',
-        };
-        const cliMeta = getCliMeta(cli);
-        if (cli !== 'pi' && cliMeta?.providers?.length) entry.provider = getSelectedCliProvider(cli);
-        if (cli === 'pi') {
-            const piProviderSel = document.getElementById('providerPi') as HTMLSelectElement | null;
-            if (piProviderSel?.value) entry.provider = piProviderSel.value;
-        }
-        if (cli === 'codex') {
-            const onBtn = document.getElementById('codexFastOn');
-            entry.fastMode = onBtn?.classList.contains('active') ?? false;
-            const ctxOn = document.getElementById('codexCtxOn');
-            entry.contextWindow = ctxOn?.classList.contains('active') ?? false;
-            const winInput = document.getElementById('codexCtxWindow') as HTMLInputElement | null;
-            const compInput = document.getElementById('codexCtxCompact') as HTMLInputElement | null;
-            entry.contextWindowSize = parseInt(winInput?.value || '1000000', 10);
-            entry.contextCompactLimit = parseInt(compInput?.value || '900000', 10);
-        }
-        perCli[cli] = entry;
-    }
-    await apiJson('/api/settings', 'PUT', { perCli });
 }
 
 export function onCliChange(save = true): void {
