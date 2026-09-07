@@ -72,6 +72,7 @@ function toggleTheme(): void {
 
 function applyTheme(theme: string): void {
     const resolved = resolveTheme(theme);
+    // Shell tokens, including light overrides, live in public/css/variables.css.
     document.documentElement.setAttribute('data-theme', resolved);
 
     const btn = document.getElementById('toggleTheme');

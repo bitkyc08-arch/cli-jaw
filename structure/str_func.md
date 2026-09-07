@@ -506,18 +506,17 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 594 files source/assets, ~101419L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 594 files source/assets, ~101482L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (695L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
-│   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2525L)
+│   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2533L)
 │   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
 │   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (261L)
 │   ├── manager/src/settings/ ← unified instance and Manager settings
 │   │   ├── settings-registry.ts ← scope-filtered page registry (35L)
-│   │   ├── pages/components/SlackSetup.tsx ← shared channel setup dialog + Slack manifest (126L)
-│   │   ├── pages/components/ChannelSetupEntry.tsx ← Telegram/Discord wizard entry and draft guard
+│   │   ├── pages/components/SlackSetup.tsx ← native Slack setup dialog (126L)
 │   │   ├── pages/manager/shared.tsx ← Manager locale copy and row controls (517L)
 │   │   ├── pages/manager/Display.tsx ← Manager display registry UI settings (92L)
 │   │   ├── pages/manager/Activity.tsx ← read-only title support (8L)

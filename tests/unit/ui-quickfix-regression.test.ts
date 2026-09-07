@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { JSDOM } from 'jsdom';
 
 // ── Source files ──
 const statusSrc = [
@@ -215,4 +216,55 @@ test('UQ-013: .input-agent-name has flex:1 for space allocation', () => {
         ruleBody.includes('flex: 1') || ruleBody.includes('flex:1'),
         '.input-agent-name should have flex: 1',
     );
+});
+
+// CSSOM verifies declarations; browser QA verifies computed colors and geometry.
+// JSDOM CSSOM removes spaces after commas and percentage tokens in functions.
+test('WP5: classic tokens preserve legacy names and light/dark parity', () => {
+    const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>');
+    try {
+        const style = dom.window.document.createElement('style');
+        style.textContent = fs.readFileSync(path.join(import.meta.dirname, '../../public/css/variables.css'), 'utf8');
+        dom.window.document.head.append(style);
+        assert.ok(style.sheet);
+        const rules = Array.from(style.sheet.cssRules);
+        const declaration = (selector: string): CSSStyleDeclaration => {
+            const rule = rules.find(r => 'selectorText' in r && r.selectorText === selector) as CSSStyleRule | undefined;
+            assert.ok(rule, selector); return rule.style;
+        };
+        const dark = declaration(':root'); const light = declaration('[data-theme="light"]');
+        const legacy = '--bg --surface --border --text --text-dim --accent --accent2 --green --user-bg --agent-bg --status-idle-bg --status-running-bg --status-running-color --status-steering-bg --status-steering-color --code-bg --link-color --table-border --stop-btn --stop-btn-hover --toggle-off --toggle-on --delete-color --code-label-color --modal-bg --font-display --font-ui --font-mono --sidebar-left-w --sidebar-right-w --sidebar-collapsed-w --space-1 --space-2 --space-3 --space-4 --space-5 --space-6 --space-8 --space-10 --space-12 --text-xs --text-sm --text-base --text-md --text-lg --text-xl --text-2xl --text-3xl --radius-sm --radius-md --radius-lg --radius-xl --radius-full --ease-out-expo --ease-spring --duration-fast --duration-base --duration-slow --error --error-dim --success --success-dim --warning --warning-dim --info --phase-1 --phase-2 --phase-3 --phase-4 --phase-5 --text-on-accent --noise-opacity --scanline-pct --glow-strength --toggle-w --toggle-h --toggle-knob --orc-glow --orc-glow-I --orc-glow-P --orc-glow-A --orc-glow-B --orc-glow-C --orc-glow-D'.split(' ');
+        for (const name of legacy) assert.ok(dark.getPropertyValue(name), name);
+        const names = '--surface-1 --surface-2 --surface-3 --border-alpha --border-strong --text-muted-60 --font-sans-system --font-mono-system --radius-ctl --focus-ring-shadow'.split(' ');
+        for (const name of names) for (const rule of [dark, light]) assert.ok(rule.getPropertyValue(name), name);
+        for (const [name, percent] of [['--surface-1', 3], ['--surface-2', 4], ['--surface-3', 6]] as const) {
+            assert.equal(dark.getPropertyValue(name).trim(), `color-mix(in srgb,white ${percent}%,transparent)`);
+            assert.equal(light.getPropertyValue(name).trim(), `color-mix(in srgb,black ${percent}%,transparent)`);
+        }
+        assert.equal(dark.getPropertyValue('--border-alpha').trim(), 'color-mix(in srgb,white 8%,transparent)');
+        assert.equal(dark.getPropertyValue('--border-strong').trim(), 'color-mix(in srgb,white 12%,transparent)');
+        assert.equal(light.getPropertyValue('--bg').trim(), 'oklch(99.2%0 0)');
+        assert.equal(light.getPropertyValue('--border-alpha').trim(), 'oklch(92%0.004 286.32)');
+        assert.equal(light.getPropertyValue('--border').trim(), 'var(--border-alpha)');
+        assert.equal(dark.getPropertyValue('--font-ui').trim(), 'var(--font-sans-system)');
+        for (const name of ['--font-sans-system', '--font-mono-system', '--radius-ctl', '--focus-ring-shadow', '--text-muted-60']) assert.equal(dark.getPropertyValue(name), light.getPropertyValue(name), name);
+        assert.equal(dark.getPropertyValue('--radius-ctl').trim(), '8px');
+        for (const rule of [dark, light]) {
+            assert.equal(rule.getPropertyValue('--focus-ring-shadow').trim(), '0 0 0 2px color-mix(in oklab,var(--accent) 70%,transparent)');
+        }
+        for (const [file, selector] of [
+            ['sidebar.css', '.sidebar-left .sidebar-hb-btn:focus-visible'],
+            ['layout.css', '.tab-btn:focus-visible'],
+        ] as const) {
+            const consumer = dom.window.document.createElement('style');
+            consumer.textContent = fs.readFileSync(path.join(import.meta.dirname, '../../public/css', file), 'utf8');
+            dom.window.document.head.append(consumer); assert.ok(consumer.sheet);
+            const rule = Array.from(consumer.sheet.cssRules).find(r => 'selectorText' in r && r.selectorText === selector) as CSSStyleRule | undefined;
+            assert.ok(rule, selector);
+            assert.equal(rule.style.getPropertyValue('box-shadow').trim(), 'var(--focus-ring-shadow)');
+        }
+        assert.equal(declaration('::-webkit-scrollbar').getPropertyValue('width').trim(), '6px');
+        assert.equal(declaration('::-webkit-scrollbar-thumb').getPropertyValue('background').trim(), 'var(--border-alpha)');
+        assert.equal(declaration('::-webkit-scrollbar-thumb:hover').getPropertyValue('background').trim(), 'var(--border-strong)');
+    } finally { dom.window.close(); }
 });
