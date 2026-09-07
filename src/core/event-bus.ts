@@ -25,7 +25,7 @@ export type EventTopic =
     | 'agents'      // agent_added, agent_updated, agent_deleted
     | 'widget'      // widget_updated
     | 'trace'       // internal-only (agent:claude-e:*) — never SSE-public
-    | 'jwc'         // Code mode: jwc engine session updates (code_* events, acp-host)
+    | 'jwc'         // Legacy Jaw runtime status; removed with the retired runtime
     | 'code'        // Native Code sessions; persisted per-session sequence and item updates
     | 'system';     // system_notice, alert_escalation, fallback bucket
 

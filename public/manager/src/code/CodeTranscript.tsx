@@ -1,284 +1,108 @@
-import { lazy, Suspense, useCallback, useRef, type KeyboardEvent, type RefObject } from 'react';
-import type { ToolContent, TranscriptEntry } from './code-types';
+import { lazy, Suspense, useCallback, useRef, useState, type KeyboardEvent } from 'react';
+import type { CodeItem, CodeProviderId } from '../../../../src/code-mode/wire';
 import { useCodeTranscriptVirtualRows } from './useCodeTranscriptVirtualRows';
+import { useCodeTranscriptScroll } from './use-code-transcript-scroll';
 import { useThrottledMarkdown } from './use-throttled-markdown';
+import { CODE_RUNTIME_LABELS, codeItemStatus } from './code-types';
 
 const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
-
-/**
- * D1: assistant markdown is re-parsed in full on every update, so a per-token
- * render is O(L²) in message length. Throttle the text adaptively (80ms under
- * 2k chars up to 400ms past ~50k) before it reaches the markdown pipeline.
- * Trailing-edge, so the final text always lands without a turn-done signal.
- */
-function AssistantMarkdown({ text, onOpenLocalFile }: { text: string; onOpenLocalFile?: ((path: string) => void) | undefined }) {
-    const throttled = useThrottledMarkdown(text);
-    return (
-        <Suspense fallback={<span>{throttled}</span>}>
-            <MarkdownRenderer markdown={throttled} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />
-        </Suspense>
-    );
+function ItemMarkdown({ item, identity, onOpenLocalFile }: { item: CodeItem; identity: string; onOpenLocalFile?: ((path: string) => void) | undefined }) {
+    const text = useThrottledMarkdown(item.text ?? '', item.status !== 'running' && item.status !== 'pending', identity);
+    if (!text.trim()) return <span className="code-plain-text">{text}</span>;
+    return <Suspense fallback={<span className="code-plain-text">{text}</span>}>
+        <MarkdownRenderer markdown={text} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />
+    </Suspense>;
 }
 
-type CodeTranscriptProps = {
-    messages: TranscriptEntry[];
-    sending: boolean;
-    workingDir: string;
-    transcriptRef: RefObject<HTMLDivElement | null>;
+export function CodeTranscriptItem({ item, provider, sessionKey, onOpenLocalFile }: {
+    item: CodeItem; provider: CodeProviderId; sessionKey: string; onOpenLocalFile?: ((path: string) => void) | undefined;
+}) {
+    const tool = item.kind === 'tool_call' || item.kind === 'file_change';
+    const reasoning = item.kind === 'reasoning';
+    const assistant = item.kind === 'assistant_message';
+    const user = item.kind === 'user_message';
+    const status = codeItemStatus(item);
+    const label = user ? 'You' : assistant ? CODE_RUNTIME_LABELS[provider] : reasoning ? 'Reasoning'
+        : item.kind === 'turn_started' ? 'Turn started' : item.kind === 'session_runtime' ? 'Runtime'
+            : item.kind === 'permission_request' ? 'Permission record' : item.kind === 'notice' ? 'Notice' : status;
+    return <article className={`code-message code-message-${tool ? 'tool' : assistant ? 'assistant' : user ? 'user' : 'system'} is-${item.status}`}
+        data-code-item-id={item.itemId} aria-label={`${label} · ${status}`}>
+        {tool ? <details className={`code-tool-card code-tool-${item.status}`}>
+            <summary className="code-tool-summary"><span className="code-tool-chevron" aria-hidden="true">›</span>
+                <span className="code-tool-name">{item.tool?.name ?? (item.kind === 'file_change' ? 'File change' : 'Tool')}</span>
+                <span className="code-tool-status">{status}</span></summary>
+            {item.tool?.detail !== undefined && <p className="code-tool-text">{item.tool.detail}</p>}
+            {item.tool?.input !== undefined && <section className="code-tool-section"><span className="code-tool-section-label">Input</span><pre className="code-tool-args">{item.tool.input}</pre></section>}
+            {item.tool?.output !== undefined && <section className="code-tool-section"><span className="code-tool-section-label">Output</span><pre className="code-tool-output">{item.tool.output}</pre></section>}
+            {item.text !== undefined && <pre className="code-tool-text">{item.text}</pre>}
+        </details> : reasoning ? <details className="code-thinking">
+            <summary className="code-thinking-summary">Reasoning · {status}</summary><div className="code-thinking-text">{item.text}</div>
+        </details> : <>
+            <span className="code-message-role">{label}{assistant && item.phase && item.phase !== 'unknown' ? ` · ${item.phase === 'final' ? 'Final' : 'Commentary'}` : ''}
+                {(assistant || user || item.kind === 'permission_request') && ` · ${status}`}</span>
+            <div className="code-message-text">{assistant ? <ItemMarkdown item={item} identity={`${sessionKey}:${item.itemId}`} onOpenLocalFile={onOpenLocalFile} />
+                : <span className="code-plain-text">{item.text ?? item.permission?.title ?? ''}</span>}</div>
+            {item.permission?.detail && <p className="code-plain-text">{item.permission.detail}</p>}
+        </>}
+        {(assistant || reasoning) && (item.status === 'cancelled' || item.status === 'error') && <span className="code-partial-label">Partial output · {status}</span>}
+        {item.truncation && <p className="code-truncation" role="note">Output truncated: {item.truncation.storedChars.toLocaleString()} of {item.truncation.sourceChars.toLocaleString()} characters retained.</p>}
+    </article>;
+}
+
+export function CodeTranscript({ items, provider, sessionKey, workingDir, loading, hasOlderHistory, loadOlderHistory, permissionCount, onOpenLocalFile }: {
+    items: CodeItem[]; provider: CodeProviderId; sessionKey: string; workingDir: string; loading: boolean;
+    hasOlderHistory: boolean; loadOlderHistory(): Promise<void>; permissionCount: number;
     onOpenLocalFile?: ((path: string) => void) | undefined;
-    /** Switching sessions must discard index-keyed row measurements (050 D2). */
-    sessionId?: string | null | undefined;
-};
-
-function renderToolContent(content: ToolContent, index: number) {
-    const label = content.label ?? (content.type === 'args' ? 'Args' : content.type === 'output' ? 'Output' : content.type === 'error' ? 'Error' : '');
-    const className = `code-tool-${content.type}`;
-    const body = content.type === 'diff' && content.diff
-        ? content.diff
-        : content.type === 'json' || content.type === 'args'
-            ? JSON.stringify(content.json ?? content, null, 2)
-            : content.text ?? JSON.stringify(content, null, 2);
-    if (label) {
-        return (
-            <div key={index} className="code-tool-section">
-                <span className="code-tool-section-label">{label}</span>
-                <pre className={className}>{body}</pre>
-            </div>
-        );
-    }
-    if (content.type === 'diff' && content.diff) {
-        return <pre key={index} className="code-tool-diff">{content.diff}</pre>;
-    }
-    if (content.text) {
-        return <pre key={index} className="code-tool-text">{content.text}</pre>;
-    }
-    return <pre key={index} className={className}>{body}</pre>;
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-    const tagName = target.tagName.toLowerCase();
-    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
-}
-
-function toolErrorSnippet(msg: TranscriptEntry): string {
-    const textContent = msg.toolContent?.find(content => typeof content.text === 'string' && content.text.trim());
-    const snippet = textContent?.text ?? msg.toolOutput ?? '';
-    return snippet.replace(/\s+/g, ' ').trim().slice(0, 240);
-}
-
-function firstLine(value: string): string {
-    return value.split(/\r?\n/)[0]?.replace(/\s+/g, ' ').trim() ?? '';
-}
-
-function safeToolContentLine(msg: TranscriptEntry): { name?: string; text: string } | null {
-    const content = msg.toolContent?.find(item => item.type === 'args' || item.type === 'text' || item.type === 'json');
-    if (!content) return null;
-    if (typeof content.text === 'string') {
-        const text = firstLine(content.text);
-        if (!text) return null;
-        return { text, ...(content.type === 'args' ? { name: 'bash' } : /^https?:\/\//.test(text) || text.startsWith('/') ? { name: 'read' } : {}) };
-    }
-    if (typeof content.json === 'string') {
-        const text = firstLine(content.json);
-        return text ? { text, ...(content.type === 'args' ? { name: 'bash' } : {}) } : null;
-    }
-    if (content.json && typeof content.json === 'object' && !Array.isArray(content.json)) {
-        const record = content.json as Record<string, unknown>;
-        for (const [key, name] of [['command', 'bash'], ['cmd', 'bash'], ['path', 'read'], ['url', 'read'], ['file', 'read'], ['query', 'search']] as const) {
-            const value = record[key];
-            if (typeof value === 'string' && value.trim()) return { name, text: firstLine(value) };
-        }
-    }
-    return null;
-}
-
-function toolSummaryLabel(msg: TranscriptEntry): string {
-    const name = firstLine(msg.toolName || msg.text || 'tool') || 'tool';
-    const detail = safeToolContentLine(msg);
-    if (name.includes(':')) return name;
-    if (!detail) return name;
-    if (name === 'tool') return detail.name ? `${detail.name}: ${detail.text}` : detail.text;
-    return `${name}: ${detail.text}`;
-}
-
-function permissionDecisionLabel(decision: string): string {
-    if (decision === 'pending') return 'Pending';
-    if (decision === 'allow_once') return 'Allow once';
-    if (decision === 'allow_always') return 'Always allow';
-    if (decision === 'reject_once') return 'Deny once';
-    if (decision === 'reject_always') return 'Always deny';
-    if (decision === 'missing_option') return 'Missing JWC option';
-    if (decision === 'answer_error') return 'Answer failed';
-    return 'Cancelled';
-}
-
-function transcriptMessageKey(msg: TranscriptEntry, index: number): string {
-    const stable = msg.toolCallId || msg.permissionAudit?.permissionId || `${msg.role}:${msg.text.slice(0, 48)}`;
-    return `${index}:${stable}`;
-}
-
-function estimateTranscriptRowSize(msg: TranscriptEntry | undefined): number {
-    if (!msg) return 48;
-    if (msg.role === 'tool') return msg.toolStatus === 'running' ? 44 : 64 + Math.min(320, (msg.toolOutput?.length ?? 0) / 5);
-    if (msg.role === 'permission') return 72;
-    if (msg.role === 'thinking') return 48 + Math.min(180, msg.text.length / 8);
-    return 56 + Math.min(420, msg.text.length / 6);
-}
-
-function renderCodeMessage(msg: TranscriptEntry, i: number, onOpenLocalFile?: ((path: string) => void) | undefined) {
-    return (
-        <div key={i} className={`code-message code-message-${msg.role}`}>
-            {msg.role === 'tool' ? (() => {
-                const status = msg.toolStatus ?? 'done';
-                const failed = status === 'failed' || status === 'error';
-                const snippet = failed ? toolErrorSnippet(msg) : '';
-                return (
-                    <details className={`code-tool-card code-tool-${status}`} open={status === 'running' || failed}>
-                        <summary className="code-tool-summary">
-                            <span className="code-tool-chevron">&gt;</span>
-                            <span className="code-tool-name">{toolSummaryLabel(msg)}</span>
-                            <span className="code-tool-status">{status}</span>
-                        </summary>
-                        {snippet && <div className="code-tool-error-snippet">{snippet}</div>}
-                        {(msg.toolContent?.length ?? 0) > 0 && (
-                            <div className="code-tool-content">
-                                {msg.toolContent!.map(renderToolContent)}
-                            </div>
-                        )}
-                        {msg.toolOutput && (
-                            <pre className="code-tool-output">{msg.toolOutput.slice(0, 2000)}{msg.toolOutput.length > 2000 ? '...' : ''}</pre>
-                        )}
-                    </details>
-                );
-            })() : msg.role === 'permission' && msg.permissionAudit ? (() => {
-                const audit = msg.permissionAudit;
-                const toneClass = audit.decision.startsWith('allow')
-                    ? 'is-allow'
-                    : audit.decision.startsWith('reject')
-                        ? 'is-deny'
-                        : '';
-                return (
-                    <div className={`code-permission-audit is-${audit.decision} ${toneClass}`.trim()}>
-                        <div className="code-permission-audit-head">
-                            <span>Permission</span>
-                            <strong>{audit.toolName}</strong>
-                            <em>{permissionDecisionLabel(audit.decision)}</em>
-                        </div>
-                        <div className="code-permission-audit-meta">
-                            <span>mode {audit.mode}</span>
-                            <span>{audit.decisionMode}</span>
-                            {audit.optionId && <span>{audit.optionId}</span>}
-                        </div>
-                        {audit.error && <div className="code-permission-audit-error">{audit.error}</div>}
-                    </div>
-                );
-            })() : msg.role === 'thinking' ? (
-                <details className="code-thinking">
-                    <summary className="code-thinking-summary">Thinking...</summary>
-                    <div className="code-thinking-text">{msg.text}</div>
-                </details>
-            ) : (
-                <>
-                    <span className="code-message-role">{msg.role === 'user' ? 'You' : 'JWC'}</span>
-                    <div className="code-message-text">
-                        {msg.role === 'assistant' ? (
-                            <AssistantMarkdown text={msg.text} onOpenLocalFile={onOpenLocalFile} />
-                        ) : msg.text}
-                    </div>
-                </>
-            )}
-        </div>
-    );
-}
-
-function renderSendingMessage() {
-    return (
-        <div className="code-message code-message-assistant">
-            <span className="code-message-role">JWC</span>
-            <div className="code-message-text code-streaming">Thinking...</div>
-        </div>
-    );
-}
-
-export function CodeTranscript({ messages, sending, workingDir, transcriptRef, onOpenLocalFile, sessionId }: CodeTranscriptProps) {
-    const showSending = sending && messages[messages.length - 1]?.role !== 'assistant';
-    const rowCount = messages.length + (showSending ? 1 : 0);
-    // D3: these two callbacks used to depend on `messages`. Every streaming
-    // token makes a new array identity, so both were re-created, which
-    // invalidated the virtualizer's layout effect and forced a full
-    // setOptions + _willUpdate + setSnapshot — a second render pass per token.
-    // Read through a ref instead so only `count` actually changes.
-    const messagesRef = useRef(messages);
-    messagesRef.current = messages;
-    const getItemKey = useCallback((index: number): string | number => {
-        const msg = messagesRef.current[index];
-        return msg ? transcriptMessageKey(msg, index) : `sending-${index}`;
+}) {
+    const transcriptRef = useRef<HTMLDivElement>(null);
+    const itemsRef = useRef(items); itemsRef.current = items;
+    const [historyPending, setHistoryPending] = useState(false);
+    const [historyError, setHistoryError] = useState<{ sessionKey: string; message: string } | null>(null);
+    const historyGuard = useRef(false);
+    const firstId = items[0]?.itemId;
+    const getItemKey = useCallback((index: number) => `${sessionKey}:${itemsRef.current[index]?.itemId ?? index}`, [sessionKey, firstId]);
+    const estimateSize = useCallback((index: number) => {
+        const item = itemsRef.current[index];
+        return item?.kind === 'tool_call' || item?.kind === 'reasoning' ? 64 : 64 + Math.min(420, (item?.text?.length ?? 0) / 6);
     }, []);
-    const estimateSize = useCallback((index: number): number => (
-        estimateTranscriptRowSize(messagesRef.current[index])
-    ), []);
-    const virtual = useCodeTranscriptVirtualRows({
-        count: rowCount,
-        resetKey: sessionId ?? null,
-        scrollElementRef: transcriptRef,
-        getItemKey,
-        estimateSize,
-    });
-
-    function handleTranscriptKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-        if (isEditableTarget(event.target)) return;
+    const virtual = useCodeTranscriptVirtualRows({ count: items.length, resetKey: sessionKey, scrollElementRef: transcriptRef, getItemKey, estimateSize });
+    const { showJump, jumpToLatest } = useCodeTranscriptScroll({ items, sessionKey, transcriptRef, virtual });
+    async function older() {
+        if (historyGuard.current) return;
+        historyGuard.current = true; setHistoryPending(true); setHistoryError(null);
+        try { await loadOlderHistory(); }
+        catch (err) { setHistoryError({ sessionKey, message: err instanceof Error ? err.message : String(err) }); }
+        finally { historyGuard.current = false; setHistoryPending(false); }
+    }
+    function keyboard(event: KeyboardEvent<HTMLDivElement>) {
+        if (event.target !== event.currentTarget || event.altKey || event.ctrlKey || event.metaKey) return;
         const node = transcriptRef.current;
         if (!node) return;
-        const key = event.key.toLowerCase();
-        const page = Math.max(160, Math.floor(node.clientHeight * 0.78));
-        if (key === 'd' || key === 'j' || event.key === 'PageDown') {
-            event.preventDefault();
-            node.scrollBy({ top: page, behavior: 'smooth' });
-        } else if (key === 'u' || key === 'k' || event.key === 'PageUp') {
-            event.preventDefault();
-            node.scrollBy({ top: -page, behavior: 'smooth' });
-        } else if (event.key === 'End') {
-            event.preventDefault();
-            node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
-        } else if (event.key === 'Home') {
-            event.preventDefault();
-            node.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        const page = Math.max(160, node.clientHeight * 0.78);
+        if (['j', 'd', 'PageDown'].includes(event.key)) { event.preventDefault(); node.scrollBy({ top: page, behavior: 'auto' }); }
+        else if (['k', 'u', 'PageUp'].includes(event.key)) { event.preventDefault(); node.scrollBy({ top: -page, behavior: 'auto' }); }
+        else if (event.key === 'End') { event.preventDefault(); jumpToLatest(); }
+        else if (event.key === 'Home') { event.preventDefault(); node.scrollTo({ top: 0, behavior: 'auto' }); }
     }
-
-    return (
-        <div
-            className="code-transcript"
-            ref={transcriptRef}
-            role="log"
-            aria-live="polite"
-            tabIndex={0}
-            onKeyDown={handleTranscriptKeyDown}
-        >
-            {messages.length === 0 ? (
-                <div className="code-transcript-empty">
-                    <p>Start a Code session by typing a prompt below.</p>
-                    <p className="code-transcript-cwd">cwd: {workingDir || 'not set'}</p>
-                </div>
-            ) : (
-                <div className="code-transcript-virtual-spacer" style={{ height: `${virtual.totalSize}px` }}>
-                    {virtual.virtualItems.map(virtualItem => {
-                        const msg = messages[virtualItem.index];
-                        return (
-                            <div
-                                key={virtualItem.key}
-                                ref={virtual.measureElement}
-                                className="code-transcript-virtual-row"
-                                data-code-transcript-idx={virtualItem.index}
-                                style={{ transform: `translateY(${virtualItem.start}px)` }}
-                            >
-                                {msg ? renderCodeMessage(msg, virtualItem.index, onOpenLocalFile) : renderSendingMessage()}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+    return <>
+        <div className="code-transcript-controls">
+            {hasOlderHistory && <button type="button" disabled={historyPending || loading} onClick={() => void older()}>{historyPending ? 'Loading history…' : 'Load older history'}</button>}
+            {showJump && <button type="button" onClick={jumpToLatest}>Jump to latest</button>}
+            {permissionCount > 0 && <button type="button" onClick={() => document.getElementById('code-pending-permissions')?.focus()}>Jump to permissions ({permissionCount})</button>}
+            {historyError?.sessionKey === sessionKey && <span className="code-action-error" role="alert">{historyError.message}</span>}
         </div>
-    );
+        <div ref={transcriptRef} className="code-transcript" role="log" aria-label="Code transcript" aria-live="off" tabIndex={0} onKeyDown={keyboard}>
+            {!items.length ? <div className="code-transcript-empty"><p>{loading ? 'Loading conversation…' : 'Type a prompt below to start this conversation.'}</p>
+                <p className="code-transcript-cwd">Workspace: {workingDir || 'not set'}</p></div>
+                : <div className="code-transcript-virtual-spacer" style={{ height: virtual.totalSize }}>
+                    {virtual.virtualItems.map(row => {
+                        const item = items[row.index];
+                        return item ? <div key={row.key} ref={virtual.measureElement} className="code-transcript-virtual-row"
+                            data-code-transcript-idx={row.index} style={{ transform: `translateY(${row.start}px)` }}>
+                            <CodeTranscriptItem item={item} provider={provider} sessionKey={sessionKey} onOpenLocalFile={onOpenLocalFile} />
+                        </div> : null;
+                    })}
+                </div>}
+        </div>
+    </>;
 }

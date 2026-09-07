@@ -523,7 +523,7 @@ const nativeCodeHost = createCodeHost({ home: dashboardHome, role: 'manager', po
     return address && typeof address === 'object' ? address.port : port;
 },
     maxConcurrentSessions: settings['code']?.['maxConcurrentSessions'], idleReapMs: settings['code']?.['idleReapMs'] });
-registerNativeCodeRoutes(app, (_req, _res, next) => next(), () => nativeCodeHost.get());
+registerNativeCodeRoutes(app, (_req, _res, next) => next(), () => nativeCodeHost.get(), '/api/code');
 registerEventsRoutes(app, (_req, _res, next) => next());
 registerManagerRuntimeMonitorRoutes(app, (_req, _res, next) => next());
 registerEmbeddedBrowserRoutes(app, (_req, _res, next) => next(), { scanFrom, scanCount, managerPort: port });

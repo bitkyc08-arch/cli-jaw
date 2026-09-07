@@ -517,3 +517,30 @@ React 컴포넌트에서는 `role="dialog"` + `aria-modal` 패턴.
 ### 두 UI 간 기능 동기화
 
 백엔드 API는 동일, 프론트엔드만 다름 (Vanilla JS vs React). 기능 추가 시 양쪽 모두 구현 필요.
+
+## Native Code workbench
+
+Manager Code uses `/api/code` with isolated Codex, Claude, Cursor and Grok
+sessions. Runtime and workspace are fixed at creation; idle session model, effort
+and approval policy changes use optimistic revision checks. New-session and
+per-session prompt drafts survive selection changes and page reloads in the same
+browser tab. A bounded, versioned sessionStorage record keeps text, choices and
+request uncertainty; it stores no transcript, native cursor or permission answer.
+Uncertain creation/send recovery requires explicit action and never auto-submits. Auto (YOLO) is an explicit
+provider capability, and opening the catalog never launches a process.
+
+`useCodeController` owns requests and selection fencing. A single Code SSE
+subscription reconciles a full snapshot at watermark H and contiguous events
+after H. Opening transport does not mean synchronization has completed. Compact
+updates append once to stable item IDs. Older materialized history adds missing
+rows without overwriting current content or advancing the live cursor.
+
+The composer stays editable while a turn runs. Stop targets the captured turn
+and epoch. An uncertain prompt acknowledgement offers explicit retry of the
+original key and text; reconnect never resends automatically. Each approval has
+its own pending/error state and forwards the native opaque choice. Session rows
+support rename, archive/restore, current-workspace filtering and paging.
+
+The transcript renders sanitized Markdown, math and linear tables with stable
+virtual rows. Tool output stays escaped; local files open only after an explicit
+click. Endpoint/session changes reset measured heights and scroll ownership.

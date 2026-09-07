@@ -442,15 +442,16 @@ On Linux, `xdg-open` launches asynchronously with detached lifecycle and ignored
 
 ## Native Code API
 
-The additive `/api/code/native` routes use the existing instance authentication
+The `/api/code` routes use the existing instance authentication
 policy on both the worker and Manager. Responses use `{ok:true,...}` or
 `{ok:false,error}`; private native cursor data is never returned.
 
 | Method and suffix | Contract |
 |---|---|
 | GET `/models` | Four CLI catalogs, availability and honest per-provider capabilities |
-| GET `/sessions` | Durable index; canonical cwd, archive, limit and offset filters |
+| GET `/sessions` | Durable index; canonical cwd, archive, limit and offset filters; current pending permission counts |
 | GET `/sessions/:id` | Full-item snapshot, session watermark and current pending permissions |
+| GET `/sessions/:id/items` | Byte-bounded older materialized items before `beforeSequence`; never advances the live replay cursor |
 | GET `/sessions/:id/events` | Contiguous replay after `afterSequence`; byte/row-bounded page with `nextSequence`, `throughSequence`, `hasMore` |
 | POST `/sessions` | Explicit provider, existing absolute cwd, model, effort and permissionMode;201 metadata creation |
 | PATCH `/sessions/:id` | `expectedRevision` plus title/model/effort/permissionMode/archive;409 on conflict or busy policy/archive change |

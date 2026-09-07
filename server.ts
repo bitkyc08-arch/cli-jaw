@@ -467,14 +467,14 @@ app.use('/api/dashboard/schedule', requireAuth, createDashboardScheduleRouter())
 
 // ─── Browser API (Phase 7) — see src/routes/browser.js
 registerBrowserRoutes(app, requireAuth);
-// ─── Code mode API (jwc resident ACP host) — see src/routes/code.js
+// ─── Native Code workspace and session APIs ────────────
 registerCodeRoutes(app, requireAuth);
 const nativeCodeHost = createCodeHost({ home: JAW_HOME, role: 'worker', port: () => {
     const address = server.address();
     return address && typeof address === 'object' ? address.port : Number(PORT);
 },
     maxConcurrentSessions: settings['code']?.['maxConcurrentSessions'], idleReapMs: settings['code']?.['idleReapMs'] });
-registerNativeCodeRoutes(app, requireAuth, () => nativeCodeHost.get());
+registerNativeCodeRoutes(app, requireAuth, () => nativeCodeHost.get(), '/api/code');
 registerRuntimeRequestRoutes(app, requireAuth);
 
 registerI18nRoutes(app, requireAuth, projectRoot);

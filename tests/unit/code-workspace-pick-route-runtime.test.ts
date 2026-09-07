@@ -28,29 +28,6 @@ mock.module(folderPickerPath, {
     },
 });
 
-// registerCodeRoutes pulls in acp-host at module load; mock it the same way
-// code-routes.test.ts does so the route module imports without starting jwc.
-const acpHostPath = resolve(import.meta.dirname, '../../src/code-mode/acp-host.js');
-mock.module(acpHostPath, {
-    namedExports: {
-        acpHost: {
-            listSessions: () => [],
-            listPendingPermissions: () => [],
-            listStoredSessions: async () => [],
-            loadSession: async () => { throw new Error('not used'); },
-            extMethod: async () => ({}),
-            forkSession: async () => { throw new Error('not used'); },
-            newSession: async () => { throw new Error('not used'); },
-            setSessionModel: async () => {},
-            prompt: async () => ({ accepted: true, sessionId: 'unused' }),
-            cancel: async () => {},
-            setSessionConfig: async () => {},
-            closeSession: async () => {},
-            answerPermission: () => false,
-        },
-    },
-});
-
 const { registerCodeRoutes } = await import('../../src/routes/code.ts');
 
 const noAuth = (_req: Request, _res: Response, next: NextFunction) => next();

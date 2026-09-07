@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import {
     buildJwcModelRole,
     clearJwcModelAssignment,
@@ -14,14 +12,6 @@ import {
     resolveJwcModelAssignments,
     writeJwcModelAssignment,
 } from '../../src/code-mode/model-options.ts';
-import { normalizeStrictPropertyAccess } from './source-normalize.ts';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, '..', '..');
-
-function read(path: string): string {
-    return normalizeStrictPropertyAccess(readFileSync(join(root, path), 'utf8'));
-}
 
 function roleById(assignments: Awaited<ReturnType<typeof readJwcModelAssignments>>, role: string) {
     const assignment = assignments.find(entry => entry.role === role);
@@ -131,30 +121,4 @@ test('JWC model role builder normalizes thinking selector values', () => {
     assert.equal(buildJwcModelRole('anthropic', 'claude-sonnet-4-6', 'min'), 'anthropic/claude-sonnet-4-6:minimal');
     assert.equal(buildJwcModelRole('anthropic', 'claude-sonnet-4-6', 'inherit'), 'anthropic/claude-sonnet-4-6');
     assert.equal(buildJwcModelRole('openai-codex', 'gpt-5.4', 'xhigh'), 'openai-codex/gpt-5.4:xhigh');
-});
-
-test('code model assignment route and client contracts exist without live model mutation', () => {
-    const routes = read('src/routes/code.ts');
-    const client = read('public/manager/src/code/code-session-client.ts');
-    const modelOptions = read('src/code-mode/model-options.ts');
-
-    assert.ok(modelOptions.includes('buildJwcModelRole'), 'helper must expose structured model-role builder');
-    assert.ok(modelOptions.includes("normalized === 'min'"), 'helper must normalize display min to canonical minimal');
-    assert.ok(modelOptions.includes("normalized === 'inherit'"), 'helper must map inherit to no suffix');
-    assert.ok(modelOptions.includes('task.agentModelOverrides'), 'helper must encode JWC assignment settings path');
-    assert.ok(routes.includes("app.get('/api/code/model-assignments'"), 'server must expose assignment read route');
-    assert.ok(routes.includes("app.put('/api/code/model-assignments/:role'"), 'server must expose assignment write route');
-    assert.ok(routes.includes("app.delete('/api/code/model-assignments/:role'"), 'server must expose assignment clear route');
-    assert.ok(routes.includes('modelId') && routes.includes('if (!modelId)'), 'assignment route must keep raw modelId compatibility');
-    assert.ok(routes.includes('buildJwcModelRole(provider, model') && routes.includes('thinkingLevel'), 'assignment route must support structured provider/model/thinking body');
-    assert.ok(client.includes('listModelAssignments()'), 'client must expose assignment read method');
-    assert.ok(client.includes('setModelAssignment(role'), 'client must expose assignment write method');
-    assert.ok(client.includes("typeof input === 'string' ? { modelId: input } : input"), 'client must support raw and structured assignment payloads');
-    assert.ok(client.includes('clearModelAssignment(role'), 'client must expose assignment clear method');
-
-    const assignmentRouteBlock = routes.slice(
-        routes.indexOf("app.get('/api/code/model-assignments'"),
-        routes.indexOf("app.get('/api/code/sessions'"),
-    );
-    assert.equal(assignmentRouteBlock.includes('setSessionModel'), false, 'assignment route must not mutate active session model');
 });

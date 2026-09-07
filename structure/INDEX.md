@@ -14,6 +14,10 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 
 ## 시스템 개요
 
+Manager Code uses isolated native sessions for Codex, Claude, Cursor and Grok.
+Read [frontend](frontend.md#native-code-workbench), [native sessions](runtime-integration.md#native-code-sessions)
+and [API](server_api.md#native-code-api) for session ownership, durable replay, approval and recovery.
+
 Display preference storage/editor now defaults `presentation.mode` to Activity with explicit Legacy reversal; runtime transport is separate. See `frontend.md`, `server_api.md` and `runtime-integration.md`. Preference plumbing does not itself certify the following Activity renderer/history rollout.
 
 Manager Model defaults exposes explicit Cursor/Grok/Claude native opt-in with absent transport remaining print. Its scoped saves/current-instance guards are documented in [runtime integration](runtime-integration.md#manager-runtime-preference-and-save-ownership); [frontend](frontend.md#manager-settings--runtime-transport-and-embedded-classic) documents the shared Classic embed owner. Runtime choice, Activity/Legacy presentation and preview HTTP routing remain independent; these settings changes do not certify embedded/Electron QA.

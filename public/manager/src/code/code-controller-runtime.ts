@@ -1,0 +1,654 @@
+import type {
+    CodeCreateSessionRequest, CodeModelCatalog, CodePatchSessionRequest, CodePermissionRequest,
+    CodeSessionInfo, CodeWireEvent,
+} from '../../../../src/code-mode/wire';
+import type { CodeControllerModel, CodeControllerOptions, CodeSessionFilter, CodeTransportState } from './code-controller-types';
+import { CodeClientError, codeBaseOrigin, createCodeSessionClient, type CodeGitInfo } from './code-session-client';
+import { emptyCodeSession, reduceCodeSession, codeSessionBusy, type CodeSessionState } from './code-session-state';
+import {
+    acknowledgeCodeSend, catalogSelection, codeDraftBook, createCodeDraft, persistCodeDraftBook, sessionSelection,
+    type CodeDraft, type CodeDraftBook,
+} from './code-controller-drafts';
+
+const MAX_DETAILS = 6;
+const MAX_INDEX = 1000;
+const INDEX_PAGE_SIZE = 100;
+const MAX_CATCHUP_PAGES = 32;
+const INDEX_DEBOUNCE_MS = 150;
+const message = (error: unknown) => error instanceof CodeClientError ? error.message : 'Connection lost. Refresh to check the current state.';
+const rejected = (error: unknown) => error instanceof CodeClientError && error.status >= 400 && error.status < 500;
+const newer = (incoming: CodeSessionInfo, current?: CodeSessionInfo | null) => !current
+    || incoming.epoch > current.epoch || (incoming.epoch === current.epoch && (incoming.sequence > current.sequence
+        || (incoming.sequence === current.sequence && incoming.revision >= current.revision)));
+
+/** Code's async owner; React only subscribes and supplies the single SSE transport. */
+export class CodeController {
+    private client;
+    private book: CodeDraftBook;
+    private details = new Map<string, CodeSessionState>();
+    private summaries = new Map<string, CodeSessionInfo>();
+    private rows: string[] = [];
+    private catalog: CodeModelCatalog | null = null;
+    private catalogError: string | null = null;
+    private transport: CodeTransportState = 'disconnected';
+    private filter: CodeSessionFilter = { scope: 'all', archived: false };
+    private workingDir: string;
+    private gitInfo: CodeGitInfo | null = null;
+    private gitError: string | null = null;
+    private gitGeneration = 0;
+    private pickerGeneration = 0;
+    private indexGeneration = 0;
+    private catalogGeneration = 0;
+    private lifetime = 0;
+    private active = false;
+    private abort = new AbortController();
+    private syncing = new Map<string, Promise<void>>();
+    private detailReads = new Map<string, AbortController>();
+    private historyLoading = new Set<string>();
+    private indexLoading = false;
+    private moreSessions = false;
+    private offset = 0;
+    private indexError: string | null = null;
+    private timer: ReturnType<typeof setTimeout> | undefined;
+    private listeners = new Set<() => void>();
+    private model: CodeControllerModel;
+    private draftSyncQueued = false;
+
+    constructor(options: CodeControllerOptions) {
+        this.client = createCodeSessionClient(options.port);
+        this.workingDir = options.workingDir;
+        this.book = codeDraftBook(codeBaseOrigin(options.port), options.workingDir);
+        this.model = this.makeModel();
+    }
+    getModel = (): CodeControllerModel => this.model;
+    subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
+    private changed = (): void => {
+        this.model = this.makeModel();
+        for (const listener of this.listeners) listener();
+        const id = this.book.selectedId;
+        const state = id ? this.details.get(id) : undefined;
+        if (this.active && id && !state?.error && (!state || this.draft(id).requiredSequence > state.cursor) && !this.draftSyncQueued) {
+            this.draftSyncQueued = true;
+            queueMicrotask(() => {
+                this.draftSyncQueued = false;
+                if (this.active && this.book.selectedId === id && !this.syncing.has(id)) void this.sync(id);
+            });
+        }
+    };
+    private notify(): void {
+        persistCodeDraftBook(this.book);
+        this.changed();
+        for (const listener of this.book.listeners) if (listener !== this.changed) listener();
+    }
+    mount = (): (() => void) => {
+        this.active = true;
+        this.lifetime++;
+        this.abort = new AbortController();
+        this.book.listeners.add(this.changed);
+        void this.refresh();
+        return () => {
+            persistCodeDraftBook(this.book);
+            this.active = false;
+            this.lifetime++;
+            this.abort.abort();
+            this.syncing.clear();
+            for (const read of this.detailReads.values()) read.abort();
+            this.detailReads.clear();
+            if (this.timer !== undefined) clearTimeout(this.timer);
+            this.timer = undefined;
+            this.book.listeners.delete(this.changed);
+            this.details.clear();
+            this.summaries.clear();
+            this.rows = [];
+            this.gitGeneration++;
+            this.pickerGeneration++;
+        };
+    };
+    setWorkingDir(cwd: string): void {
+        if (cwd === this.workingDir) return;
+        this.workingDir = cwd;
+        // The shell's Files selection only seeds an untouched new-session draft.
+        const draft = this.book.fresh;
+        if (!draft.selectionEdit && !draft.input && draft.operation.kind === 'idle' && !draft.createUnknown) {
+            draft.selection = { ...draft.selection, cwd };
+        }
+        if (this.filter.scope === 'cwd') void this.readIndex();
+        void this.readGit();
+        this.notify();
+    }
+    private draft(id = this.book.selectedId): CodeDraft {
+        if (id === null) return this.book.fresh;
+        let draft = this.book.sessions.get(id);
+        if (!draft) {
+            const session = this.info(id);
+            draft = createCodeDraft(session ? sessionSelection(session) : this.book.fresh.selection);
+            this.book.sessions.set(id, draft);
+        }
+        return draft;
+    }
+    private info(id: string | null): CodeSessionInfo | null {
+        if (!id) return null;
+        const detail = this.details.get(id)?.session;
+        const summary = this.summaries.get(id);
+        return summary && newer(summary, detail) ? summary : detail ?? summary ?? null;
+    }
+    private accept(session: CodeSessionInfo): void {
+        if (!this.active) return;
+        if (!newer(session, this.info(session.sessionId))) return;
+        this.summaries.set(session.sessionId, session);
+        if (this.summaries.size > MAX_INDEX + MAX_DETAILS) {
+            const victim = [...this.summaries.keys()].find(id => id !== this.book.selectedId && !this.details.has(id) && !this.rows.includes(id));
+            if (victim) this.summaries.delete(victim);
+        }
+        const draft = this.book.sessions.get(session.sessionId);
+        if (draft?.stopTarget && (session.turnId !== draft.stopTarget.turnId || session.epoch !== draft.stopTarget.epoch
+            || !codeSessionBusy(session))) {
+            draft.stopTarget = null;
+            if (draft.operation.kind === 'stopping') draft.operation = draft.retry
+                ? { kind: 'unknown-send', error: 'The original message still needs reconciliation.' } : { kind: 'idle', error: null };
+        }
+    }
+    private state(id: string): CodeSessionState {
+        let state = this.details.get(id);
+        if (!state) {
+            state = emptyCodeSession(id);
+            this.details.set(id, state);
+            this.trimDetails();
+        }
+        return state;
+    }
+    private trimDetails(): void {
+        for (const id of this.details.keys()) {
+            if (this.details.size <= MAX_DETAILS) break;
+            if (id !== this.book.selectedId) {
+                this.details.delete(id);
+                this.detailReads.get(id)?.abort();
+                this.detailReads.delete(id);
+                this.syncing.delete(id);
+            }
+        }
+    }
+    private update(id: string, state: CodeSessionState): void {
+        this.details.set(id, state);
+        if (state.session) this.accept(state.session);
+        const draft = this.book.sessions.get(id);
+        if (draft?.retry && state.items.some(item => item.kind === 'user_message' && item.clientTurnKey === draft.retry!.key)) {
+            acknowledgeCodeSend(draft, draft.retry.key);
+        }
+        if (draft && state.synced) {
+            const current = new Set(state.permissions.map(p => p.permissionId));
+            for (const key of Object.keys(draft.permissionOperations)) {
+                if (!current.has(key) && !draft.permissionOperations[key].pending) delete draft.permissionOperations[key];
+            }
+        }
+        this.notify();
+    }
+    private makeModel(): CodeControllerModel {
+        const id = this.book.selectedId;
+        const canonical = this.info(id);
+        const draft = this.draft(id);
+        const detail = id ? this.details.get(id) : undefined;
+        const session = canonical && detail?.synced ? { ...canonical, pendingPermissionCount: detail.permissions.length } : canonical;
+        const operation = draft.operation;
+        const persistenceWarning = this.book.storageWarning ?? this.book.recoveryWarning;
+        const pending = ['creating', 'sending', 'stopping', 'resuming', 'patching'].includes(operation.kind) && !operation.error;
+        const synced = id === null ? !!this.catalog : !!detail?.synced && (!session || session.sequence <= detail.cursor) && draft.requiredSequence <= (detail?.cursor ?? 0);
+        return {
+            catalog: this.catalog, sessions: this.rows.map(id => {
+                const row = this.info(id), detail = this.details.get(id);
+                return row && detail?.synced ? { ...row, pendingPermissionCount: detail.permissions.length } : row;
+            }).filter((row): row is CodeSessionInfo => !!row),
+            selectedId: id, session, items: detail?.items ?? [], permissions: detail?.permissions ?? [],
+            input: draft.input, selection: session ? sessionSelection(session) : draft.selection,
+            gitInfo: this.gitInfo, loading: this.indexLoading || !!detail?.hydrating || (!!id && !detail?.hydrated && !detail?.error),
+            pending, busy: codeSessionBusy(session), synced, transport: this.transport,
+            error: [operation.error ?? detail?.error ?? this.indexError ?? this.catalogError ?? this.gitError ?? session?.error?.message, persistenceWarning].filter(Boolean).join(' ') || null,
+            operation: { ...operation, error: operation.error && persistenceWarning ? `${operation.error} ${persistenceWarning}` : operation.error }, retryText: draft.retry?.text ?? null,
+            canRetrySameSend: !!id && operation.kind === 'unknown-send' && !!draft.retry && synced && session?.archivedAt === null,
+            permissionOperations: { ...draft.permissionOperations }, hasMoreSessions: this.moreSessions,
+            hasOlderHistory: detail?.hasOlder ?? false, filter: this.filter,
+            creationUnknown: id === null && draft.createUnknown, startAnotherSession: this.startAnotherSession,
+            newSession: this.newSession, selectSession: this.selectSession, setInput: this.setInput,
+            setSelection: this.setSelection, pickWorkspace: this.pickWorkspace, send: this.send,
+            retrySameSend: this.retrySameSend, stop: this.stop, resume: this.resume, rename: this.rename,
+            archive: this.archive, answer: this.answer, refresh: this.refresh, loadMoreSessions: this.loadMoreSessions,
+            loadOlderHistory: this.loadOlderHistory, setFilter: this.setFilter, clearError: this.clearError,
+        };
+    }
+    private async readCatalog(): Promise<void> {
+        const generation = ++this.catalogGeneration;
+        const life = this.lifetime;
+        try {
+            const catalog = await this.client.listModelOptions(this.abort.signal);
+            if (!this.active || life !== this.lifetime || generation !== this.catalogGeneration) return;
+            this.catalog = catalog;
+            this.catalogError = null;
+            const draft = this.book.fresh;
+            if (!draft.selection.model && !draft.selectionEdit && draft.operation.kind === 'idle') {
+                draft.selection = catalogSelection(catalog, { ...draft.selection, provider: catalog.defaultProvider });
+            }
+            this.notify();
+        } catch (error) {
+            if (this.active && life === this.lifetime && generation === this.catalogGeneration) { this.catalogError = message(error); this.notify(); }
+        }
+    }
+    private async readIndex(more = false): Promise<void> {
+        const generation = ++this.indexGeneration;
+        const life = this.lifetime;
+        const offset = more ? this.offset : 0;
+        const limit = more ? INDEX_PAGE_SIZE : Math.min(MAX_INDEX, Math.max(INDEX_PAGE_SIZE, this.offset));
+        this.indexLoading = true;
+        this.notify();
+        try {
+            const page = await this.client.listSessions({ ...this.filter, limit, offset,
+                ...(this.filter.scope === 'cwd' ? { cwd: this.workingDir } : {}) }, this.abort.signal);
+            if (!this.active || life !== this.lifetime || generation !== this.indexGeneration) return;
+            for (const session of page.sessions) {
+                this.accept(session);
+                const state = this.details.get(session.sessionId);
+                if (state?.hydrated && !state.hydrating && session.sequence > state.cursor) {
+                    this.details.set(session.sessionId, reduceCodeSession(state, { type: 'stale' }));
+                    void this.sync(session.sessionId);
+                }
+            }
+            this.rows = [...new Set([...(more ? this.rows : []), ...page.sessions.map(row => row.sessionId)])].slice(0, MAX_INDEX);
+            this.offset = page.offset + page.sessions.length;
+            this.moreSessions = page.hasMore && this.rows.length < MAX_INDEX;
+            this.indexError = null;
+            const retained = new Set([...this.rows, ...this.details.keys(), ...(this.book.selectedId ? [this.book.selectedId] : [])]);
+            for (const id of this.summaries.keys()) if (!retained.has(id)) this.summaries.delete(id);
+        } catch (error) {
+            if (this.active && life === this.lifetime && generation === this.indexGeneration) this.indexError = message(error);
+        } finally {
+            if (this.active && life === this.lifetime && generation === this.indexGeneration) { this.indexLoading = false; this.notify(); }
+        }
+    }
+    private scheduleIndex(): void {
+        if (!this.active || this.timer !== undefined) return;
+        this.timer = setTimeout(() => { this.timer = undefined; void this.readIndex(); }, INDEX_DEBOUNCE_MS);
+    }
+    private sync(id: string, forceSnapshot = false): Promise<void> {
+        const existing = this.syncing.get(id);
+        if (existing) return existing;
+        const life = this.lifetime;
+        const read = new AbortController();
+        this.detailReads.set(id, read);
+        this.state(id);
+        const current = () => this.active && life === this.lifetime && this.detailReads.get(id) === read && this.details.has(id);
+        const run = async () => {
+            let snapshots = 0;
+            let checkedStop: CodeDraft['stopTarget'] = null;
+            try {
+                for (let pageCount = 0; pageCount < MAX_CATCHUP_PAGES && current(); pageCount++) {
+                    let state = this.state(id);
+                    if (forceSnapshot || !state.hydrated || state.needsSnapshot) {
+                        if (++snapshots > 2) throw new Error('snapshot did not cover live updates');
+                        forceSnapshot = false;
+                        this.update(id, reduceCodeSession(state, { type: 'snapshot-start' }));
+                        const stopTarget = this.book.sessions.get(id)?.stopTarget;
+                        const checkingStop = stopTarget?.outcome === 'unknown' ? stopTarget : null;
+                        const snapshot = await this.client.snapshot(id, read.signal);
+                        if (!current()) return;
+                        checkedStop = checkingStop;
+                        this.update(id, reduceCodeSession(this.state(id), { type: 'snapshot', snapshot }));
+                    }
+                    state = this.state(id);
+                    if (state.needsSnapshot) continue;
+                    const before = state.cursor;
+                    const page = await this.client.events(id, before, read.signal);
+                    if (!current()) return;
+                    const next = reduceCodeSession(this.state(id), { type: 'page', page });
+                    this.update(id, next);
+                    if (next.needsSnapshot) continue;
+                    if (next.synced && next.cursor >= (this.book.sessions.get(id)?.requiredSequence ?? 0)) {
+                        this.reconcileStop(id, checkedStop);
+                        return;
+                    }
+                    if (next.cursor <= before) { forceSnapshot = true; continue; }
+                }
+                if (current()) this.update(id, reduceCodeSession(this.state(id), { type: 'error', error: 'History is still catching up. Refresh to continue.' }));
+            } catch (error) {
+                if (!current()) return;
+                if (error instanceof CodeClientError && error.code === 'invalid_sequence' && snapshots < 2) {
+                    const snapshot = await this.client.snapshot(id, read.signal).catch(() => null);
+                    if (!current()) return;
+                    if (snapshot) { this.update(id, reduceCodeSession(this.state(id), { type: 'snapshot', snapshot })); return; }
+                }
+                this.update(id, reduceCodeSession(this.state(id), { type: 'error', error: message(error) }));
+                if (error instanceof CodeClientError && error.code === 'session_not_found') this.scheduleIndex();
+            }
+        };
+        const promise = run().finally(() => {
+            if (this.syncing.get(id) === promise) this.syncing.delete(id);
+            if (this.detailReads.get(id) === read) this.detailReads.delete(id);
+            this.trimDetails();
+        });
+        this.syncing.set(id, promise);
+        return promise;
+    }
+    onEvent = (event: CodeWireEvent): void => {
+        if (!this.active) return;
+        if (event.session?.sessionId === event.sessionId) this.accept(event.session);
+        if (event.event === 'code_session' || event.item?.kind === 'permission_request' || event.update?.status) this.scheduleIndex();
+        const draft = this.book.sessions.get(event.sessionId);
+        if (event.item?.kind === 'user_message' && event.item.clientTurnKey && draft?.retry?.key === event.item.clientTurnKey) {
+            draft.requiredSequence = Math.max(draft.requiredSequence, event.sequence);
+            acknowledgeCodeSend(draft, event.item.clientTurnKey);
+        }
+        const previous = this.details.get(event.sessionId);
+        if (!previous) { this.notify(); return; }
+        const next = reduceCodeSession(previous, { type: 'event', event });
+        this.update(event.sessionId, next);
+        if (!next.synced && !next.hydrating) void this.sync(event.sessionId);
+    };
+    onTransport = (transport: CodeTransportState): void => {
+        this.transport = transport;
+        for (const [id, state] of this.details) this.details.set(id, reduceCodeSession(state, { type: 'stale' }));
+        this.notify();
+        if (transport === 'connected' && this.active) {
+            void this.readIndex();
+            for (const id of this.details.keys()) void this.sync(id, true);
+        }
+    };
+    refresh = async (): Promise<void> => {
+        const id = this.book.selectedId;
+        await Promise.all([this.readCatalog(), this.readIndex(), id ? this.sync(id, true) : Promise.resolve(), this.readGit()]);
+    };
+    loadMoreSessions = async (): Promise<void> => { if (this.moreSessions && !this.indexLoading) await this.readIndex(true); };
+    setFilter = (filter: CodeSessionFilter): void => { this.filter = { ...filter }; this.offset = 0; this.rows = []; this.moreSessions = false; this.notify(); void this.readIndex(); };
+    // Explicitly abandon only the local uncertain attempt. The server session may exist.
+    startAnotherSession = (): void => {
+        const previous = this.book.fresh;
+        if (this.book.selectedId !== null || !previous.createUnknown) return;
+        const draft = createCodeDraft(previous.selection);
+        draft.input = previous.input; draft.edit = previous.edit; draft.selectionEdit = previous.selectionEdit;
+        draft.operation.error = 'The original session may still exist. Your text is preserved; Send will create another session.';
+        this.book.fresh = draft;
+        this.book.navigation++;
+        this.pickerGeneration++;
+        this.notify();
+    };
+    newSession = (): void => { this.book.selectedId = null; this.book.navigation++; this.gitInfo = null; this.notify(); void this.readGit(); };
+    selectSession = async (id: string): Promise<void> => {
+        this.book.selectedId = id;
+        this.book.navigation++;
+        this.draft(id);
+        this.state(id);
+        this.gitInfo = null;
+        this.notify();
+        await this.sync(id, true);
+        if (this.book.selectedId === id) await this.readGit();
+    };
+    setInput = (text: string): void => { const draft = this.draft(); draft.input = text; draft.edit++; this.notify(); };
+    clearError = (): void => {
+        const draft = this.draft();
+        if (draft.operation.kind === 'idle') draft.operation = { kind: 'idle', error: null };
+        this.indexError = null;
+        this.book.recoveryWarning = null;
+        this.notify();
+    };
+    private async readGit(): Promise<void> {
+        const generation = ++this.gitGeneration;
+        const life = this.lifetime;
+        const id = this.book.selectedId;
+        const cwd = this.info(id)?.cwd ?? (id === null ? this.book.fresh.selection.cwd : '');
+        this.gitInfo = null;
+        this.gitError = null;
+        if (!cwd || !this.active) return;
+        try {
+            const info = await this.client.getGitInfo(cwd, this.abort.signal);
+            if (this.active && life === this.lifetime && generation === this.gitGeneration && id === this.book.selectedId) { this.gitInfo = info; this.notify(); }
+        } catch (error) {
+            if (this.active && life === this.lifetime && generation === this.gitGeneration && id === this.book.selectedId) {
+                this.gitError = message(error); this.notify();
+            }
+        }
+    }
+    pickWorkspace = async (): Promise<void> => {
+        const draft = this.book.fresh;
+        if (this.book.selectedId !== null || draft.operation.kind !== 'idle' || draft.createUnknown) return;
+        const navigation = this.book.navigation, selectionEdit = draft.selectionEdit, generation = ++this.pickerGeneration;
+        try {
+            const result = await this.client.pickWorkspace();
+            if (!this.active || generation !== this.pickerGeneration || navigation !== this.book.navigation
+                || selectionEdit !== draft.selectionEdit || draft !== this.book.fresh || draft.operation.kind !== 'idle') return;
+            if (!result.cancelled && result.path) {
+                draft.selection = { ...draft.selection, cwd: result.path }; draft.selectionEdit++;
+                this.notify(); await this.readGit();
+            }
+        } catch (error) {
+            if (this.active && generation === this.pickerGeneration && navigation === this.book.navigation
+                && selectionEdit === draft.selectionEdit && draft === this.book.fresh && draft.operation.kind === 'idle') { draft.operation.error = message(error); this.notify(); }
+        }
+    };
+    setSelection = async (patch: Partial<CodeCreateSessionRequest>): Promise<void> => {
+        const id = this.book.selectedId;
+        const session = this.info(id);
+        if (session && patch.provider && patch.provider !== session.provider) {
+            this.newSession();
+            await this.setSelection({ ...patch, cwd: session.cwd });
+            return;
+        }
+        const draft = this.draft();
+        if (draft.operation.kind !== 'idle' || draft.createUnknown) return;
+        if (session && id) {
+            if ((patch.cwd !== undefined && patch.cwd !== session.cwd) || (patch.provider && patch.provider !== session.provider)) {
+                draft.operation.error = 'Runtime and workspace are fixed for this session. Create a new session to change them.';
+                this.notify(); return;
+            }
+            if (session.status !== 'idle' || !this.model.synced || session.archivedAt !== null) {
+                draft.operation.error = 'Wait for this session to be idle and synchronized before changing settings.';
+                this.notify(); return;
+            }
+            await this.patch(id, { model: patch.model ?? session.model,
+                effort: patch.effort === undefined ? session.effort : patch.effort,
+                permissionMode: patch.permissionMode ?? session.permissionMode });
+            return;
+        }
+        if (id) return;
+        const changedProvider = patch.provider !== undefined && patch.provider !== draft.selection.provider;
+        let selection = { ...draft.selection, ...patch };
+        if (this.catalog && changedProvider) selection = catalogSelection(this.catalog, selection, true);
+        const provider = this.catalog?.providers.find(row => row.id === selection.provider);
+        if (selection.effort !== null && provider && !provider.capabilities.efforts.includes(selection.effort)) selection.effort = null;
+        draft.selection = selection;
+        draft.selectionEdit++;
+        this.notify();
+        if (patch.cwd !== undefined) await this.readGit();
+    };
+    private async patch(id: string, input: Omit<CodePatchSessionRequest, 'expectedRevision'>, rejectFailure = false): Promise<void> {
+        const draft = this.draft(id);
+        const session = this.info(id);
+        if (!session || draft.operation.kind !== 'idle' || codeSessionBusy(session)) {
+            const error = new Error(!session ? 'Refresh this session before changing it.' : 'Wait for the current session action to finish before changing it.');
+            draft.operation.error = error.message; this.notify();
+            if (rejectFailure) throw error;
+            return;
+        }
+        let failure: Error | null = null;
+        draft.operation = { kind: 'patching', error: null }; this.notify();
+        try {
+            this.accept(await this.client.patchSession(id, { ...input, expectedRevision: session.revision }));
+            draft.operation = { kind: 'idle', error: null };
+        } catch (error) {
+            if (error instanceof CodeClientError && error.session?.sessionId === id) this.accept(error.session);
+            failure = error instanceof CodeClientError ? error : new Error(message(error));
+            draft.operation = { kind: 'idle', error: failure.message };
+        }
+        this.notify(); this.scheduleIndex();
+        if (this.active) await this.sync(id, true);
+        if (rejectFailure && failure) throw failure;
+    }
+    // Row editors require rejection to distinguish a saved value from retained edits.
+    // Other actions report handled failures through the controller model.
+    rename = async (id: string, title: string): Promise<void> => { await this.patch(id, { title }, true); };
+    archive = async (id: string, archived: boolean): Promise<void> => { await this.patch(id, { archived }, true); };
+    send = async (): Promise<void> => {
+        let id = this.book.selectedId;
+        let draft = this.draft(id);
+        if (draft.operation.kind !== 'idle' || draft.createUnknown || !draft.input.trim()) return;
+        const session = this.info(id);
+        if (id && (!session || session.status !== 'idle' || session.archivedAt !== null || !this.model.synced)) {
+            draft.operation.error = 'Wait for the session to be idle and synchronized before sending.'; this.notify(); return;
+        }
+        const captured = { text: draft.input, edit: draft.edit, key: crypto.randomUUID() };
+        const navigation = this.book.navigation;
+        if (!id) {
+            const selection = { ...draft.selection };
+            const provider = this.catalog?.providers.find(row => row.id === selection.provider);
+            if (!provider?.available || !selection.cwd.trim() || !provider.models.includes(selection.model)
+                || !provider.capabilities.permissionModes.includes(selection.permissionMode)
+                || (selection.effort !== null && !provider.capabilities.efforts.includes(selection.effort))) {
+                draft.operation.error = 'Choose an available runtime, workspace, model and supported settings before sending.';
+                this.notify(); return;
+            }
+            draft.operation = { kind: 'creating', error: null }; this.notify();
+            try {
+                const created = await this.client.createSession(selection);
+                id = created.sessionId;
+                this.book.sessions.set(id, draft);
+                if (this.book.fresh === draft) this.book.fresh = createCodeDraft(selection);
+                if (this.book.navigation === navigation && this.book.selectedId === null) {
+                    this.book.selectedId = id;
+                    this.book.navigation++;
+                }
+                this.accept(created);
+                if (this.active) this.state(id);
+                this.scheduleIndex();
+            } catch (error) {
+                draft.createUnknown = !rejected(error);
+                draft.operation = { kind: draft.createUnknown ? 'creating' : 'idle', error: draft.createUnknown
+                    ? 'Session creation could not be confirmed. The original session may exist. Refresh the list, or choose Start another session to keep this text in a new draft.' : message(error) };
+                this.notify(); this.scheduleIndex(); return;
+            }
+        }
+        draft = this.draft(id);
+        draft.retry = captured;
+        await this.submit(id, draft);
+    };
+    private async submit(id: string, draft: CodeDraft): Promise<void> {
+        const attempt = draft.retry;
+        if (!attempt) return;
+        draft.operation = { kind: 'sending', error: null }; this.notify();
+        try {
+            const receipt = await this.client.sendPrompt(id, { text: attempt.text, clientTurnKey: attempt.key });
+            if (receipt.clientTurnKey !== attempt.key) throw new Error('Mismatched prompt receipt');
+            draft.requiredSequence = Math.max(draft.requiredSequence, receipt.sequence);
+            const state = this.details.get(id);
+            if (state) this.details.set(id, reduceCodeSession(state, { type: 'stale' }));
+            acknowledgeCodeSend(draft, attempt.key);
+        } catch (error) {
+            // The committed user event may already have acknowledged a lost HTTP response.
+            if (draft.retry?.key === attempt.key) {
+                draft.operation = { kind: rejected(error) ? 'idle' : 'unknown-send', error: rejected(error) ? message(error)
+                    : 'Message acceptance is unknown. Refresh, or explicitly retry the original message with the same key.' };
+                if (rejected(error)) draft.retry = null;
+            }
+        }
+        this.notify(); this.scheduleIndex();
+        if (this.active) await this.sync(id, true);
+    }
+    retrySameSend = async (): Promise<void> => {
+        const id = this.book.selectedId;
+        const draft = this.draft(id);
+        if (!id || !this.model.canRetrySameSend || draft.operation.kind !== 'unknown-send') return;
+        await this.submit(id, draft);
+    };
+    private reconcileStop(id: string, target: CodeDraft['stopTarget']): void {
+        const draft = this.book.sessions.get(id), state = this.details.get(id), session = this.info(id);
+        if (!target || target.outcome !== 'unknown' || draft?.stopTarget !== target || !state?.synced || !session
+            || session.sequence > state.cursor || session.turnId !== target.turnId || session.epoch !== target.epoch) return;
+        if (session.status === 'starting' || session.status === 'streaming') {
+            target.outcome = 'retryable';
+            draft.operation = { kind: draft.retry ? 'unknown-send' : 'idle', error: 'Stop could not be confirmed. The same turn is still running. Press Stop to retry for this turn.' };
+        } else if (session.status === 'stopping') {
+            target.outcome = 'accepted';
+            draft.operation = { kind: 'stopping', error: null };
+        }
+        this.notify();
+    }
+    stop = async (): Promise<void> => {
+        const id = this.book.selectedId, session = this.info(id);
+        if (!id || !session?.turnId || !codeSessionBusy(session) || !session.capabilities.interrupt || session.status === 'stopping') return;
+        const draft = this.draft(id);
+        const previous = draft.stopTarget;
+        if (previous && (previous.outcome !== 'retryable' || !this.model.synced
+            || previous.turnId !== session.turnId || previous.epoch !== session.epoch)) return;
+        const target: NonNullable<CodeDraft['stopTarget']> = previous ?? { turnId: session.turnId, epoch: session.epoch, outcome: 'pending' };
+        target.outcome = 'pending';
+        draft.stopTarget = target;
+        draft.operation = { kind: 'stopping', error: null }; this.notify();
+        try {
+            const result = await this.client.cancelPrompt(id, { turnId: target.turnId, epoch: target.epoch });
+            if (draft.stopTarget === target) target.outcome = 'accepted';
+            this.accept(result);
+        } catch (error) {
+            if (draft.stopTarget === target) {
+                target.outcome = 'unknown';
+                draft.operation = { kind: 'stopping', error: message(error) };
+                if (rejected(error)) { draft.stopTarget = null; draft.operation.kind = 'idle'; }
+            }
+        }
+        this.notify(); this.scheduleIndex();
+        if (this.active) {
+            // An earlier read cannot prove what happened to this failed cancel.
+            if (target.outcome === 'unknown') await this.syncing.get(id);
+            if (this.active) await this.sync(id, true);
+        }
+    };
+    resume = async (): Promise<void> => {
+        const id = this.book.selectedId, session = this.info(id), draft = this.draft(id);
+        if (!id || !session || !this.model.synced || draft.operation.kind !== 'idle' || session.archivedAt !== null
+            || !['suspended', 'failed'].includes(session.status) || !session.capabilities.resume || !session.resume.available
+            || (session.status === 'failed' && !session.error?.recoverable)) return;
+        draft.operation = { kind: 'resuming', error: null }; this.notify();
+        try { this.accept(await this.client.attachSession(id)); draft.operation = { kind: 'idle', error: null }; }
+        catch (error) { draft.operation = { kind: 'idle', error: message(error) }; }
+        this.notify(); this.scheduleIndex();
+        if (this.active) await this.sync(id, true);
+    };
+    answer = async (permission: CodePermissionRequest, optionId: string): Promise<void> => {
+        const id = permission.sessionId;
+        const state = this.details.get(id), session = this.info(id), draft = this.draft(id);
+        if (draft.permissionOperations[permission.permissionId]?.pending) return;
+        const current = state?.permissions.find(row => row.permissionId === permission.permissionId);
+        if (!state?.synced || !session || session.sequence > state.cursor || !current
+            || current.turnId !== permission.turnId || current.epoch !== permission.epoch
+            || session.turnId !== permission.turnId || session.epoch !== permission.epoch
+            || !current.options.some(option => option.optionId === optionId)) {
+            draft.permissionOperations[permission.permissionId] = { pending: false, error: 'This approval is no longer current. Refresh its status.' };
+            this.notify(); if (this.active) await this.sync(id, true); return;
+        }
+        draft.permissionOperations[permission.permissionId] = { pending: true, error: null }; this.notify();
+        try {
+            await this.client.answerPermission(permission.permissionId, { sessionId: id, turnId: permission.turnId, epoch: permission.epoch, optionId });
+            draft.permissionOperations[permission.permissionId] = { pending: true, error: null };
+        } catch (error) {
+            draft.permissionOperations[permission.permissionId] = { pending: true, error: message(error) };
+        }
+        this.notify(); this.scheduleIndex();
+        if (this.active) await this.sync(id, true);
+        const refreshed = this.details.get(id);
+        const remaining = !refreshed?.synced || refreshed.permissions.some(row => row.permissionId === permission.permissionId);
+        const operation = draft.permissionOperations[permission.permissionId];
+        if (remaining && operation) draft.permissionOperations[permission.permissionId] = { pending: false, error: operation.error };
+        else delete draft.permissionOperations[permission.permissionId];
+        this.notify();
+    };
+    loadOlderHistory = async (): Promise<void> => {
+        const id = this.book.selectedId;
+        if (!id || this.historyLoading.has(id)) return;
+        const state = this.details.get(id);
+        if (!state?.hydrated || !state.hasOlder || state.beforeSequence === null) return;
+        const life = this.lifetime;
+        this.historyLoading.add(id);
+        try {
+            const page = await this.client.history(id, state.beforeSequence, this.abort.signal);
+            if (this.active && life === this.lifetime && this.details.get(id)?.beforeSequence === state.beforeSequence) {
+                this.update(id, reduceCodeSession(this.state(id), { type: 'history', page }));
+            }
+        } catch (error) {
+            if (this.active && life === this.lifetime) { this.draft(id).operation.error = message(error); this.notify(); }
+        } finally { this.historyLoading.delete(id); }
+    };
+}

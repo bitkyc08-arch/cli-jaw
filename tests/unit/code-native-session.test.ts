@@ -155,6 +155,28 @@ function approval(options: CodeOpenOptions, question = false) {
         } });
 }
 
+test('index attention counts hydrate unloaded sessions without transcript reads or native opens', async t => {
+    const f = fixture(t);
+    const a = f.create('claude');
+    const b = f.create('cursor');
+    assert.equal(f.manager.list().find(row => row.sessionId === a.sessionId)?.pendingPermissionCount, 0);
+    assert.equal(f.providers.claude.calls.length, 0);
+    const { receipt } = f.manager.prompt(a.sessionId, prompt);
+    const options = await f.providers.claude.opened();
+    const handle = f.providers.claude.handles[0]!;
+    await handle.sent.promise;
+    const pending = approval(options);
+    const rows = f.manager.list();
+    assert.equal(rows.find(row => row.sessionId === a.sessionId)?.pendingPermissionCount, 1);
+    assert.equal(rows.find(row => row.sessionId === b.sessionId)?.pendingPermissionCount, 0);
+    assert.equal(f.providers.cursor.calls.length, 0);
+    f.manager.answerPermission(pending.requestId, { sessionId: a.sessionId, turnId: receipt.turnId, epoch: 1, optionId: 'allow' });
+    await pending.answer;
+    assert.equal(f.manager.list().find(row => row.sessionId === a.sessionId)?.pendingPermissionCount, 0);
+    handle.outcome.resolve(done);
+    await f.terminal(a.sessionId, 1);
+});
+
 test('constructor and metadata reads are pure; create snapshots fixed capabilities without native open', async t => {
     const f = fixture(t);
     const row = f.create();

@@ -12,7 +12,6 @@ import { searchNotes } from '../../src/notes/search.js';
 import * as bgtask from '../../src/bgtask/runner.js';
 import { createTask } from '../../src/bgtask/registry.js';
 import { AcpClient } from '../../src/cli/acp-client.js';
-import { AcpHost } from '../../src/code-mode/acp-host.js';
 import { detectNotesCapabilities } from '../../src/manager/notes/capabilities.js';
 
 type TreeCall = { pid: number; signal: NodeJS.Signals };
@@ -330,77 +329,6 @@ test('AcpClient kill terminates the owned Copilot ACP tree', () => {
     assert.deepEqual(harness.calls, [{ pid: firstPid(harness), signal: 'SIGTERM' }]);
     assert.equal(ownProcess(harness.children[0] as unknown as ChildProcess).reason, 'cancel');
     assertExitDisarmsEscalation(harness);
-});
-
-test('ACP host dispose terminates the owned JWC tree', async () => {
-    const harness = beginHarness();
-    spawnBehaviors.push(child => {
-        child.onInput = text => {
-            for (const line of text.trim().split(/\r?\n/u)) {
-                const request = JSON.parse(line) as { id?: number; method?: string };
-                if (request.id === undefined) continue;
-                const result = request.method === 'session/new' ? { sessionId: 'owned-session' } : {};
-                queueMicrotask(() => child.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result })}\n`));
-            }
-        };
-    });
-    const host = new AcpHost({
-        spawnImpl: fakeSpawn as typeof spawn,
-        ownedProcessOptions: ownerOptions(harness),
-    });
-    await host.newSession(process.cwd());
-    await host.dispose();
-    assert.deepEqual(harness.calls, [{ pid: firstPid(harness), signal: 'SIGTERM' }]);
-    assert.equal(ownProcess(harness.children[0] as unknown as ChildProcess).reason, 'shutdown');
-    assertExitDisarmsEscalation(harness);
-});
-
-test('ACP host idle reap terminates the owned JWC tree with timeout reason', async () => {
-    const harness = beginHarness();
-    spawnBehaviors.push(child => {
-        child.onInput = text => {
-            for (const line of text.trim().split(/\r?\n/u)) {
-                const request = JSON.parse(line) as { id?: number };
-                if (request.id !== undefined) {
-                    queueMicrotask(() => child.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { sessions: [] } })}\n`));
-                }
-            }
-        };
-    });
-    const host = new AcpHost({
-        spawnImpl: fakeSpawn as typeof spawn,
-        ownedProcessOptions: ownerOptions(harness),
-        idleReapMs: 1,
-    });
-    await host.listStoredSessions();
-    await waitFor(() => harness.calls.length > 0);
-    assert.deepEqual(harness.calls, [{ pid: firstPid(harness), signal: 'SIGTERM' }]);
-    assert.equal(ownProcess(harness.children[0] as unknown as ChildProcess).reason, 'timeout');
-    assertExitDisarmsEscalation(harness);
-    await host.dispose();
-});
-
-test('ACP host handshake failure terminates the owned JWC tree', async () => {
-    const harness = beginHarness();
-    spawnBehaviors.push(child => {
-        child.onInput = text => {
-            const request = JSON.parse(text.trim()) as { id: number };
-            queueMicrotask(() => child.stdout.write(`${JSON.stringify({
-                jsonrpc: '2.0',
-                id: request.id,
-                error: { code: -1, message: 'handshake failed' },
-            })}\n`));
-        };
-    });
-    const host = new AcpHost({
-        spawnImpl: fakeSpawn as typeof spawn,
-        ownedProcessOptions: ownerOptions(harness),
-    });
-    await assert.rejects(host.newSession(process.cwd()), /handshake failed/);
-    assert.deepEqual(harness.calls, [{ pid: firstPid(harness), signal: 'SIGTERM' }]);
-    assert.equal(ownProcess(harness.children[0] as unknown as ChildProcess).reason, 'startup-failed');
-    assertExitDisarmsEscalation(harness);
-    await host.dispose();
 });
 
 test('notes capability timeouts terminate all owned probe trees', async () => {

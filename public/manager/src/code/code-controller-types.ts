@@ -1,0 +1,53 @@
+import type {
+    CodeCreateSessionRequest, CodeItem, CodeModelCatalog, CodePermissionRequest, CodeSessionInfo,
+} from '../../../../src/code-mode/wire';
+import type { CodeGitInfo } from './code-session-client';
+
+export type CodeTransportState = 'connected' | 'reconnecting' | 'disconnected';
+export type CodeSessionFilter = { scope: 'all' | 'cwd'; archived: boolean };
+export type CodeOperationKind = 'idle' | 'creating' | 'sending' | 'stopping' | 'resuming' | 'patching' | 'unknown-send';
+export interface CodeControllerOptions { port: number; workingDir: string }
+
+export interface CodeControllerModel {
+    catalog: CodeModelCatalog | null;
+    sessions: CodeSessionInfo[];
+    selectedId: string | null;
+    session: CodeSessionInfo | null;
+    items: CodeItem[];
+    permissions: CodePermissionRequest[];
+    input: string;
+    selection: CodeCreateSessionRequest;
+    gitInfo: CodeGitInfo | null;
+    loading: boolean;
+    pending: boolean;
+    busy: boolean;
+    synced: boolean;
+    error: string | null;
+    transport: CodeTransportState;
+    operation: { kind: CodeOperationKind; error: string | null };
+    retryText: string | null;
+    canRetrySameSend: boolean;
+    permissionOperations: Record<string, { pending: boolean; error: string | null }>;
+    hasMoreSessions: boolean;
+    hasOlderHistory: boolean;
+    filter: CodeSessionFilter;
+    creationUnknown: boolean;
+    startAnotherSession(): void;
+    newSession(): void;
+    selectSession(id: string): Promise<void>;
+    setInput(text: string): void;
+    setSelection(patch: Partial<CodeCreateSessionRequest>): Promise<void>;
+    pickWorkspace(): Promise<void>;
+    send(): Promise<void>;
+    retrySameSend(): Promise<void>;
+    stop(): Promise<void>;
+    resume(): Promise<void>;
+    rename(id: string, title: string): Promise<void>;
+    archive(id: string, archived: boolean): Promise<void>;
+    answer(permission: CodePermissionRequest, optionId: string): Promise<void>;
+    refresh(): Promise<void>;
+    loadMoreSessions(): Promise<void>;
+    loadOlderHistory(): Promise<void>;
+    setFilter(filter: CodeSessionFilter): void;
+    clearError(): void;
+}

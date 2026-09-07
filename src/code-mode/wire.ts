@@ -38,6 +38,8 @@ export interface CodeSessionInfo {
     revision: number;
     createdAt: number;
     lastUsedAt: number;
+    /** Current index/snapshot attention, absent when not hydrated. */
+    pendingPermissionCount?: number;
 }
 
 export interface CodePermissionRequest {
@@ -115,6 +117,20 @@ export interface CodeEventsPage {
     events: CodeWireEvent[];
     nextSequence: number;
     throughSequence: number;
+    hasMore: boolean;
+}
+
+export interface CodeHistoryPage {
+    items: CodeItem[];
+    beforeSequence: number | null;
+    hasMore: boolean;
+    sequence: number;
+}
+
+export interface CodeSessionPage {
+    sessions: CodeSessionInfo[];
+    limit: number;
+    offset: number;
     hasMore: boolean;
 }
 

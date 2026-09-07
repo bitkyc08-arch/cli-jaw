@@ -333,6 +333,42 @@ test('constructor adds only Code schema and repeated initialization preserves re
     assert.deepEqual(reopened.readEvents('session-a').events, created.events);
 });
 
+test('materialized history pages return older complete rows without advancing live sequence', t => {
+    const { store } = fixture(t);
+    const admitted = admit(store);
+    for (let i = 0; i < 6; i++) store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, `m${i}`, `value-${i}`));
+    store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, 'm0', 'updated full value'));
+    store.settleTurn(owner(admitted.session), { status: 'completed' });
+    const watermark = store.read('session-a')!.sequence;
+    const newest = store.history('session-a', Number.MAX_SAFE_INTEGER, 2);
+    assert.deepEqual(newest.items.map(item => item.itemId), ['m5', 'turn-1:terminal']);
+    const older = store.history('session-a', newest.beforeSequence!, 2);
+    assert.deepEqual(older.items.map(item => item.itemId), ['m3', 'm4']);
+    const first = store.history('session-a', older.beforeSequence!, 10);
+    assert.equal(first.items.find(item => item.itemId === 'm0')?.text, 'updated full value');
+    assert.equal(first.hasMore, false);
+    assert.equal(first.sequence, watermark);
+    assert.equal(store.read('session-a')!.sequence, watermark);
+    expectError(() => store.history('session-a', -1), 'invalid_sequence', 400);
+    expectError(() => store.history('missing'), 'session_not_found', 404);
+});
+
+test('materialized history respects serialized byte budget and rejects an oversized first row', t => {
+    const db = new Database(':memory:');
+    t.after(() => db.close());
+    const store = new CodeStore(db, { limits: { maxSnapshotBytes: 1200 }, newId: () => 'history-turn' });
+    store.create(creation);
+    const active = admit(store);
+    for (let i = 0; i < 4; i++) store.commitItem(owner(active.session), message(active.receipt.turnId, `m${i}`, 'x'.repeat(500)));
+    const page = store.history('session-a', Number.MAX_SAFE_INTEGER, 100);
+    assert.equal(page.items.length, 1);
+    assert.equal(page.items[0]?.itemId, 'm3');
+    assert.equal(page.hasMore, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 1200);
+    store.commitItem(owner(active.session), message(active.receipt.turnId, 'large', 'x'.repeat(2000)));
+    expectError(() => store.history('session-a'), 'snapshot_limit');
+});
+
 test('first prompt supplies a bounded Unicode title without overwriting a user title', t => {
     const { store } = fixture(t);
     const first = admit(store, 'first', 'session-a', '  세션 💻 요청\nMore details');

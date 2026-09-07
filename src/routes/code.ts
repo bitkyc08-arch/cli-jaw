@@ -1,318 +1,79 @@
-// Code mode REST surface (Phase 1 scaffold). Streaming/permission events flow via
-// the 'jwc' SSE topic; prompt is accept-then-stream — never a blocking response.
-// Session transport owns execution; routes expose the scoped control surface.
+// Workspace utilities shared by the native Code workbench.
 import { execFile } from 'node:child_process';
-import { realpathSync } from 'node:fs';
-import { isAbsolute, relative } from 'node:path';
-import { Router, type RequestHandler } from 'express';
-import { acpHost } from '../code-mode/acp-host.js';
-import {
-    buildJwcModelRole,
-    clearJwcModelAssignment,
-    isJwcModelAssignmentRole,
-    readJwcModelProfilePresetInfo,
-    resolveJwcModelAssignments,
-    resolveJwcModelOptions,
-    writeJwcDefaultModelRole,
-    writeJwcModelAssignment,
-} from '../code-mode/model-options.js';
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative } from 'node:path';
+import type { Router, RequestHandler } from 'express';
 import { pickFolderNative } from '../core/folder-picker.js';
+import { asyncHandler } from '../http/async-handler.js';
 
-function git(cwd: string, args: string[]): Promise<string> {
+function realOrOriginal(path: string): string {
+    try { return realpathSync(path); }
+    catch { return path; }
+}
+
+/** Discover the filesystem worktree marker rather than trusting shared core.worktree. */
+function worktreeRoot(cwd: string): string | null {
+    let current = realOrOriginal(cwd);
+    while (true) {
+        if (existsSync(join(current, '.git'))) return current;
+        const parent = dirname(current);
+        if (parent === current) return null;
+        current = parent;
+    }
+}
+
+function git(cwd: string, root: string, args: string[]): Promise<string> {
     return new Promise(resolve => {
-        execFile('git', args, { cwd, timeout: 5_000 }, (err, stdout) => {
-            resolve(err ? '' : stdout.trim());
+        const env = { ...process.env };
+        for (const key of Object.keys(env)) if (key.startsWith('GIT_')) delete env[key];
+        env['GIT_OPTIONAL_LOCKS'] = '0';
+        execFile('git', ['--work-tree', root, ...args], { cwd, env, timeout: 5_000 }, (error, stdout) => {
+            resolve(error ? '' : stdout.trim());
         });
     });
 }
 
-function realOrOriginal(path: string): string {
-    try {
-        return realpathSync(path);
-    } catch {
-        return path;
-    }
-}
-
 export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): void {
-    // Workspace metadata for the picker (112.1 G1/G2).
-    app.get('/api/code/git-info', requireAuth, (req, res) => {
-        void (async () => {
-            const cwd = String(req.query['cwd'] || '');
-            if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
-            const branch = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
-            if (!branch) { res.json({ ok: true, isRepo: false, branch: null, worktrees: [] }); return; }
-            const repoRoot = await git(cwd, ['rev-parse', '--show-toplevel']);
-            const head = await git(cwd, ['rev-parse', '--short', 'HEAD']);
-            const statusOutput = await git(cwd, ['status', '--short']);
-            const statusLines = statusOutput ? statusOutput.split('\n').filter(Boolean) : [];
-            const status = {
-                dirty: statusLines.length > 0,
-                changed: statusLines.filter(line => !line.startsWith('??')).length,
-                untracked: statusLines.filter(line => line.startsWith('??')).length,
-            };
-            const porcelain = await git(cwd, ['worktree', 'list', '--porcelain']);
-            const worktrees = porcelain.split('\n\n').filter(Boolean).map(block => {
-                const lines = block.split('\n');
-                const path = lines.find(l => l.startsWith('worktree '))?.slice(9) ?? '';
-                const wtBranch = lines.find(l => l.startsWith('branch '))?.slice(7).replace('refs/heads/', '') ?? null;
-                const wtHead = lines.find(l => l.startsWith('HEAD '))?.slice(5) ?? null;
-                return { path, branch: wtBranch, head: wtHead, current: path === repoRoot };
-            });
-            const currentWorktree = worktrees.find(worktree => worktree.current);
-            const relativePath = repoRoot ? relative(repoRoot, realOrOriginal(cwd)) : '';
-            res.json({
-                ok: true,
-                isRepo: true,
-                repoRoot,
-                relativePath,
-                branch,
-                head,
-                status,
-                worktrees,
-                ...(currentWorktree ? { currentWorktree } : {}),
-            });
-        })();
-    });
+    app.get('/api/code/git-info', requireAuth, asyncHandler(async (req, res) => {
+        const value = req.query['cwd'];
+        if (typeof value !== 'string' || !isAbsolute(value) || value.length > 4096 || value.includes('\0')) {
+            res.status(400).json({ ok: false, error: 'absolute cwd required' }); return;
+        }
+        const cwd = realOrOriginal(value);
+        const root = worktreeRoot(cwd);
+        if (!root) { res.json({ ok: true, isRepo: false, branch: null, worktrees: [] }); return; }
+        const [branch, head, statusOutput, porcelain] = await Promise.all([
+            git(cwd, root, ['rev-parse', '--abbrev-ref', 'HEAD']),
+            git(cwd, root, ['rev-parse', '--short', 'HEAD']),
+            git(cwd, root, ['status', '--short']),
+            git(cwd, root, ['worktree', 'list', '--porcelain']),
+        ]);
+        if (!branch) { res.json({ ok: true, isRepo: false, branch: null, worktrees: [] }); return; }
+        const statusLines = statusOutput.split('\n').filter(Boolean);
+        const worktrees = porcelain.split('\n\n').filter(Boolean).map(block => {
+            const lines = block.split('\n');
+            const path = lines.find(line => line.startsWith('worktree '))?.slice(9) ?? '';
+            return { path,
+                branch: lines.find(line => line.startsWith('branch '))?.slice(7).replace('refs/heads/', '') ?? null,
+                head: lines.find(line => line.startsWith('HEAD '))?.slice(5) ?? null,
+                current: realOrOriginal(path) === root };
+        });
+        const currentWorktree = worktrees.find(worktree => worktree.current);
+        res.json({ ok: true, isRepo: true, repoRoot: root, relativePath: relative(root, cwd), branch, head,
+            status: { dirty: statusLines.length > 0, changed: statusLines.filter(line => !line.startsWith('??')).length,
+                untracked: statusLines.filter(line => line.startsWith('??')).length }, worktrees,
+            ...(currentWorktree ? { currentWorktree } : {}) });
+    }));
 
-    app.get('/api/code/models', requireAuth, (_req, res) => {
-        void (async () => {
-            const options = await resolveJwcModelOptions();
-            res.json({ ok: true, ...options });
-        })();
-    });
-
-    app.post('/api/code/model-default', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const modelId = String(body?.['modelId'] || '');
-            if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
-            try {
-                await writeJwcDefaultModelRole(modelId);
-                const options = await resolveJwcModelOptions();
-                res.json({ ok: true, ...options });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    app.post('/api/code/workspace/pick', requireAuth, asyncHandler(async (_req, res) => {
+        try {
+            const result = await pickFolderNative({ prompt: 'Select Code workspace folder' });
+            switch (result.status) {
+                case 'picked': res.json({ ok: true, path: result.path }); return;
+                case 'cancelled': res.json({ ok: true, cancelled: true }); return;
+                case 'busy': res.status(409).json({ ok: false, error: 'folder picker busy' }); return;
+                case 'unavailable': res.status(503).json({ ok: false, error: result.reason }); return;
             }
-        })();
-    });
-
-    // Slice 210: Code-specific OS folder picker for the Web Manager workspace button.
-    // Opens the native dialog on the Manager host and returns only the chosen path —
-    // it never mutates global project settings (no applySettings / projectDirs).
-    app.post('/api/code/workspace/pick', requireAuth, (_req, res) => {
-        void (async () => {
-            try {
-                const result = await pickFolderNative({ prompt: 'Select Code workspace folder' });
-                switch (result.status) {
-                    case 'picked': res.json({ ok: true, path: result.path }); return;
-                    case 'cancelled': res.json({ ok: true, cancelled: true }); return;
-                    case 'busy': res.status(409).json({ ok: false, error: 'folder picker busy' }); return;
-                    case 'unavailable': res.status(503).json({ ok: false, error: result.reason }); return;
-                }
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.get('/api/code/model-assignments', requireAuth, (_req, res) => {
-        void (async () => {
-            const assignments = await resolveJwcModelAssignments();
-            res.json({ ok: true, ...assignments });
-        })();
-    });
-
-    app.put('/api/code/model-assignments/:role', requireAuth, (req, res) => {
-        void (async () => {
-            const role = String(req.params['role'] || '');
-            if (!isJwcModelAssignmentRole(role)) { res.status(400).json({ ok: false, error: 'unknown model assignment role' }); return; }
-            const body = req.body as Record<string, unknown> | undefined;
-            let modelId = String(body?.['modelId'] || '');
-            if (!modelId) {
-                const provider = String(body?.['provider'] || '');
-                const model = String(body?.['model'] || '');
-                try {
-                    modelId = buildJwcModelRole(provider, model, body?.['thinkingLevel']);
-                } catch (err: unknown) {
-                    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-                    return;
-                }
-            }
-            if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
-            try {
-                await writeJwcModelAssignment(role, modelId);
-                const assignments = await resolveJwcModelAssignments();
-                res.json({ ok: true, ...assignments });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.delete('/api/code/model-assignments/:role', requireAuth, (req, res) => {
-        void (async () => {
-            const role = String(req.params['role'] || '');
-            if (!isJwcModelAssignmentRole(role)) { res.status(400).json({ ok: false, error: 'unknown model assignment role' }); return; }
-            try {
-                await clearJwcModelAssignment(role);
-                const assignments = await resolveJwcModelAssignments();
-                res.json({ ok: true, ...assignments });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.get('/api/code/model-presets', requireAuth, (_req, res) => {
-        void (async () => {
-            const presets = await readJwcModelProfilePresetInfo();
-            res.json({ ok: true, ...presets });
-        })();
-    });
-
-    app.get('/api/code/sessions', requireAuth, (_req, res) => {
-        res.json({ ok: true, sessions: acpHost.listSessions() });
-    });
-
-    app.get('/api/code/sessions/stored', requireAuth, (req, res) => {
-        void (async () => {
-            const cwd = typeof req.query['cwd'] === 'string' ? req.query['cwd'] : undefined;
-            const rawScope = typeof req.query['scope'] === 'string' ? req.query['scope'] : undefined;
-            const scope: 'all' | 'cwd' = rawScope === 'cwd' ? 'cwd' : 'all';
-            if (scope === 'cwd' && (!cwd || !isAbsolute(cwd))) {
-                res.status(400).json({ ok: false, error: 'absolute cwd required for cwd scope' });
-                return;
-            }
-            try {
-                const options = scope === 'cwd'
-                    ? { scope, cwd: cwd as string }
-                    : { scope };
-                const sessions = await acpHost.listStoredSessions(options);
-                res.json({ ok: true, sessions });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/load', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const sessionId = String(body?.['sessionId'] || '');
-            const cwd = String(body?.['cwd'] || '');
-            if (!sessionId || !cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'sessionId and absolute cwd required' }); return; }
-            try {
-                const session = await acpHost.loadSession(sessionId, cwd);
-                res.json({ ok: true, session });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/:id/ext', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const method = String(body?.['method'] || '');
-            if (!method) { res.status(400).json({ ok: false, error: 'method required' }); return; }
-            try {
-                const result = await acpHost.extMethod(String(req.params['id']), method, (body?.['params'] ?? {}) as Record<string, unknown>);
-                res.json({ ok: true, result });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/:id/fork', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const cwd = String(body?.['cwd'] || '');
-            if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
-            try {
-                const session = await acpHost.forkSession(String(req.params['id']), cwd);
-                res.status(201).json({ ok: true, session });
-            } catch (err: unknown) {
-                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/:id/model', requireAuth, (req, res) => {
-        const body = req.body as Record<string, unknown> | undefined;
-        const modelId = String(body?.['modelId'] || '');
-        if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
-        acpHost.setSessionModel(String(req.params['id']), modelId).then(
-            () => res.json({ ok: true }),
-            (err: unknown) => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-        );
-    });
-
-    app.post('/api/code/sessions', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const cwd = String(body?.['cwd'] || '');
-            const model = body?.['model'] ? String(body['model']) : undefined;
-            if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
-            try {
-                const session = await acpHost.newSession(cwd, model ? { model } : undefined);
-                res.status(201).json({ ok: true, session });
-            } catch (err) {
-                res.status(503).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/:id/prompt', requireAuth, (req, res) => {
-        void (async () => {
-            const body = req.body as Record<string, unknown> | undefined;
-            const text = String(body?.['text'] || '').trim();
-            if (!text) { res.status(400).json({ ok: false, error: 'text required' }); return; }
-            try {
-                const accepted = await acpHost.prompt(String(req.params['id']), text);
-                res.status(202).json({ ok: true, ...accepted });
-            } catch (err) {
-                res.status(404).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
-            }
-        })();
-    });
-
-    app.post('/api/code/sessions/:id/cancel', requireAuth, (req, res) => {
-        acpHost.cancel(String(req.params['id'])).then(
-            () => res.json({ ok: true }),
-            err => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-        );
-    });
-
-    app.post('/api/code/sessions/:id/config', requireAuth, (req, res) => {
-        const body = req.body as Record<string, unknown> | undefined;
-        const configId = String(body?.['configId'] || '');
-        const valueId = String(body?.['valueId'] || '');
-        if (!configId) { res.status(400).json({ ok: false, error: 'configId required' }); return; }
-        acpHost.setSessionConfig(String(req.params['id']), configId, valueId).then(
-            () => res.json({ ok: true }),
-            (err: unknown) => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-        );
-    });
-
-    app.delete('/api/code/sessions/:id', requireAuth, (req, res) => {
-        acpHost.closeSession(String(req.params['id'])).then(
-            () => res.json({ ok: true }),
-            err => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-        );
-    });
-
-    app.get('/api/code/permissions', requireAuth, (req, res) => {
-        const sessionId = req.query['session'] ? String(req.query['session']) : undefined;
-        res.json({ ok: true, permissions: acpHost.listPendingPermissions(sessionId) });
-    });
-
-    app.post('/api/code/permissions/:id', requireAuth, (req, res) => {
-        const body = req.body as Record<string, unknown> | undefined;
-        const optionId = body?.['optionId'] === null || body?.['optionId'] === undefined ? null : String(body['optionId']);
-        const answered = acpHost.answerPermission(String(req.params['id']), optionId);
-        if (!answered) { res.status(404).json({ ok: false, error: 'unknown permission id' }); return; }
-        res.json({ ok: true });
-    });
+        } catch (error) { res.status(500).json({ ok: false, error: error instanceof Error ? error.message : String(error) }); }
+    }));
 }

@@ -8,7 +8,7 @@ import { asyncHandler } from '../http/async-handler.js';
 import { fail } from '../http/response.js';
 import { httpCode, httpStatus } from './_http-error.js';
 
-export type CodeRouteService = Pick<CodeSessionManager, 'create' | 'list' | 'snapshot' | 'readEvents'
+export type CodeRouteService = Pick<CodeSessionManager, 'create' | 'list' | 'snapshot' | 'readEvents' | 'history'
     | 'prompt' | 'cancel' | 'attach' | 'patch' | 'answerPermission' | 'models'>;
 
 const PROMPT_MAX_BYTES = 1024 * 1024;
@@ -103,7 +103,7 @@ export function registerNativeCodeRoutes(
     app: Router,
     requireAuth: RequestHandler,
     getService: () => CodeRouteService,
-    prefix = '/api/code/native',
+    prefix = '/api/code',
 ): void {
     const router = Router();
     router.use(requireAuth);
@@ -138,6 +138,12 @@ export function registerNativeCodeRoutes(
         const after = queryInteger(req.query['afterSequence'], 'sequence', 0);
         const limit = Math.min(queryInteger(req.query['limit'], 'limit', 500, 1), 500);
         res.json({ ok: true, ...getService().readEvents(sessionId, after, limit) });
+    }));
+    router.get('/sessions/:id/items', asyncHandler(async (req, res) => {
+        const sessionId = id(req.params['id']);
+        const before = queryInteger(req.query['beforeSequence'], 'sequence', Number.MAX_SAFE_INTEGER);
+        const limit = Math.min(queryInteger(req.query['limit'], 'limit', 100, 1), 1000);
+        res.json({ ok: true, ...getService().history(sessionId, before, limit) });
     }));
     router.post('/sessions', asyncHandler(async (req, res) => {
         const input = createInput(req.body);

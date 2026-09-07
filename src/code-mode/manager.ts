@@ -3,7 +3,7 @@ import { CodeStore, CodeStoreError, type CodeSessionListOptions, type CodeSessio
 import type { CodeProviders } from './provider.js';
 import { DEFAULT_CODE_SETTINGS } from './types.js';
 import type {
-    CodeCancelRequest, CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage,
+    CodeCancelRequest, CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeHistoryPage,
     CodeModelCatalog, CodePatchSessionRequest, CodePermissionAnswer, CodePromptReceipt,
     CodePromptRequest, CodeProviderCatalog, CodeProviderId, CodeSessionInfo, CodeSnapshot, CodeWireEvent,
 } from './wire.js';
@@ -102,7 +102,10 @@ export class CodeSessionManager {
 
     list(options?: CodeSessionListOptions): CodeSessionInfo[] {
         this.ready();
-        return this.storage(() => this.options.store.list(options));
+        return this.storage(() => this.options.store.list(options)).map(row => {
+            try { return { ...row, pendingPermissionCount: this.sessions.get(row.sessionId)?.pendingPermissions().length ?? 0 }; }
+            catch { return row; } // An unavailable attention read stays unknown, never inferred zero.
+        });
     }
 
     snapshot(id: string): CodeSnapshot {
@@ -112,8 +115,14 @@ export class CodeSessionManager {
         // Registry pruning can commit settled permission items; do it before capturing H.
         const pendingPermissions = session?.pendingPermissions() ?? [];
         const snapshot = this.storage(() => this.options.store.snapshot(id));
-        return { ...snapshot, pendingPermissions: pendingPermissions.filter(permission =>
-            permission.turnId === snapshot.session.turnId && permission.epoch === snapshot.session.epoch) };
+        const current = pendingPermissions.filter(permission =>
+            permission.turnId === snapshot.session.turnId && permission.epoch === snapshot.session.epoch);
+        return { ...snapshot, session: { ...snapshot.session, pendingPermissionCount: current.length }, pendingPermissions: current };
+    }
+
+    history(id: string, beforeSequence?: number, limit?: number): CodeHistoryPage {
+        this.ready();
+        return this.storage(() => this.options.store.history(id, beforeSequence, limit));
     }
 
     readEvents(id: string, afterSequence?: number, limit?: number): CodeEventsPage {

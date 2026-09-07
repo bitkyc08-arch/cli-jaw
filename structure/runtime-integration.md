@@ -321,7 +321,7 @@ limits; version output never enters Activity, MESSAGE or channel delivery.
 
 ## Native Code sessions
 
-`src/code-mode/` owns the additive `/api/code/native` API. The host composes an
+`src/code-mode/` owns the `/api/code` API. The host composes an
 injectable store, session manager, transcript normalizer and four direct native
 adapters: Codex app-server, Claude Agent SDK, Cursor ACP and Grok ACP. Each
 provider uses its installed CLI and existing login. Catalog availability means

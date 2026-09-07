@@ -27,6 +27,7 @@ function fixture() {
         list(input) { capture('list', input); return [session]; },
         snapshot(id) { capture('snapshot', id); return { session, items: [], sequence: 7, pendingPermissions: [], truncated: false }; },
         readEvents(...args) { capture('events', ...args); return { events: [], nextSequence: 7, throughSequence: 7, hasMore: false }; },
+        history(...args) { capture('history', ...args); return { items: [], beforeSequence: null, sequence: 7, hasMore: false }; },
         prompt(id, input) {
             capture('prompt', id, input);
             return { duplicate, receipt: { turnId: 'turn-one', clientTurnKey: input.clientTurnKey, sequence: 8, status: 'accepted' } };
@@ -54,7 +55,7 @@ async function server<T>(run: (url: string, fixture: ReturnType<typeof fixture>,
     await once(http, 'listening');
     const address = http.address();
     assert.ok(address && typeof address === 'object');
-    try { return await run(`http://127.0.0.1:${address.port}${prefix ?? '/api/code/native'}`, f, () => reads); }
+    try { return await run(`http://127.0.0.1:${address.port}${prefix ?? '/api/code'}`, f, () => reads); }
     finally {
         await new Promise<void>(resolve => { http.close(() => resolve()); http.closeAllConnections(); });
     }
@@ -122,6 +123,9 @@ test('index, snapshot and replay reads preserve filters, caps and exact returned
         assert.deepEqual(f.calls.at(-1), { method: 'events', args: ['session-one', 7, 500] });
         assert.equal((await request(`${url}/sessions/session-one/events?afterSequence=-1`)).status, 400);
         assert.equal((await request(`${url}/sessions/session-one/events?afterSequence=1.5`)).status, 400);
+        const history = await request(`${url}/sessions/session-one/items?beforeSequence=4&limit=20`);
+        assert.deepEqual(await history.json(), { ok: true, items: [], beforeSequence: null, sequence: 7, hasMore: false });
+        assert.deepEqual(f.calls.at(-1), { method: 'history', args: ['session-one', 4, 20] });
         assert.equal(f.calls.some(call => call.method === 'attach'), false);
     });
 });

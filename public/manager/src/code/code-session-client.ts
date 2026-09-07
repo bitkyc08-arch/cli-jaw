@@ -1,89 +1,8 @@
-export interface CodeSession {
-    sessionId: string;
-    cwd: string;
-    status: 'starting' | 'idle' | 'streaming' | 'closed';
-    createdAt: number;
-    lastUsedAt: number;
-    title?: string;
-    replayEvents?: CodeSessionReplayEvent[];
-}
-
-export interface CodeSessionReplayEvent {
-    event: string;
-    sessionId: string;
-    update: Record<string, unknown>;
-}
-
-export interface StoredSession {
-    sessionId: string;
-    cwd: string;
-    title?: string;
-    firstMessage?: string;
-    updatedAt?: string;
-    lastModified?: number;
-    messageCount?: number;
-    size?: number;
-}
-
-export interface CodeModelProvider {
-    id: string;
-    models: string[];
-    efforts: string[];
-    modelSource?: 'jwc-cache' | 'static-fallback';
-}
-
-export interface CodeModelOptions {
-    providers: CodeModelProvider[];
-    defaultProvider: string;
-    defaultModel: string;
-    usageOrder?: string[];
-    degraded?: boolean;
-    error?: string;
-}
-
-export interface CodeModelAssignment {
-    role: 'default' | 'executor_ext' | 'executor' | 'architect' | 'planner' | 'critic';
-    tag: string;
-    name: string;
-    settingsPath: 'modelRoles' | 'task.agentModelOverrides';
-    modelId?: string;
-    provider?: string;
-    model?: string;
-    thinkingLevel?: string;
-}
-
-export interface CodeModelAssignmentInput {
-    provider: string;
-    model: string;
-    thinkingLevel?: string | null;
-}
-
-export interface CodeModelAssignments {
-    roles: CodeModelAssignment[];
-    activeModel: {
-        scope: 'session';
-        note: string;
-    };
-}
-
-export interface CodeModelPresetEntry {
-    name: string;
-    best?: string;
-    cheap?: string;
-}
-
-export interface CodeBuiltinModelProfile {
-    name: string;
-    source: 'builtin';
-}
-
-export interface CodeModelPresetInfo {
-    defaultProfile?: string;
-    taskPresets: CodeModelPresetEntry[];
-    builtinProfiles: CodeBuiltinModelProfile[];
-    applyAvailable: false;
-    applyReason: string;
-}
+import type {
+    CodeCancelRequest, CodeCreateSessionRequest, CodeEventsPage, CodeHistoryPage, CodeModelCatalog,
+    CodePatchSessionRequest, CodePermissionAnswer, CodePromptReceipt, CodePromptRequest,
+    CodeSessionInfo, CodeSessionPage, CodeSnapshot,
+} from '../../../../src/code-mode/wire';
 
 export interface CodeGitInfo {
     isRepo: boolean;
@@ -109,122 +28,88 @@ export interface CodeGitInfo {
     };
 }
 
+export interface CodeListOptions {
+    scope?: 'all' | 'cwd'; cwd?: string; archived?: boolean; offset?: number; limit?: number;
+}
 export interface CodeSessionClient {
-    listSessions(): Promise<CodeSession[]>;
-    listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' }): Promise<StoredSession[]>;
-    listModelOptions(): Promise<CodeModelOptions>;
-    setDefaultModel(modelId: string): Promise<CodeModelOptions>;
-    listModelAssignments(): Promise<CodeModelAssignments>;
-    setModelAssignment(role: CodeModelAssignment['role'], modelId: string): Promise<CodeModelAssignments>;
-    setModelAssignment(role: CodeModelAssignment['role'], input: CodeModelAssignmentInput): Promise<CodeModelAssignments>;
-    clearModelAssignment(role: CodeModelAssignment['role']): Promise<CodeModelAssignments>;
-    listModelPresets(): Promise<CodeModelPresetInfo>;
-    getGitInfo(cwd: string): Promise<CodeGitInfo>;
-    loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
-    createSession(cwd: string, model?: string): Promise<CodeSession>;
-    sendPrompt(sessionId: string, text: string): Promise<{ accepted: boolean; sessionId: string }>;
-    cancelPrompt(sessionId: string): Promise<void>;
-    closeSession(sessionId: string): Promise<void>;
-    answerPermission(permissionId: string, optionId: string | null): Promise<void>;
-    setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void>;
-    extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
-    forkSession(sessionId: string, cwd: string): Promise<CodeSession>;
-    setSessionModel(sessionId: string, modelId: string): Promise<void>;
+    listSessions(options?: CodeListOptions, signal?: AbortSignal): Promise<CodeSessionPage>;
+    listModelOptions(signal?: AbortSignal): Promise<CodeModelCatalog>;
+    snapshot(id: string, signal?: AbortSignal): Promise<CodeSnapshot>;
+    events(id: string, afterSequence: number, signal?: AbortSignal): Promise<CodeEventsPage>;
+    history(id: string, beforeSequence: number, signal?: AbortSignal): Promise<CodeHistoryPage>;
+    createSession(input: CodeCreateSessionRequest): Promise<CodeSessionInfo>;
+    patchSession(id: string, input: CodePatchSessionRequest): Promise<CodeSessionInfo>;
+    sendPrompt(id: string, input: CodePromptRequest): Promise<CodePromptReceipt>;
+    cancelPrompt(id: string, input: CodeCancelRequest): Promise<CodeSessionInfo>;
+    attachSession(id: string): Promise<CodeSessionInfo>;
+    answerPermission(id: string, input: CodePermissionAnswer): Promise<void>;
+    getGitInfo(cwd: string, signal?: AbortSignal): Promise<CodeGitInfo>;
     pickWorkspace(): Promise<{ ok: boolean; path?: string; cancelled?: boolean }>;
 }
 
-export function createCodeSessionClient(port: number): CodeSessionClient {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    const currentPort = typeof window !== 'undefined' ? window.location.port : '';
-    const base = origin && currentPort === String(port) ? origin : `http://127.0.0.1:${port}`;
+const ERROR_COPY: Record<string, string> = {
+    session_busy: 'This session is busy. Wait for it to finish or stop the current turn.',
+    request_not_current: 'This approval is no longer current. Refreshing its status.',
+    invalid_option: 'This approval option is no longer available. Refreshing its status.',
+    revision_conflict: 'Session settings changed elsewhere. Review the updated values and try again.',
+    invalid_sequence: 'Conversation history needs to be refreshed.',
+    snapshot_limit: 'This conversation exceeds the snapshot limit. Stop and recovery controls remain available.',
+    transcript_limit: 'The conversation has reached its storage limit.',
+    event_too_large: 'A conversation update exceeds the supported size.',
+    provider_unavailable: 'This runtime is unavailable. Check its installation and authentication.',
+    unsupported_model: 'This model is not available for the selected runtime.',
+    unsupported_effort: 'This effort is not supported by the selected runtime.',
+    unsupported_policy: 'This permission mode is not supported by the selected runtime.',
+    unsupported_capability: 'This runtime does not support this action.',
+    session_not_found: 'This session is no longer available. Its local draft is retained.',
+    unauthorized: 'Authentication is required to access this instance.',
+};
 
-    async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-        const opts: RequestInit = { method };
-        if (body) {
-            opts.headers = { 'Content-Type': 'application/json' };
-            opts.body = JSON.stringify(body);
+export class CodeClientError extends Error {
+    constructor(readonly code: string, readonly status: number, readonly session?: CodeSessionInfo) {
+        super(ERROR_COPY[code] ?? 'The request could not be completed. Refresh the session and try again.');
+        this.name = 'CodeClientError';
+    }
+}
+
+export function codeBaseOrigin(port: number): string {
+    return typeof window !== 'undefined' && window.location.port === String(port)
+        ? window.location.origin : `http://127.0.0.1:${port}`;
+}
+
+export function createCodeSessionClient(port: number): CodeSessionClient {
+    const base = codeBaseOrigin(port);
+    async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+        const response = await fetch(`${base}/api/code${path}`, {
+            method, ...(signal === undefined ? {} : { signal }),
+            ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.ok !== true) {
+            throw new CodeClientError(typeof data.error === 'string' ? data.error : 'code_request_failed', response.status, data.session);
         }
-        const res = await fetch(`${base}${path}`, opts);
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || `${method} ${path} failed`);
         return data as T;
     }
-
+    const sessionPath = (id: string) => `/sessions/${encodeURIComponent(id)}`;
+    const sessionRequest = async (method: string, path: string, body?: unknown) =>
+        (await request<{ session: CodeSessionInfo }>(method, path, body)).session;
     return {
-        async listSessions() {
-            const data = await request<{ sessions: CodeSession[] }>('GET', '/api/code/sessions');
-            return data.sessions;
+        listSessions(options = {}, signal) {
+            const query = new URLSearchParams();
+            for (const [key, value] of Object.entries(options)) if (value !== undefined) query.set(key, String(value));
+            return request('GET', `/sessions?${query}`, undefined, signal);
         },
-        async listStoredSessions(options: { cwd?: string; scope?: 'all' | 'cwd' } = {}) {
-            const scope = options.scope ?? 'all';
-            const params = new URLSearchParams({ scope });
-            if (scope === 'cwd' && options.cwd) params.set('cwd', options.cwd);
-            const qs = `?${params.toString()}`;
-            const data = await request<{ sessions: StoredSession[] }>('GET', `/api/code/sessions/stored${qs}`);
-            return data.sessions;
-        },
-        async listModelOptions() {
-            return request<CodeModelOptions>('GET', '/api/code/models');
-        },
-        async setDefaultModel(modelId: string) {
-            return request<CodeModelOptions>('POST', '/api/code/model-default', { modelId });
-        },
-        async listModelAssignments() {
-            return request<CodeModelAssignments>('GET', '/api/code/model-assignments');
-        },
-        async setModelAssignment(role: CodeModelAssignment['role'], input: string | CodeModelAssignmentInput) {
-            const body = typeof input === 'string' ? { modelId: input } : input;
-            return request<CodeModelAssignments>('PUT', `/api/code/model-assignments/${encodeURIComponent(role)}`, body);
-        },
-        async clearModelAssignment(role: CodeModelAssignment['role']) {
-            return request<CodeModelAssignments>('DELETE', `/api/code/model-assignments/${encodeURIComponent(role)}`);
-        },
-        async listModelPresets() {
-            return request<CodeModelPresetInfo>('GET', '/api/code/model-presets');
-        },
-        async getGitInfo(cwd: string) {
-            const data = await request<CodeGitInfo>('GET', `/api/code/git-info?cwd=${encodeURIComponent(cwd)}`);
-            return data;
-        },
-        async loadSession(sessionId: string, cwd: string) {
-            const data = await request<{ session: CodeSession }>('POST', '/api/code/sessions/load', { sessionId, cwd });
-            return data.session;
-        },
-        async createSession(cwd: string, model?: string) {
-            const data = await request<{ session: CodeSession }>('POST', '/api/code/sessions', {
-                cwd,
-                ...(model ? { model } : {}),
-            });
-            return data.session;
-        },
-        async sendPrompt(sessionId: string, text: string) {
-            return request<{ accepted: boolean; sessionId: string }>('POST', `/api/code/sessions/${sessionId}/prompt`, { text });
-        },
-        async cancelPrompt(sessionId: string) {
-            await request<unknown>('POST', `/api/code/sessions/${sessionId}/cancel`);
-        },
-        async closeSession(sessionId: string) {
-            await request<unknown>('DELETE', `/api/code/sessions/${sessionId}`);
-        },
-        async answerPermission(permissionId: string, optionId: string | null) {
-            await request<unknown>('POST', `/api/code/permissions/${permissionId}`, { optionId });
-        },
-        async setSessionConfig(sessionId: string, configId: string, valueId: string) {
-            await request<unknown>('POST', `/api/code/sessions/${sessionId}/config`, { configId, valueId });
-        },
-        async extMethod(sessionId: string, method: string, params?: Record<string, unknown>) {
-            const data = await request<{ result: Record<string, unknown> }>('POST', `/api/code/sessions/${sessionId}/ext`, { method, params });
-            return data.result;
-        },
-        async forkSession(sessionId: string, cwd: string) {
-            const data = await request<{ session: CodeSession }>('POST', `/api/code/sessions/${sessionId}/fork`, { cwd });
-            return data.session;
-        },
-        async setSessionModel(sessionId: string, modelId: string) {
-            await request<unknown>('POST', `/api/code/sessions/${sessionId}/model`, { modelId });
-        },
-        pickWorkspace() {
-            return request<{ ok: boolean; path?: string; cancelled?: boolean }>('POST', '/api/code/workspace/pick');
-        },
+        listModelOptions: signal => request('GET', '/models', undefined, signal),
+        snapshot: (id, signal) => request('GET', sessionPath(id), undefined, signal),
+        events: (id, afterSequence, signal) => request('GET', `${sessionPath(id)}/events?afterSequence=${afterSequence}&limit=500`, undefined, signal),
+        history: (id, beforeSequence, signal) => request('GET', `${sessionPath(id)}/items?beforeSequence=${beforeSequence}&limit=200`, undefined, signal),
+        createSession: input => sessionRequest('POST', '/sessions', input),
+        patchSession: (id, input) => sessionRequest('PATCH', sessionPath(id), input),
+        sendPrompt: (id, input) => request('POST', `${sessionPath(id)}/prompt`, input),
+        cancelPrompt: (id, input) => sessionRequest('POST', `${sessionPath(id)}/cancel`, input),
+        attachSession: id => sessionRequest('POST', `${sessionPath(id)}/attach`, {}),
+        async answerPermission(id, input) { await request('POST', `/permissions/${encodeURIComponent(id)}`, input); },
+        getGitInfo: (cwd, signal) => request('GET', `/git-info?cwd=${encodeURIComponent(cwd)}`, undefined, signal),
+        pickWorkspace: () => request('POST', '/workspace/pick'),
     };
 }

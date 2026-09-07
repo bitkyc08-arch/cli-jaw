@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import type {
-    CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeItem, CodeItemUpdate,
+    CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeHistoryPage, CodeItem, CodeItemUpdate,
     CodePatchSessionRequest, CodePermissionRequest, CodePromptReceipt, CodePromptRequest, CodeSessionError,
     CodeSessionInfo, CodeSessionStatus, CodeSnapshot, CodeWireEvent,
 } from './wire.js';
@@ -429,6 +429,43 @@ export class CodeStore {
             }
             const nextSequence = events.at(-1)?.sequence ?? afterSequence;
             return { events, nextSequence, throughSequence, hasMore: nextSequence < throughSequence };
+        })();
+    }
+
+    history(sessionId: string, beforeSequence = Number.MAX_SAFE_INTEGER, limit = 100): CodeHistoryPage {
+        if (!Number.isSafeInteger(beforeSequence) || beforeSequence < 0) {
+            throw new CodeStoreError('invalid_sequence', 'History cursor must be a nonnegative integer', 400);
+        }
+        const size = pageLimit(limit, CODE_SNAPSHOT_ITEM_MAX);
+        return this.database.transaction(() => {
+            const sequence = this.requireRecord(sessionId).sequence;
+            const page: CodeHistoryPage = { items: [], beforeSequence: null, hasMore: false, sequence };
+            let bytes = jsonBytes(page) + 64;
+            const rows = this.database.prepare(`SELECT item_id, first_sequence,
+                length(CAST(item_json AS BLOB)) AS byte_length FROM code_items
+                WHERE session_id = ? AND first_sequence < ? ORDER BY first_sequence DESC`)
+                .iterate(sessionId, beforeSequence) as IterableIterator<{ item_id: string; first_sequence: number; byte_length: number }>;
+            for (const row of rows) {
+                if (page.items.length >= size || bytes + row.byte_length + 1 > this.limits.maxSnapshotBytes) {
+                    if (page.items.length === 0) throw new CodeStoreError('snapshot_limit', 'History item exceeds byte limit', 409);
+                    page.hasMore = true;
+                    break;
+                }
+                const value = this.database.prepare('SELECT first_sequence, item_json FROM code_items WHERE session_id = ? AND item_id = ?')
+                    .get(sessionId, row.item_id) as ItemRow;
+                const item = mapItem(JSON.parse(value.item_json) as CodeItem, value.first_sequence);
+                const itemBytes = jsonBytes(item) + 1;
+                if (bytes + itemBytes > this.limits.maxSnapshotBytes) {
+                    if (page.items.length === 0) throw new CodeStoreError('snapshot_limit', 'History item exceeds byte limit', 409);
+                    page.hasMore = true;
+                    break;
+                }
+                page.items.push(item);
+                bytes += itemBytes;
+            }
+            page.items.reverse();
+            page.beforeSequence = page.items[0]?.firstSequence ?? null;
+            return page;
         })();
     }
 

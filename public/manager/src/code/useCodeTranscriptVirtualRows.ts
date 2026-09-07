@@ -20,14 +20,14 @@ export type CodeTranscriptVirtualRows = {
     measureElement: (element: HTMLDivElement | null) => void;
     virtualItems: VirtualItem[];
     totalSize: number;
+    restoreAnchor: (index: number, offset: number) => void;
 };
 
 export function useCodeTranscriptVirtualRows(args: {
     count: number;
     /**
-     * Changing this discards measurements. Normally the session id: row heights
-     * are keyed by index, so carrying them into a different transcript retains
-     * memory AND mis-measures the new rows.
+     * Changing the endpoint/session identity discards measurements. Item keys
+     * stay stable through streaming updates and older-history prepends.
      */
     resetKey?: string | null;
     scrollElementRef: RefObject<HTMLDivElement | null>;
@@ -91,6 +91,10 @@ export function useCodeTranscriptVirtualRows(args: {
     }, [args.count, args.estimateSize, args.getItemKey, virtualizer]);
 
     return {
+        restoreAnchor: (index, offset) => {
+            const position = virtualizer.getOffsetForIndex(index, 'start');
+            if (position) virtualizer.scrollToOffset(position[0] + offset, { behavior: 'auto' });
+        },
         measureElement: element => {
             if (element) virtualizer.measureElement(element);
         },

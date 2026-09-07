@@ -48,7 +48,6 @@ test('Electron terminal IPC owns shell process lifecycle separately from Code AC
     assert.match(preload, /ipcRenderer\.on\('terminal:data'/, 'preload must expose terminal data events');
     assert.match(preload, /ipcRenderer\.on\('terminal:exit'/, 'preload must expose terminal exit events');
 
-    assert.match(codeCanvas, /kind === 'code_child_exit'/, 'CodeCanvas must own JWC ACP child exit recovery');
     assert.doesNotMatch(codeCanvas, /getTerminalBridge|TerminalPanel|terminal:create|terminal:exit/, 'CodeCanvas must not own Electron terminal lifecycle');
     assert.doesNotMatch(codeWorkbench, /getTerminalBridge|TerminalPanel|terminal:create|terminal:exit/, 'CodeWorkbench must not own Electron terminal lifecycle');
     assert.doesNotMatch(terminalMain, /code_child_exit|code_permission_request|\/api\/code|jwc --mode acp/, 'Electron terminal backend must not emit or host Code ACP sessions');

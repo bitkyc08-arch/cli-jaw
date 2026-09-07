@@ -168,15 +168,11 @@ approval never answers it. Raw pipe retains existing NDJSON/agent_done terminati
 
 ### Direct topic `publish()` events
 
-이 이벤트들은 `broadcast()`를 거치지 않고 `src/core/event-bus.ts`의 `publish(topic, event, data)`로 직접 SSE bus에 들어간다. Public allowlist는 topic 단위이며 `jwc`는 public, `trace`는 internal-only다.
+이 이벤트들은 `broadcast()`를 거치지 않고 `src/core/event-bus.ts`의 `publish(topic, event, data)`로 직접 SSE bus에 들어간다. Public allowlist는 topic 단위이며 `code`는 native Code 세션의 public topic이며 `trace`는 internal-only다.
 
 | Topic | Event | 대표 payload | 발행 위치 / 용도 |
 | --- | --- | --- | --- |
-| `jwc` | `code_child_exit` | `{ code }` | `src/code-mode/acp-host.ts`; ACP child exit |
-| `jwc` | `code_<sessionUpdate>` | `{ sessionId, update }` | `src/code-mode/acp-host.ts`; ACP `session/update` sanitized public lane |
-| `jwc` | `code_permission_request` | `{ id, sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode permission prompt |
-| `jwc` | `code_session_created` / `code_session_loaded` / `code_session_forked` / `code_session_error` / `code_session_closed` | `{ sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode session lifecycle |
-| `jwc` | `code_turn_done` | `{ sessionId, stopReason }` | `src/code-mode/acp-host.ts`; Code mode turn completion |
+| `code` | `code_item` / `code_item_update` / `code_session` | `{ sessionId, sequence, ... }` | `src/code-mode/host.ts`; persisted native session events; compact updates apply once in contiguous sequence |
 | `jwc` | `code_compaction` / `code_retry` | `{ phase, ... }` | `src/agent/jwc-event-mapper.ts`; JWC compaction/retry status |
 | `worker` | `instance-status-changed` / `worker_settings_change` | worker diff/settings metadata | manager-side worker cache invalidation and settings change bridge |
 
