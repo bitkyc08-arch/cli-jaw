@@ -515,7 +515,7 @@ console.log(`
   CLI         : ${cli}
   Gateways    : ${messagingEnabledChannels.join(', ') || 'none'}
   Home channel: ${homeChannel}
-  Permissions : auto
+  Permissions : Auto (YOLO)
   Telegram    : ${tgEnabled ? '✅ ' + tgToken.slice(0, 10) + '...' : '❌ off'}
   Discord     : ${dcEnabled ? '✅ ' + dcToken.slice(0, 10) + '...' : '❌ off'}
   Slack       : ${slEnabled ? '✅ ' + slBotToken.slice(0, 10) + '...' + (slAppToken ? '' : ' (outbound only)') : '❌ off'}

@@ -40,7 +40,7 @@ const DEFAULT_AUTO_TOKENS: ReadonlyArray<string> = [
 // ─── Pure helpers (exported for tests) ───────────────────────────────
 
 export function configuredPolicyLabel(value: unknown): string {
-    if (value === 'auto') return 'Auto';
+    if (value === 'auto') return 'Auto (YOLO)';
     if (value === 'safe') return 'Safe';
     if (value === null || value === undefined) return 'Not provided';
     if (Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
@@ -80,10 +80,9 @@ export function isPermissionToken(token: string): boolean {
 }
 
 /**
- * Seed the Custom allowlist when the user flips Auto → Custom.
- * If a known auto-resolved list is available we use it verbatim; otherwise we
- * fall back to a small built-in default the runtime accepts. This is the only
- * place we materialise the implicit Auto list as an explicit array.
+ * Provide starter tokens when the user switches Auto (YOLO) → Custom.
+ * Use valid supplied tokens when available; otherwise use built-in defaults.
+ * These starter tokens do not describe the Auto (YOLO) policy.
  */
 export function seedAutoAllowlist(
     resolved?: ReadonlyArray<string> | null,
@@ -102,7 +101,7 @@ export function isAllowlistValid(tokens: ReadonlyArray<string>): boolean {
 // ─── Page component ──────────────────────────────────────────────────
 
 const MODE_OPTIONS = [
-    { value: 'auto', label: 'Auto — runtime resolves the allowlist' },
+    { value: 'auto', label: 'Auto (YOLO)' },
     { value: 'custom', label: 'Custom — explicit allowlist below' },
 ];
 
@@ -232,7 +231,7 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
         <form className="settings-page-form" onSubmit={(event) => event.preventDefault()}>
             <SettingsSection
                 title="Permissions"
-                hint="Selecting a value changes the draft. Save applies it."
+                hint="Selecting a value changes the draft. Save applies it. Auto (YOLO) requests automatic approval or permission bypass. Behavior varies by runtime."
             >
                 <SelectField
                     id="permissions-mode"
@@ -263,8 +262,8 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
                         </p>
                         {isEmpty && (
                             <InlineWarn role="alert">
-                                Saving with an empty Custom allowlist would deny every action.
-                                Add at least one token or switch back to Auto.
+                                An empty Custom allowlist cannot be saved.
+                                Add at least one token or switch back to Auto (YOLO).
                             </InlineWarn>
                         )}
                     </>
@@ -273,7 +272,7 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
 
             <SettingsSection
                 title="Saved policy"
-                hint="Reflects the saved snapshot from /api/settings."
+                hint="Shows the saved permission policy."
             >
                 <p className="settings-readonly-line">
                     <span className="settings-field-label">Configured policy:</span>{' '}

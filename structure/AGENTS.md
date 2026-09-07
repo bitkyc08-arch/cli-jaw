@@ -82,4 +82,4 @@ When refreshing docs from recent non-strict commits, check these first:
 - `src/browser/adaptive-fetch/scheduler.ts` / `src/browser/web-ai/session-artifacts.ts`: adaptive-fetch P0 + web-ai parity wave — `infra.md`, `str_func.md` counts (web-ai 96, adaptive-fetch 34).
 - Keep root `AGENTS.md`, `CLAUDE.md`, `README.md`, and public `docs/dev/` pages aligned with this folder when the architecture map changes.
 
-- The Classic permission selector saves explicit Auto/Safe choices. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.
+- The Classic permission selector offers Auto (YOLO) / Safe choices, stored as literal `auto` / `safe`. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.

@@ -62,7 +62,7 @@ test.beforeEach(() => {
 test.after(() => { resetWebUiDom(); mock.restoreAll(); });
 
 for (const [value, label] of [
-    ['auto', 'Auto'], ['safe', 'Safe'], [[], 'Custom (0 entries)'], [['auto'], 'Custom (1 entry)'],
+    ['auto', 'Auto (YOLO)'], ['safe', 'Safe'], [[], 'Custom (0 entries)'], [['auto'], 'Custom (1 entry)'],
     [[' read ', ''], 'Custom (2 entries)'], [null, 'Not provided'], [undefined, 'Not provided'],
     ['AUTO', 'Unrecognized'], ['<img src=x onerror=alert(1)>', 'Unrecognized'],
     [{ secret: 'DO_NOT_SHOW' }, 'Unrecognized'], [['read', 1], 'Unrecognized'],
@@ -106,12 +106,12 @@ for (const [from, to] of [['auto', 'safe'], ['safe', 'auto']] as const) {
         try {
             assert.deepEqual(writes, [{ path: '/api/settings', method: 'PUT', body: { permissions: to } }]);
             assert.equal(select().disabled, true);
-            assert.equal(readout(), `Configured policy: ${from === 'auto' ? 'Auto' : 'Safe'}`);
+            assert.equal(readout(), `Configured policy: ${from === 'auto' ? 'Auto (YOLO)' : 'Safe'}`);
             await setPerm(to);
             await setPerm(from);
             assert.equal(writes.length, 1, 'pending choices do not enqueue another save');
         } finally { pending.resolve(settings(to)); await saving; }
-        assert.equal(readout(), `Configured policy: ${to === 'auto' ? 'Auto' : 'Safe'}`);
+        assert.equal(readout(), `Configured policy: ${to === 'auto' ? 'Auto (YOLO)' : 'Safe'}`);
         assert.equal(select().value, to);
         assert.equal(select().disabled, false);
     });
@@ -130,7 +130,7 @@ test('Classic displays the confirmed response rather than the submitted choice',
     saveSettings = async () => settings('auto');
     await setPerm('safe');
     assert.equal(writes.length, 1);
-    assert.equal(readout(), 'Configured policy: Auto');
+    assert.equal(readout(), 'Configured policy: Auto (YOLO)');
     assert.equal(select().value, 'auto');
 });
 
@@ -189,7 +189,7 @@ for (const timing of ['before PUT', 'during PUT'] as const) {
         assert.equal(writes.length, 1);
         readSettings = async () => settings('auto');
         await loadSettings();
-        assert.equal(readout(), 'Configured policy: Auto', 'fresh reads still hydrate after the save');
+        assert.equal(readout(), 'Configured policy: Auto (YOLO)', 'fresh reads still hydrate after the save');
         assert.equal(writes.length, 1);
     });
 }
@@ -204,7 +204,7 @@ test('Classic GET completing while PUT is pending does not hydrate permissions',
         assert.equal(readout(), 'Configured policy: Safe');
         assert.equal(select().disabled, true);
     } finally { put.resolve(settings('auto')); await saving; }
-    assert.equal(readout(), 'Configured policy: Auto');
+    assert.equal(readout(), 'Configured policy: Auto (YOLO)');
 });
 
 for (const first of ['CLI settings', 'permissions'] as const) {

@@ -14,7 +14,7 @@ type PermissionQuickSectionProps = {
 };
 
 const MODE_OPTIONS = [
-    { value: 'auto', label: 'Auto' },
+    { value: 'auto', label: 'Auto (YOLO)' },
     { value: 'custom', label: 'Custom allowlist' },
 ];
 
@@ -29,7 +29,7 @@ export function PermissionQuickSection({ value, configuredValue, onChange }: Per
     return (
         <SettingsSection
             title="Permissions"
-            hint="Selecting a value changes the draft. Save applies it."
+            hint="Selecting a value changes the draft. Save applies it. Auto (YOLO) requests automatic approval or permission bypass. Behavior varies by runtime."
         >
             <SelectField
                 id="agent-permissions-mode"

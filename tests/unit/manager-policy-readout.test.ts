@@ -84,7 +84,7 @@ async function choose(container: HTMLElement, id: string, prefix: string) {
 test('mounted Agent shows raw configured Safe despite Auto editor coercion, with no writes on load or rerender', bounded, async t => {
     const h = await page(t, 'agent', 'safe');
     assert.equal(h.label(), 'Configured policy: Safe');
-    assert.equal(h.container.querySelector('#agent-permissions-mode .settings-select-value')?.textContent, 'Auto');
+    assert.equal(h.container.querySelector('#agent-permissions-mode .settings-select-value')?.textContent, 'Auto (YOLO)');
     assert.match(h.container.querySelector('#agent-permissions-mode')?.getAttribute('aria-label') ?? '', /^Change policy to:/);
     await h.render(); await h.save();
     assert.deepEqual(h.api.writes, []); assert.equal(h.dirty.pending.has('permissions'), false);
@@ -110,7 +110,7 @@ for (const mode of ['Auto', 'Custom']) test(`mounted Agent explicit ${mode} pres
     assert.equal(h.label(), 'Configured policy: Safe'); assert.deepEqual(h.api.writes, []);
     await h.save();
     assert.deepEqual(h.api.writes, [{ path: '/api/settings', body: { permissions: expected } }]);
-    assert.equal(h.label(), mode === 'Auto' ? 'Configured policy: Auto' : 'Configured policy: Custom (5 entries)');
+    assert.equal(h.label(), mode === 'Auto' ? 'Configured policy: Auto (YOLO)' : 'Configured policy: Custom (5 entries)');
 });
 
 test('mounted detailed Permissions preserves Safe-to-Auto NOOP and explains the Agent path', bounded, async t => {
@@ -129,7 +129,7 @@ test('detailed known Custom keeps its payload and never shows unknown-shape guid
     assert.doesNotMatch(h.container.textContent ?? '', /Use Agent to change/);
     await choose(h.container, h.modeId, 'Auto'); await h.save();
     assert.deepEqual(h.api.writes, [{ path: '/api/settings', body: { permissions: 'auto' } }]);
-    assert.equal(h.label(), 'Configured policy: Auto');
+    assert.equal(h.label(), 'Configured policy: Auto (YOLO)');
 });
 
 test('detailed empty Custom stays invalid for save while its configured count remains truthful', bounded, async t => {
@@ -158,7 +158,7 @@ for (const kind of ['agent', 'detail'] as const) test(`${kind} delayed snapshot 
 
 test('standalone QuickSection fixed readout matrix never normalizes policy or invokes editor on rerender', bounded, async t => {
     const h = await surface(t), changes: unknown[] = [];
-    const cases: Array<[unknown, string]> = [['auto', 'Auto'], ['safe', 'Safe'], [[], 'Custom (0 entries)'],
+    const cases: Array<[unknown, string]> = [['auto', 'Auto (YOLO)'], ['safe', 'Safe'], [[], 'Custom (0 entries)'],
         [['auto'], 'Custom (1 entry)'], [[' read ', ''], 'Custom (2 entries)'], [null, 'Not provided'],
         [undefined, 'Not provided'], ['AUTO', 'Unrecognized'], ['<img src=x onerror=alert(1)>', 'Unrecognized'],
         [{ secret: 'DO_NOT_RENDER' }, 'Unrecognized'], [['read', 1], 'Unrecognized']];
