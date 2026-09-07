@@ -201,6 +201,16 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Native decisions
 
+Pi capability preparation owns one asynchronous, completed-close version probe
+per RPC instance; preparing input is not dispatched or treated as legacy yet.
+Keep both capability getters live and typed finality unchanged. Direct Stop and
+RPC exit enter the same bounded paired cleanup owner; persistent first failure
+claims its result before cleanup. Pi worker deletion requires both the immutable
+physical receipt and captured fresh-directory identity, never live workingDir
+inequality. Uncertainty retains data, with no late automatic deletion. The old
+3s resolver and opaque-wrapper/aggregate-shutdown limits remain explicit. Sync
+runtime-integration and root notes; do not add numeric tree signals or a registry.
+
 Interactive TUI Activity is implemented in `src/cli/tui/activity*.ts` and
 `bin/commands/tui/activity*.ts`. Default Activity/explicit Legacy is independent of
 transport. Snapshot owns live admission; F6 is read-only history, never a message/
