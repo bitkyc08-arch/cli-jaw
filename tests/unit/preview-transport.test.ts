@@ -64,7 +64,7 @@ test('buildPreviewState uses legacy path on Safari even when origin preview is r
     try {
         const state = buildPreviewState(onlineInstance, scanWithOriginPreview, { theme: 'dark' });
         assert.equal(state.transport, 'legacy-path');
-        assert.equal(state.src, '/i/3457/?jawTheme=dark');
+        assert.equal(state.src, '/i/3457/0?jawTheme=dark');
     } finally {
         Object.defineProperty(globalThis, 'navigator', { configurable: true, value: original });
     }

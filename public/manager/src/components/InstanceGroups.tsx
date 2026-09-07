@@ -210,7 +210,7 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
                         jumpHint,
                     );
                 })}
-                {group.id === 'active' && visible[0] ? props.renderActiveSessionList?.(visible[0].port) : null}
+                {group.id === 'active' && visible[0]?.ok ? props.renderActiveSessionList?.(visible[0].port) : null}
                 {group.id === 'settled' && settledExpanded && hiddenSettled > 0 ? (
                     <button
                         type="button"
