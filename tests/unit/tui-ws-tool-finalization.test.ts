@@ -6,7 +6,7 @@ import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
 import { appendUserItem, replaceNativeAssistantFinal } from '../../src/cli/tui/transcript.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { stopSpinner } from '../../src/cli/tui/spinner.ts';
 import { refreshInfo, refreshActivityIdentity } from '../../bin/commands/tui/api.js';
 import { applySettingsSelection } from '../../bin/commands/tui/overlays.js';
@@ -22,9 +22,9 @@ function makeCtx(): TuiContext {
     return {
         ws: { send() { /* no-op */ }, close() { /* no-op */ } },
         apiUrl: '',
-        info: { cli: 'jwc', workingDir: '/tmp/project', model: 'test-model' },
+        info: { cli: 'codex', workingDir: '/tmp/project', model: 'test-model' },
         accent: '',
-        label: 'jwc',
+        label: 'codex',
         dir: '/tmp/project',
         runtimeLocale: 'en',
         tuiConfig: { theme: 'dark', fullscreen: true, pasteCollapseLines: 2, pasteCollapseChars: 160 },
@@ -57,7 +57,7 @@ function makeCtx(): TuiContext {
         promptPrefix: '  > ',
         footer: renderStatusBar({
             model: 'test-model',
-            engine: 'jwc',
+            engine: 'codex',
             engineAccent: '\x1b[36m',
             state: 'idle',
             cwd: '/tmp/project',

@@ -1,6 +1,5 @@
 import { sharkIcon } from './icons.js';
 import { clipTextToCols, visualWidth } from './renderers.js';
-// jawcode bundle integration available via jawcode-render.js when needed
 
 const SHARK_ART = [
     '            ▄▄▄▄▄▄            ',

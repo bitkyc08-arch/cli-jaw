@@ -6,8 +6,7 @@ import { closeAutocomplete } from '../../../src/cli/tui/overlay.js';
 import { visualWidth, cursorScreenPos, layoutComposerText } from '../../../src/cli/tui/renderers.js';
 import { resolveShellLayout, setupScrollRegion } from '../../../src/cli/tui/shell.js';
 import { c, hrLine, getRows, type TuiContext } from './types.js';
-import { renderStatusBar } from '../../../src/cli/tui/jawcode-bridge.js';
-import { isInitialized, getInteractive } from '../../../src/cli/tui/jawcode-render.js';
+import { renderStatusBar } from '../../../src/cli/tui/presentation.js';
 
 const contPrefixFor = () => `  ${c.dim}\u00B7 ${c.reset}`;
 
@@ -66,10 +65,7 @@ export function rebuildFooter(ctx: TuiContext): void {
         port: ctx.serverPort,
         orchPhase: ctx.orchPhase,
     });
-    const theme = isInitialized() ? (() => { try { return getInteractive().theme; } catch { return null; } })() : null;
-    ctx.promptPrefix = theme
-        ? `  ${theme.fg('accent', theme.bold('\u276F'))} `
-        : `  ${ctx.accent}${c.bold}\u276F${c.reset} `;
+    ctx.promptPrefix = `  ${ctx.accent}${c.bold}\u276F${c.reset} `;
     if (ctx.displayMode === 'fullscreen') return;
     const preserveCursor = ctx.store.transcript.items.some(item => item.type === 'activity' && item.lineActiveItemId !== null);
     if (preserveCursor) process.stdout.write('\x1b7');
@@ -91,14 +87,6 @@ export function shortenProjectPathForFooter(projectRoot: string): string {
 
 export function renderBlockSeparator(): void {
     process.stdout.write('\n');
-    if (isInitialized()) {
-        try {
-            const { DynamicBorder } = getInteractive();
-            const db = new DynamicBorder();
-            console.log(db.render(process.stdout.columns || 80)[0] || '');
-            return;
-        } catch { /* fallback */ }
-    }
     console.log(`  ${c.dim}${hrLine()}${c.reset}`);
 }
 

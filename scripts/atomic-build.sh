@@ -18,41 +18,6 @@ cp -R src/prompt/templates/. "$STAGING/src/prompt/templates/"
 cp -R prompts/. "$STAGING/prompts/"
 cp -R src/browser/adaptive-fetch/vendor/. "$STAGING/src/browser/adaptive-fetch/vendor/"
 
-# bun-shim.mjs is a COMMITTED source asset, unlike the jawcode bundles below
-# which are generated and gitignored. jawcode-render.ts imports the shim
-# unconditionally, so gating its copy on a generated artifact made every clean
-# build (CI, release, any fresh checkout) publish a dist that cannot load its
-# own renderer — `jaw chat --raw` then died with ERR_MODULE_NOT_FOUND (#275).
-mkdir -p "$STAGING/src/lib/tui"
-cp src/lib/tui/bun-shim.mjs "$STAGING/src/lib/tui/"
-
-# jawcode TUI bundle + native addon (macOS only)
-if [ -f src/lib/tui/jawcode-tui-bundle.mjs ]; then
-    mkdir -p "$STAGING/src/lib/native"
-    cp src/lib/tui/jawcode-tui-bundle.mjs "$STAGING/src/lib/tui/"
-    [ -f src/lib/tui/jawcode-interactive-bundle.mjs ] && cp src/lib/tui/jawcode-interactive-bundle.mjs "$STAGING/src/lib/tui/"
-    NATIVE_TAG="$(node -p '`${process.platform}-${process.arch}`')"
-    NATIVE_FILE="pi_natives.${NATIVE_TAG}.node"
-    NATIVE_SRC=""
-    for candidate in \
-        "src/lib/native/$NATIVE_FILE" \
-        "electron/sidecar/server/node_modules/@jawcode-dev/natives/native/$NATIVE_FILE" \
-        "node_modules/@jawcode-dev/natives/native/$NATIVE_FILE" \
-        "node_modules/@jawcode-internal/natives/native/$NATIVE_FILE" \
-        "electron/sidecar/server/dist/src/lib/native/$NATIVE_FILE" \
-        "electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server/dist/src/lib/native/$NATIVE_FILE"; do
-        if [ -f "$candidate" ]; then
-            NATIVE_SRC="$candidate"
-            break
-        fi
-    done
-    if [ -n "$NATIVE_SRC" ]; then
-        cp "$NATIVE_SRC" "$STAGING/src/lib/native/$NATIVE_FILE"
-    elif [ "$NATIVE_TAG" = "darwin-arm64" ]; then
-        echo "[atomic-build] warning: $NATIVE_FILE not found; jawcode TUI bundle will use fallback/no-native path" >&2
-    fi
-fi
-
 # Atomic swap with rollback on failure
 rm -rf "$OLD"
 if [ -d dist ]; then

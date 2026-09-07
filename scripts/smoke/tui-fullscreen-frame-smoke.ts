@@ -30,9 +30,9 @@ function makeCtx(): TuiContext {
     return {
         ws: { send() { /* no-op */ }, close() { /* no-op */ } },
         apiUrl: 'http://127.0.0.1:3457',
-        info: { cli: 'jwc', workingDir: '/tmp/project', model: 'test-model' },
+        info: { cli: 'codex', workingDir: '/tmp/project', model: 'test-model' },
         accent: '',
-        label: 'jwc',
+        label: 'codex',
         dir: '/tmp/project',
         runtimeLocale: 'en',
         tuiConfig: { theme: 'dark', fullscreen: true, pasteCollapseLines: 2, pasteCollapseChars: 160, keymapPreset: 'default', diffStyle: 'summary' },

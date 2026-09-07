@@ -117,3 +117,13 @@ Read-only old-scope F6 selection, live updates, presentation changes and resize 
 the committed sentinel. Actual OS-PTY qualification separately exercises repeated
 turns, retained record/long-answer navigation and the Appearance → Legacy write.
 Terminal-model tests are not a substitute for that driven surface or font testing.
+
+## Local presentation ownership
+
+TUI rendering uses `src/cli/tui/presentation.ts` and the existing local Markdown,
+frame, viewport and Activity layers. It does not initialize an optional renderer,
+load Jawcode/Bun bundles or copy their native addon into `dist`. Tool rows retain
+local tree indentation and elapsed timing; subagent presentation remains local.
+Streaming cursors are added after Markdown layout so a table or closing fence
+cannot consume the cursor or change its content. Width and grapheme handling use
+the shared ANSI/CJK utilities; the native Activity final stays literal.

@@ -2,8 +2,7 @@ import {
     consumePasteProtocol, getComposerDisplayText, getDisplayCursorOffset, setBracketedPaste,
 } from '../../../src/cli/tui/composer.js';
 import { renderMarkdown } from '../../../src/cli/tui/markdown.js';
-import { renderMarkdownJawcode, isInitialized, getInteractive } from '../../../src/cli/tui/jawcode-render.js';
-import { renderToolLine, renderToolBlock, renderThinkingCollapse } from '../../../src/cli/tui/jawcode-bridge.js';
+import { renderToolLine, renderToolBlock, renderThinkingCollapse } from '../../../src/cli/tui/presentation.js';
 import { classifyKeyAction, splitKeyInput, type KeyAction } from '../../../src/cli/tui/keymap.js';
 import { getCompletionItems } from '../../../src/cli/commands.js';
 import { composeHelpOntoFrame, composePaletteOntoFrame, composeSelectorOntoFrame, composeBgtaskOntoFrame } from '../../../src/cli/tui/overlay.js';
@@ -56,6 +55,20 @@ function wrapPlainLines(text: string, width: number): string[] {
     return text.split('\n').flatMap(line => line.length === 0 ? [''] : wrapTextToCols(line, safeWidth));
 }
 
+/** The cursor is terminal chrome, never Markdown input (table/fence syntax). */
+function appendStreamingCursor(rows: string[], width: number): string[] {
+    const cursor = `${c.cyan}▍${c.reset}`;
+    let last = rows.length - 1;
+    while (last >= 0 && visualWidth(rows[last]!) === 0) last--;
+    if (last >= 0 && visualWidth(rows[last]!) + 2 <= width) {
+        rows[last] += ` ${cursor}`;
+    } else {
+        const gutter = ' '.repeat(Math.max(0, Math.min(2, width - 1)));
+        rows.splice(last + 1, 0, `${gutter}${cursor}`);
+    }
+    return rows;
+}
+
 function renderUserBlock(item: Extract<TranscriptItem, { type: 'user' }>, width: number, gutter: string): string[] {
     const header = `${gutter}${c.cyan}${c.bold}╭─ You${c.reset}`;
     const bodyPrefix = `${gutter}${c.cyan}│${c.reset} `;
@@ -89,9 +102,8 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
             }
             const agentLabel = item.agentId ? `${c.dim}[${item.agentId}]${c.reset} ` : '';
             if (item.streaming && !item.text) {
-                return [`${gutter}${agentLabel}${c.cyan}▍${c.reset}`];
+                return appendStreamingCursor(agentLabel ? [`${gutter}${agentLabel.trimEnd()}`] : [], width);
             }
-            const cursor = item.streaming ? `${c.cyan}▍${c.reset}` : '';
             const header = agentLabel ? `${gutter}${agentLabel}\n` : '';
             // Thinking block detection — jawcode collapses thinking to 1 line when not streaming
             const thinkMatch = !item.streaming && item.text.startsWith('<think');
@@ -102,11 +114,9 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
                     renderThinkingCollapse(item.text, thinkLines, false),
                 ];
             }
-            const mdText = item.text + (cursor ? ` ${cursor}` : '');
-            const body = isInitialized()
-                ? renderMarkdownJawcode(mdText, w).join('\n')
-                : renderMarkdown(mdText, { width: w, gutter });
-            return (header + body).split('\n');
+            const body = renderMarkdown(item.text, { width: w, gutter });
+            const rows = (header + body).split('\n');
+            return item.streaming ? appendStreamingCursor(rows, width) : rows;
         }
         case 'thinking': {
             const agentLabel = item.agentId ? `${c.dim}[${item.agentId}]${c.reset} ` : '';
@@ -396,7 +406,6 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
         ];
 
     // Input box with border — width-safe and cursor-aware for IME/wide glyphs.
-    const box = isInitialized() ? (() => { try { return getInteractive().theme?.boxSharp; } catch { return null; } })() : null;
     const composerBox = composeComposerBox(
         composerText,
         getDisplayCursorOffset(ctx.store.composer),
@@ -410,12 +419,12 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
             textCode: READABLE_TEXT,
             placeholderCode: c.gray,
             border: {
-                topLeft: box?.topLeft ?? '┌',
-                topRight: box?.topRight ?? '┐',
-                bottomLeft: box?.bottomLeft ?? '└',
-                bottomRight: box?.bottomRight ?? '┘',
-                horizontal: box?.horizontal ?? '─',
-                vertical: box?.vertical ?? '│',
+                topLeft: '┌',
+                topRight: '┐',
+                bottomLeft: '└',
+                bottomRight: '┘',
+                horizontal: '─',
+                vertical: '│',
             },
         },
     );

@@ -5,7 +5,7 @@ import { stripVTControlCharacters } from 'node:util';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { isSpinning, stopSpinner } from '../../src/cli/tui/spinner.ts';
 import { cleanupScrollRegion } from '../../src/cli/tui/shell.ts';
 
@@ -14,8 +14,8 @@ import { cleanupScrollRegion } from '../../src/cli/tui/shell.ts';
 function makeCtx(mode: 'line' | 'fullscreen', raw = false): TuiContext {
     return {
         ws: { transport: 'ws', send() {}, on() {}, close() {} },
-        apiUrl: '', info: { cli: 'jwc', workingDir: '/tmp/project', model: 'test-model' },
-        accent: '', label: 'jwc', dir: '/tmp/project', runtimeLocale: 'en',
+        apiUrl: '', info: { cli: 'codex', workingDir: '/tmp/project', model: 'test-model' },
+        accent: '', label: 'codex', dir: '/tmp/project', runtimeLocale: 'en',
         tuiConfig: { theme: 'dark', fullscreen: mode === 'fullscreen', pasteCollapseLines: 2, pasteCollapseChars: 160 },
         settingsSnapshot: {}, values: { port: '3457', raw, simple: false }, isRaw: raw,
         store: createTuiStore(), overlayBoxHeight: 0, inputActive: false,
@@ -25,7 +25,7 @@ function makeCtx(mode: 'line' | 'fullscreen', raw = false): TuiContext {
         prevLineCount: 1, promptCursorRow: 0, resizeTimer: null,
         ideEnabled: false, idePopEnabled: false, preFileSetQueue: [],
         chatCwd: '/tmp/project', isGit: false, detectedIde: null, promptPrefix: '  > ',
-        footer: renderStatusBar({ model: 'test-model', engine: 'jwc', engineAccent: '', state: 'idle', cwd: '/tmp/project', port: 3457 }),
+        footer: renderStatusBar({ model: 'test-model', engine: 'codex', engineAccent: '', state: 'idle', cwd: '/tmp/project', port: 3457 }),
         displayMode: mode, requestFrame: null,
     };
 }
@@ -142,6 +142,31 @@ test('fresh line assistant control renders the same complete block and flushes o
         assert.equal(answers.length, 1);
         assert.equal(answers[0]?.text, 'ANSWER-ONE\n\nANSWER-TWO');
         assert.equal(f.output().split('ANSWER-TWO').length - 1, 1);
+        f.assertIdle();
+    } finally { f.dispose(); }
+});
+
+test('native final renders local Markdown once and discards the unfinished provisional sink', t => {
+    const f = fixture(t);
+    try {
+        f.send({ type: 'agent_output', text: '**PROVISIONAL-ONLY**', agentId: 'main' });
+        assert.ok(f.ctx.streamSink);
+        const final = {
+            type: 'agent_done', agentId: 'main', runtimeFinality: 'present', runtimeStatus: 'done',
+            text: '**최종 답변** 👩‍💻 e\u0301\n\n| A | B |\n|---|---|\n| 1 | 2 |',
+        };
+        f.send(final);
+        assert.ok(f.output().includes('Final answer:'));
+        assert.ok(f.output().includes('최종 답변 👩‍💻 e\u0301'));
+        assert.ok(f.output().includes('A  B'));
+        assert.ok(f.output().includes('1  2'));
+        assert.ok(!f.output().includes('PROVISIONAL-ONLY'));
+        assert.ok(!f.output().includes('**최종 답변**'));
+        const answers = f.ctx.store.transcript.items.filter(item => item.type === 'assistant');
+        assert.equal(answers.length, 1);
+        assert.equal(answers[0]?.text, final.text);
+        f.send(final);
+        assert.equal(f.output().split('최종 답변').length - 1, 1);
         f.assertIdle();
     } finally { f.dispose(); }
 });

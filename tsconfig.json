@@ -37,7 +37,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "tests",
-    "src/lib/tui"
+    "tests"
   ]
 }

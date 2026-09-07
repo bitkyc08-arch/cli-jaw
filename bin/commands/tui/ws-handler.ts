@@ -14,8 +14,7 @@ import type { TranscriptItem } from '../../../src/cli/tui/transcript.js';
 import { captureFileSet, diffFileSets, getDiffStat, getUnifiedDiff, getIdeCli, openDiffInIde } from '../../../src/ide/diff.js';
 import { createStreamSink } from '../../../src/cli/tui/stream.js';
 import { renderMarkdown } from '../../../src/cli/tui/markdown.js';
-import { renderMarkdownJawcode, isInitialized } from '../../../src/cli/tui/jawcode-render.js';
-import { renderToolLine } from '../../../src/cli/tui/jawcode-bridge.js';
+import { renderToolLine } from '../../../src/cli/tui/presentation.js';
 import { colorizeDiff } from '../../../src/cli/tui/diffview.js';
 import { normalizeTuiWsEvent } from '../../../src/cli/tui/events.js';
 import { c, type TuiContext } from './types.js';
@@ -225,9 +224,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         } else if (event.text) {
                             process.stdout.write('\nFinal answer:\n');
                             const width = Math.max(20, (process.stdout.columns || 80) - 4);
-                            process.stdout.write(isInitialized()
-                                ? renderMarkdownJawcode(event.text, width).join('\n') + '\n'
-                                : renderMarkdown(event.text, { width, gutter: '  ' }));
+                            process.stdout.write(renderMarkdown(event.text, { width, gutter: '  ' }));
                         }
                     }
                 } else if (ctx.streaming) {
@@ -261,12 +258,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                     finalizeAssistant(transcript);
                     if (!isFullscreen(ctx)) {
                         process.stdout.write('\n');
-                        if (isInitialized()) {
-                            const mdLines = renderMarkdownJawcode(event.text, Math.max(20, (process.stdout.columns || 80) - 4));
-                            process.stdout.write(mdLines.join('\n') + '\n');
-                        } else {
-                            process.stdout.write(renderMarkdown(event.text, { width: Math.max(20, (process.stdout.columns || 80) - 4), gutter: '  ' }));
-                        }
+                        process.stdout.write(renderMarkdown(event.text, { width: Math.max(20, (process.stdout.columns || 80) - 4), gutter: '  ' }));
                         console.log('');
                     }
                 }

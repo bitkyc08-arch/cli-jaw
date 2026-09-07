@@ -21,14 +21,8 @@ _INBOX/
 # build-local: entire directory (large native binaries)
 build-local/
 
-# generated bundles (large + may contain embedded secrets)
-src/lib/tui/jawcode-interactive-bundle.mjs
-src/lib/tui/jawcode-tui-bundle.mjs
-src/lib/tui/jawcode-tui-bundle.js
+# generated native binaries
 src/lib/native/*.node
-
-# electron sidecar dist bundles
-electron/sidecar/jawcode/packages/jwc/dist-node/
 
 .codegraph
 .codexclaw/

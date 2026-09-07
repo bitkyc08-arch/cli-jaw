@@ -276,10 +276,7 @@ if (rawPiped) {
         await refreshActivityIdentity(ctx);
         await initHighlight();
     } // interactive rich TUI only; --simple & --raw untouched
-    // Initialize jawcode TUI components (async, once)
-    const { tryInitJawcodeTui } = await import('../../src/cli/tui/jawcode-render.js');
-    const { renderWelcome } = await import('../../src/cli/tui/jawcode-bridge.js');
-    await tryInitJawcodeTui();
+    const { renderWelcome } = await import('../../src/cli/tui/presentation.js');
     const welcomeOpts = {
         version: APP_VERSION,
         engine: ctx.label,

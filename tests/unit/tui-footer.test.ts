@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { stripVTControlCharacters } from 'node:util';
 import { formatFooter } from '../../bin/commands/tui/types.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { visualWidth } from '../../src/cli/tui/renderers.ts';
 
 const ACCENT = '\x1b[31m';
@@ -47,10 +48,10 @@ test('bgtask count renders magenta hourglass segment only when > 0', () => {
     assert.ok(!formatFooter('x', ACCENT, 'idle').includes('⏳'), 'omitted param stays clean');
 });
 
-test('renderStatusBar renders cyan segmented status row without jawcode theme', () => {
+test('renderStatusBar renders cyan segmented status row with local presentation', () => {
     const row = withColumns(96, () => renderStatusBar({
         model: 'test-model',
-        engine: 'jwc',
+        engine: 'codex',
         engineAccent: ACCENT,
         state: 'working…',
         elapsed: '1.2s',
@@ -61,7 +62,7 @@ test('renderStatusBar renders cyan segmented status row without jawcode theme', 
     }));
     assert.match(row, /\x1b\[(36|46)m/);
     assert.match(row, /test-model/);
-    assert.match(row, /jwc/);
+    assert.match(row, /codex/);
     assert.match(row, /working/);
     assert.match(row, /\/quit/);
     assert.match(row, /\/clear/);
@@ -73,7 +74,7 @@ test('renderStatusBar renders cyan segmented status row without jawcode theme', 
 test('renderStatusBar clips optional details under narrow width', () => {
     const row = withColumns(36, () => renderStatusBar({
         model: 'very-long-model-name',
-        engine: 'jwc',
+        engine: 'codex',
         engineAccent: ACCENT,
         state: 'responding…',
         elapsed: '123.4s',
@@ -104,4 +105,23 @@ test('renderStatusBar keeps emoji-heavy working rows within terminal width', () 
 
     assert.ok(visualWidth(row) <= 72, `status row width ${visualWidth(row)} exceeds terminal width`);
     assert.match(row, /\/quit/);
+});
+
+test('local status segments fit narrow columns without splitting styled graphemes', () => {
+    for (const columns of [20, 24, 36, 72, 96]) {
+        const row = withColumns(columns, () => renderStatusBar({
+            model: '한글👩‍💻e\u0301🇰🇷', engine: 'codex', engineAccent: ACCENT,
+            state: 'working…', elapsed: '3.1s', bgtask: 2, bgtaskAttention: true, port: 3457,
+        }));
+        const plain = stripVTControlCharacters(row);
+        assert.ok(visualWidth(row) <= columns, `${columns} columns: ${visualWidth(row)}`);
+        assert.ok(!plain.includes('\x1b'));
+        if (plain.includes('👩')) assert.ok(plain.includes('👩‍💻'));
+        if (plain.includes('🇰')) assert.ok(plain.includes('🇰🇷'));
+        if (columns >= 72) {
+            assert.ok(plain.includes('한글👩‍💻e\u0301🇰🇷'));
+            assert.ok(plain.includes('3.1s'));
+            assert.ok(plain.includes('⏳2!'));
+        }
+    }
 });

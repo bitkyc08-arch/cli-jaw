@@ -136,7 +136,7 @@ export function buildAppearanceRows(snapshot: SettingsScreenSnapshot): SettingsR
             id: 'markdownRenderer',
             label: 'Markdown Renderer',
             scope: 'runtime',
-            value: 'jawcode bridge (runtime)',
+            value: 'cli-jaw Markdown',
             description: 'Current renderer mode',
             kind: 'readonly',
         },

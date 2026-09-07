@@ -11,17 +11,8 @@
 # steps in atomic-build.sh instead. A partial checker that pretends to be
 # complete is worse than one that states its limit.
 #
-# Regression guarded: #275, where bun-shim.mjs was copied only when a
-# generated, gitignored bundle happened to exist locally.
 set -uo pipefail
 cd "$(dirname "$0")/.."
-
-# The jawcode bundles are produced by a separate Bun build and are gitignored,
-# so a plain `npm run build` legitimately omits them. bun-shim.mjs is NOT in
-# this list — that omission is the bug this script exists to catch.
-# Anchored on the path separator so a lookalike such as
-# `not-jawcode-tui-bundle.mjs` is NOT silently exempted.
-OPTIONAL='(^|/)(jawcode-tui-bundle|jawcode-interactive-bundle)\.mjs$'
 
 if [ ! -d dist ]; then
     echo "[verify-dist-assets] dist/ not found — run npm run build first" >&2
@@ -32,7 +23,6 @@ missing=0
 while IFS= read -r js; do
     while IFS= read -r spec; do
         [ -z "$spec" ] && continue
-        [[ "$spec" =~ $OPTIONAL ]] && continue
         target="$(dirname "$js")/$spec"
         if [ ! -f "$target" ]; then
             echo "missing: $spec (imported from ${js#dist/})" >&2

@@ -8,7 +8,8 @@ tests/unit/windows-installer-shims.test.ts
 tests/unit/windows-spawn-primitives.test.ts
 tests/unit/manager-browser-open.test.ts
 tests/unit/eaddrinuse-diagnostics-contract.test.ts
-tests/unit/tui-env-flags.test.ts
+tests/unit/tui-presentation.test.ts
+tests/unit/tui-fullscreen-frame-harness.test.ts
 tests/unit/windows-launch-spec.test.ts
 tests/unit/service-lifecycle-cli.test.ts
 tests/unit/claude-sdk-windows-launch.test.ts
