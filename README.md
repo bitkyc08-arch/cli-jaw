@@ -832,6 +832,10 @@ jaw --home "$HOME/jaw/worker-a" service stop --port 3458
 
 ### Remote and headless hosts
 
+On Linux, opening a file from the Web UI dispatches `xdg-open` without waiting for
+the desktop application to exit. A successful response acknowledges launch only;
+a headless host still needs a desktop handler to display the file.
+
 `ssh host 'jaw serve ...'` runs a non-login, non-interactive shell that reads none of the
 files the installer adds `~/.local/bin` to, so `jaw` can work when you log in and still fail
 over SSH with `nohup: failed to run command 'jaw'`. Run `jaw doctor` and check the

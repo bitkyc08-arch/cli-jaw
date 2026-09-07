@@ -2,6 +2,8 @@
 
 # structure/ — Sync Guide
 
+- Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `server_api.md`.
+
 - Sidecar build/smoke: sync `infra.md` and root notes for transactional source/stage/lock ownership, runtime-candidate/seal matching, outside-checkout target-Node execution, preserved asset/prune/native/no-JWC gates and explicit retained evidence/cleanup. Ordinary import, live server readiness and final packaged native UI are separate proofs; no timeout or skipped green.
 
 - Isolated desktop QA: `src/shared/isolated-qa.ts` owns opt-in role paths/strict ports/child env; Electron, dashboard CLI and Manager enforce the captured launch policy before their owned side effects. Keep the supervisor-before-import boundary, no global registration/installer or foreign scan/peer/lifecycle actions, normal-mode compatibility and lifetime-safe QA cleanup explicit in `infra.md` and root docs. Do not conflate mocked/compiled launch checks with final packaged native UI proof.

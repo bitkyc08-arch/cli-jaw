@@ -157,7 +157,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
 
     // Open file in system file manager (Finder reveal)
     // NOTE: cli-jaw is a localhost-only program. No remote access.
-    app.post('/api/file/open', requireAuth, (req, res) => {
+    app.post('/api/file/open', requireAuth, async (req, res) => {
         const { path: rawPath } = req.body;
         if (!rawPath || typeof rawPath !== 'string') {
             return fail(res, 400, 'path_required');
@@ -183,7 +183,16 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 child.once('error', () => { /* explorer missing is not actionable here */ });
                 child.unref();
             } else {
-                execFileSync('xdg-open', [target.openedPath]);
+                // xdg-open may live as long as the desktop application (#540).
+                // Acknowledge launch, not exit, without retaining server pipes.
+                await new Promise<void>((resolve, reject) => {
+                    const child = spawn('xdg-open', [target.openedPath], { detached: true, stdio: 'ignore' });
+                    child.once('error', reject);
+                    child.once('spawn', () => {
+                        child.unref();
+                        resolve();
+                    });
+                });
             }
             ok(res, {
                 opened: target.openedPath,

@@ -185,6 +185,8 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Architecture Docs Sync
 
+- Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `structure/server_api.md`.
+
 - Sidecar builds use exclusive owned staging/source snapshots and retained failure evidence; preserve the existing compiled-asset/prune/native/no-JWC gates. Smoke executes a byte-matched copy outside checkout dependency ancestors with the target Node, strict process/IPC/listener/HTTP/close checks and evidence before cleanup. Never equate timeout/skipped with pass, relabel retained roots as deleted, adopt unknown output, or force-remove locks. Input relative contained symlinks are preserved verbatim; output fingerprinting is local provenance, not a signature. Final builder-filtered native UI remains separate. See `structure/infra.md`.
 
 - Isolated desktop QA is explicit via `CLI_JAW_ISOLATED_QA_ROOT`; `src/shared/isolated-qa.ts` owns fixed role homes, strict W/M/P ports and fresh child environment. The supervisor validates before imports; Electron applies paths before lock/session and suppresses global registration/installer actions. QA Manager rejects foreign scans/peers and lifecycle actions before side effects; ordinary mode is unchanged. Preserve captured policy and lifetime-safe QA cleanup. This is controlled launch containment, not an arbitrary-command sandbox or packaged/native QA certification. Sync `structure/infra.md`, README and root/structure notes.
