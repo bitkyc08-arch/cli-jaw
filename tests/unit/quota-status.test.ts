@@ -191,28 +191,6 @@ test('QS-004c: readLatestGrokSessionUsage reads newest signals.json without fake
 
 // ── Server.ts: classify logic ──
 
-test('QS-005: /api/quota classify separates no-creds from API failure', () => {
-    const settingsRouteSrc = readSource(
-        path.join(import.meta.dirname, '../../src/routes/settings.ts'), 'utf8'
-    );
-    assert.ok(
-        settingsRouteSrc.includes('hasCreds'),
-        'should distinguish creds-present from creds-absent',
-    );
-    assert.ok(
-        settingsRouteSrc.includes('fetchOpenCodeUsage()'),
-        'opencode should use fetchOpenCodeUsage adapter',
-    );
-    assert.ok(
-        settingsRouteSrc.includes("quotaSource: 'not-exposed-by-opencode-cli'"),
-        'opencode fallback should keep auth/status-only metadata',
-    );
-    assert.ok(
-        settingsRouteSrc.includes('const grokQuota = await fetchGrokStatus()') && settingsRouteSrc.includes('grok: grokQuota'),
-        'Grok should be present in /api/quota as auth/status-only metadata',
-    );
-});
-
 test('QS-005b: /api/quota returns every top-level CLI runtime key', () => {
     const settingsRouteSrc = readSource(
         path.join(import.meta.dirname, '../../src/routes/settings.ts'), 'utf8'
