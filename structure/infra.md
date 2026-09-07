@@ -332,6 +332,8 @@ All layout directories must exist inside R. Set distinct decimal ports W/M/P:
 `DASHBOARD_SCAN_COUNT=1`; worker also requires `PORT=W`. Electron requires the
 exact explicit `http://127.0.0.1:M/` Manager URL. Conflicting/invalid CLI flags,
 including earlier duplicate values, reject before default normalization.
+Observed 2026-09-08 on a packaged 2.17.40 bundle: launching with the layout above but without `providers/*` directories and without `--manager-url` exits silently (stdout empty, no window) — the isolated launcher refuses before any logging. Create every row of the layout, including `providers/codex`, `providers/claude`, `providers/pi`, and pass `--manager-url http://127.0.0.1:M/` explicitly.
+
 The child environment is a fresh allowlist, not an ambient overlay. Initial
 supervisors remove inherited renderer tokens; only the app-generated IPC token
 is deliberately forwarded along the Electron-to-Manager chain.
