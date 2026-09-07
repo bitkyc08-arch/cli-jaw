@@ -94,6 +94,13 @@ Activity reads or new output/termination behavior.
 | `--help` / `-h` | root help 출력 |
 | `--version` / `-v` | `cli-jaw v{package.version}` 출력 |
 
+Explicit desktop QA is an environment opt-in, not a new global CLI command.
+With a validated `CLI_JAW_ISOLATED_QA_ROOT`, `dashboard serve` inherits the fixed
+Manager/worker/count-one values when omitted and rejects conflicting raw flags
+before normalization. Its child receives the scrubbed role environment. See
+[isolated desktop QA](infra.md#isolated-desktop-qa); the supervisor must reject
+escaped `--home` values before launching any DB-bearing CLI imports.
+
 ### 실제 서브커맨드 / 옵션
 
 | Command | 파일 | 실제 옵션 / 하위 명령 |

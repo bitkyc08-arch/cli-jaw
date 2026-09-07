@@ -2,6 +2,7 @@ import { Tray, Menu, nativeImage, app, clipboard, Notification, dialog } from 'e
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { isCliInstalled, installCli } from './install-cli.js';
+import { readIsolatedQaPolicy, type IsolatedQaPolicy } from '../../../../src/shared/isolated-qa.js';
 
 const PREFS_FILENAME = 'tray-preferences.json';
 
@@ -44,6 +45,7 @@ let callbacks: TrayCallbacks | null = null;
 let serverStatus = 'Starting...';
 let currentMenu: Menu | null = null;
 let onTrayClick: (() => void) | null = null;
+let qaPolicy: IsolatedQaPolicy | null = null;
 
 export interface TrayCallbacks {
   onOpenDashboard: () => void;
@@ -56,7 +58,8 @@ export function isKeepRunning(): boolean {
   return prefs.keepRunningInBackground;
 }
 
-export function createTray(cb: TrayCallbacks): Tray {
+export function createTray(cb: TrayCallbacks, policy = readIsolatedQaPolicy(process.env, 'electron')): Tray {
+  qaPolicy = policy;
   loadPrefs();
   callbacks = cb;
   syncLoginItemSetting();
@@ -128,6 +131,7 @@ export function destroyTray(): void {
 }
 
 function syncLoginItemSetting(): void {
+  if (qaPolicy) return;
   app.setLoginItemSettings({
     openAtLogin: prefs.startAtLogin,
     args: prefs.startAtLogin ? ['--background'] : [],
@@ -164,18 +168,21 @@ function rebuildMenu(): void {
     },
     {
       label: 'Start at Login',
+      enabled: !qaPolicy,
       type: 'checkbox',
       checked: prefs.startAtLogin,
       click: (item) => {
+        if (qaPolicy) return;
         prefs.startAtLogin = item.checked;
         savePrefs();
         syncLoginItemSetting();
       },
     },
     {
-      label: isCliInstalled() ? 'CLI Installed ✓' : 'Install CLI to Terminal',
-      enabled: app.isPackaged && !isCliInstalled(),
+      label: !qaPolicy && isCliInstalled() ? 'CLI Installed ✓' : 'Install CLI to Terminal',
+      enabled: !qaPolicy && app.isPackaged && !isCliInstalled(),
       click: async () => {
+        if (qaPolicy) return;
         const result = await installCli();
         await dialog.showMessageBox({
           type: result.ok ? 'info' : 'error',

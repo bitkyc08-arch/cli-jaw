@@ -98,6 +98,12 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ## Native Runtime Decisions
 
+Manager's explicit [isolated QA launch profile](infra.md#isolated-desktop-qa)
+changes no endpoint shape. It rejects foreign stored/custom/single scan ranges
+before reads, suppresses peer discovery, and rejects both HTTP and direct
+Manager lifecycle actions. Normal instances retain their existing behavior;
+this controlled profile is not authorization to use arbitrary worker/service APIs.
+
 | Method | Path | Contract |
 | --- | --- | --- |
 | `GET` | `/api/runtime/requests?sessionId=<jaw-id>` | Explicit nonempty session ID, at most240 characters. Returns `{ok:true,data:{requests:[...]}}`; never substitutes the active session. |

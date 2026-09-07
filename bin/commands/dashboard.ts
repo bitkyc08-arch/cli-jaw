@@ -9,6 +9,7 @@ import { shouldOpenBrowserByDefault } from '../../src/core/browser-open-default.
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord, fieldString, type JsonRecord } from '../_http-client.js';
 import { resolveBundledNodePath } from '../../src/core/runtime-path.js';
+import { readIsolatedQaPolicy, isolatedQaEnvironment } from '../../src/shared/isolated-qa.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const commandRoot = join(__dirname, '..', '..');
@@ -17,6 +18,8 @@ const projectRoot = existsSync(join(commandRoot, 'package.json'))
     : join(commandRoot, '..');
 
 const subcommand = process.argv[3] || 'serve';
+// The supervisor validates before CLI imports; recheck after CLI --home rewriting.
+const qaPolicy = readIsolatedQaPolicy(process.env, 'manager');
 
 if (shouldShowHelp(process.argv, 3)) printAndExit(`
   jaw dashboard — multi-instance manager
@@ -51,25 +54,38 @@ if (shouldShowHelp(process.argv, 3)) printAndExit(`
     jaw dashboard service status
 `);
 
-const { values: globalOpts, positionals } = parseArgs({
+const { values: globalOpts, positionals, tokens } = parseArgs({
     args: process.argv.slice(4),
     options: {
         json: { type: 'boolean', default: false },
-        port: { type: 'string', default: process.env["DASHBOARD_PORT"] || DASHBOARD_DEFAULT_PORT },
-        from: { type: 'string', default: String(MANAGED_INSTANCE_PORT_FROM) },
-        count: { type: 'string', default: String(MANAGED_INSTANCE_PORT_COUNT) },
-        open: { type: 'boolean', default: shouldOpenBrowserByDefault() },
+        port: { type: 'string' },
+        from: { type: 'string' },
+        count: { type: 'string' },
+        open: { type: 'boolean' },
         home: { type: 'string' },
     },
     strict: false,
     allowPositionals: true,
     allowNegative: true,
+    tokens: true,
 });
 
+if (qaPolicy) {
+    const admitted = { port: qaPolicy.managerPort, from: qaPolicy.workerPort, count: 1 };
+    // Check every occurrence, not only parseArgs' last value (duplicates included).
+    for (const token of tokens) {
+        if (token.kind !== 'option' || !Object.hasOwn(admitted, token.name)) continue;
+        const expected = admitted[token.name as keyof typeof admitted];
+        if (token.value !== String(expected)) {
+            throw new Error(`isolated QA --${token.name} must match the admitted value`);
+        }
+    }
+}
 const json = globalOpts.json as boolean;
-const dashboardPort = Number(globalOpts.port) || Number(DASHBOARD_DEFAULT_PORT);
-const scanFrom = Number(globalOpts.from) || MANAGED_INSTANCE_PORT_FROM;
-const scanCount = Number(globalOpts.count) || MANAGED_INSTANCE_PORT_COUNT;
+const dashboardPort = qaPolicy?.managerPort ?? (Number(globalOpts.port ?? process.env["DASHBOARD_PORT"]) || Number(DASHBOARD_DEFAULT_PORT));
+const scanFrom = qaPolicy?.workerPort ?? (Number(globalOpts.from) || MANAGED_INSTANCE_PORT_FROM);
+const scanCount = qaPolicy ? 1 : (Number(globalOpts.count) || MANAGED_INSTANCE_PORT_COUNT);
+const openBrowser = qaPolicy ? false : (globalOpts.open ?? shouldOpenBrowserByDefault());
 
 switch (subcommand) {
     case 'serve':
@@ -124,13 +140,13 @@ async function handleServe(): Promise<void> {
 
     const child = spawn(command, args, {
         stdio: 'inherit',
-        env: {
+        env: qaPolicy ? isolatedQaEnvironment(qaPolicy, process.env) : {
             ...process.env,
             CLI_JAW_BIN: process.env["CLI_JAW_BIN"] || process.argv[1] || '',
             DASHBOARD_PORT: String(dashboardPort),
             DASHBOARD_SCAN_FROM: String(scanFrom),
             DASHBOARD_SCAN_COUNT: String(scanCount),
-            ...(globalOpts.open ? { JAW_DASHBOARD_OPEN: '1' } : {}),
+            ...(openBrowser ? { JAW_DASHBOARD_OPEN: '1' } : {}),
         },
     });
 

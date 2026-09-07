@@ -1,9 +1,37 @@
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process';
 import { killProcessTree } from './process-kill.js';
-import { existsSync, statSync, readdirSync, accessSync, constants, readFileSync } from 'node:fs';
+import { existsSync, statSync, readdirSync, accessSync, constants, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { RingBuffer } from './ring-buffer.js';
+import { readIsolatedQaPolicy, isolatedQaEnvironment, type IsolatedQaPolicy } from '../../../../src/shared/isolated-qa.js';
+
+function qaSidecarPaths(): { binary: string; node: string; cli: string } {
+  try {
+    const root = join(realpathSync(process.resourcesPath), 'server');
+    if (realpathSync(root) !== root) throw new Error('noncanonical server');
+    const paths = {
+      binary: join(root, 'bin', process.platform === 'win32' ? 'jaw.cmd' : 'jaw'),
+      node: join(root, process.platform === 'win32' ? 'node.exe' : 'node'),
+      cli: join(root, 'dist', 'bin', 'cli-jaw.js'),
+    };
+    for (const file of Object.values(paths)) {
+      if (realpathSync(file) !== file || !statSync(file).isFile()) throw new Error('invalid artifact');
+    }
+    if (!isExecutable(paths.node) || !isExecutable(paths.binary)) throw new Error('not executable');
+    return paths;
+  } catch {
+    throw new Error('[isolated-qa] packaged sidecar: missing or noncanonical artifact');
+  }
+}
+
+// This is a launch-boundary assertion, not another environment parser. The
+// captured policy prevents later ambient changes from reopening normal fallback.
+function qaInvocation(binary: string, args: string[]): { command: string; args: string[]; shell?: boolean } {
+  const paths = qaSidecarPaths();
+  if (binary !== paths.binary) throw new Error('[isolated-qa] binary: packaged shim required');
+  return { command: paths.node, args: [paths.cli, ...args] };
+}
 
 let pathFixed = false;
 async function ensureFixedPath(): Promise<void> {
@@ -72,18 +100,28 @@ function commandOutputFromError(error: unknown): string {
   return `${stdout}\n${stderr}\n${message}`;
 }
 
-export function hasDashboardCommand(binary: string): boolean {
+export function hasDashboardCommand(binary: string, policy = readIsolatedQaPolicy(process.env, 'electron')): boolean {
+  const qa = policy ? qaInvocation(binary, ['dashboard', '__jaw_electron_probe__']) : null;
   if (!isExecutable(binary)) return false;
   try {
-    const invocation = shellScriptInvocation(binary, ['dashboard', '__jaw_electron_probe__']);
+    const invocation = qa ?? shellScriptInvocation(binary, ['dashboard', '__jaw_electron_probe__']);
     execFileSync(invocation.command, invocation.args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 2000,
+      ...(policy ? { env: isolatedQaEnvironment(policy, {
+        ...process.env, CLI_JAW_ELECTRON_RENDERER_TOKEN: undefined,
+      }), cwd: policy.home } : {}),
       ...(invocation.shell ? { shell: true } : {}),
     });
     return true;
   } catch (error) {
+    // A timed-out/killed probe must not become support just because its partial
+    // output happens to contain help text.
+    if (policy) {
+      const result = error as { status?: number | null; signal?: unknown; code?: unknown };
+      if (result.status !== 1 || result.signal != null || result.code != null) return false;
+    }
     const output = commandOutputFromError(error);
     return (
       output.includes('Unknown dashboard command: __jaw_electron_probe__') ||
@@ -139,7 +177,14 @@ export interface FindResult {
   searched: string[];
 }
 
-export async function findJawBinary(): Promise<FindResult> {
+export async function findJawBinary(policy = readIsolatedQaPolicy(process.env, 'electron')): Promise<FindResult> {
+  if (policy) {
+    const { app } = await import('electron');
+    if (!app.isPackaged) throw new Error('[isolated-qa] Electron: packaged app required');
+    const paths = qaSidecarPaths();
+    return { path: hasDashboardCommand(paths.binary, policy) ? paths.binary : null,
+      searched: ['bundled sidecar (isolated QA)'] };
+  }
   await ensureFixedPath();
   const searched: string[] = [];
   const seen = new Set<string>();
@@ -177,16 +222,27 @@ export interface SpawnOptions {
   port: number;
   ringBuffer: RingBuffer;
   env?: NodeJS.ProcessEnv;
+  qaPolicy?: IsolatedQaPolicy | null;
 }
 
 export function spawnJawDashboard(
   binary: string,
   opts: SpawnOptions,
 ): ChildProcess {
-  const invocation = shellScriptInvocation(binary, ['dashboard', 'serve', '--port', String(opts.port), '--no-open']);
+  const policy = opts.qaPolicy === undefined ? readIsolatedQaPolicy(process.env, 'electron') : opts.qaPolicy;
+  if (policy && opts.port !== policy.managerPort) throw new Error('[isolated-qa] port: must match manager port');
+  const args = ['dashboard', 'serve', '--port', String(opts.port), '--no-open'];
+  if (policy) args.push('--from', String(policy.workerPort), '--count', '1');
+  const invocation = policy ? qaInvocation(binary, args) : shellScriptInvocation(binary, args);
+  const env = policy ? isolatedQaEnvironment(policy, {
+    ...(opts.env ?? process.env), CLI_JAW_ELECTRON_RENDERER_TOKEN: opts.env?.CLI_JAW_ELECTRON_RENDERER_TOKEN,
+  }) : { ...process.env, ...(opts.env ?? {}) };
+  // Only the explicit per-launch value from main is an admitted IPC capability;
+  // never revive a similarly named ambient provider/session secret.
   const child = spawn(invocation.command, invocation.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(opts.env ?? {}) },
+    env,
+    ...(policy ? { cwd: policy.home } : {}),
     // The dev `jaw` shim runs node without exec(), so the real dashboard server
     // is a grandchild. Own a process group here and tear the whole tree down in
     // gracefulShutdown, otherwise the server survives, keeps its port, and the
@@ -194,9 +250,81 @@ export function spawnJawDashboard(
     detached: process.platform !== 'win32',
     ...(invocation.shell ? { shell: true } : {}),
   });
+  if (policy) captureQaLifetime(child, policy);
   child.stdout?.on('data', (d) => opts.ringBuffer.append(d));
   child.stderr?.on('data', (d) => opts.ringBuffer.append(d));
   return child;
+}
+
+interface QaLifetime {
+  readonly root: string;
+  shutdown(timeoutMs: number): Promise<void>;
+}
+const qaLifetimes = new WeakMap<ChildProcess, QaLifetime>();
+
+function qaCleanupError(reason: string): Error {
+  return new Error(`[isolated-qa] cleanup uncertain: ${reason}; retain task profile for supervisor verification`);
+}
+
+/** Capture at spawn, never reconstruct authority from a PID at shutdown time. */
+function captureQaLifetime(child: ChildProcess, policy: IsolatedQaPolicy): void {
+  const pid = child.pid;
+  let retired = false;
+  let exited = false;
+  let complete = false;
+  let failure: Error | null = null;
+  let pending: Promise<void> | null = null;
+  let changed = () => {};
+  const uncertain = (reason: string) => {
+    retired = true;
+    failure ??= qaCleanupError(reason);
+    changed();
+  };
+  child.once('exit', (code, signal) => {
+    retired = true;
+    // The direct Node CLI waits for its manager child and propagates its code.
+    // Signal death of the CLI does not prove the manager child has terminated.
+    if (signal || (code !== 0 && code !== 75)) uncertain('unproved CLI/manager exit');
+    else exited = true;
+    changed();
+  });
+  child.once('error', () => uncertain('child error'));
+  child.once('close', () => {
+    retired = true;
+    if (!exited) uncertain('close without cooperative exit');
+    else complete = true;
+    changed();
+  });
+  if (!pid || child.exitCode !== null || child.signalCode !== null) uncertain('child was not live at admission');
+  qaLifetimes.set(child, { root: policy.root, shutdown(timeoutMs) {
+    if (pending) return pending;
+    pending = new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let done = false;
+      changed = () => {
+        if (done || (!failure && !complete)) return;
+        done = true;
+        if (timer !== undefined) clearTimeout(timer);
+        if (failure) reject(failure); else resolve();
+      };
+      changed();
+      if (done) return;
+      timer = setTimeout(() => uncertain('completion deadline exceeded'), timeoutMs);
+      // A recorded exit revokes signals even if fields later resemble a live,
+      // reused PID. Wait only for close; expiry is failure, never group cleanup.
+      if (retired) return;
+      if (child.pid !== pid || child.exitCode !== null || child.signalCode !== null) {
+        uncertain('child lifetime changed without completion');
+        return;
+      }
+      try {
+        if (!child.kill('SIGTERM')) uncertain('child disappeared before signal');
+      } catch {
+        uncertain('signal failed');
+      }
+    });
+    return pending;
+  } });
 }
 
 /** Collect the full descendant PID list via `pgrep -P`, deepest last. */
@@ -232,7 +360,15 @@ function isAlive(pid: number): boolean {
 export async function gracefulShutdown(
   child: ChildProcess,
   timeoutMs = 5000,
+  qaPolicy: IsolatedQaPolicy | null = null,
 ): Promise<void> {
+  const lifetime = qaLifetimes.get(child);
+  // A QA-admitted child cannot drop back into numeric cleanup even if a caller
+  // omits policy or the ambient opt-in has subsequently disappeared.
+  if (qaPolicy || lifetime) {
+    if (!lifetime || (qaPolicy && lifetime.root !== qaPolicy.root)) throw qaCleanupError('unowned child');
+    return lifetime.shutdown(timeoutMs);
+  }
   const pid = child.pid;
   if (!pid || child.exitCode !== null) return;
 

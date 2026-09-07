@@ -8,6 +8,7 @@ import {
     MANAGED_INSTANCE_PORT_FROM,
 } from './constants.js';
 import { internalFetch } from './internal-fetch.js';
+import { readIsolatedQaPolicy, assertIsolatedQaScan } from '../shared/isolated-qa.js';
 import { deriveDashboardInstanceId, normalizeSettingsMetadata } from './metadata.js';
 import { deriveProfiles } from './profiles.js';
 import {
@@ -27,6 +28,13 @@ import type {
 type JsonRecord = Record<string, unknown>;
 
 function scanRange(options: DashboardScanOptions): { from: number; count: number; to: number } {
+    const policy = readIsolatedQaPolicy(process.env, 'manager');
+    if (policy) {
+        const from = options.from === undefined ? policy.workerPort : options.from;
+        const count = options.count === undefined ? 1 : options.count;
+        assertIsolatedQaScan(policy, from, count);
+        return { from, count, to: from };
+    }
     const from = parsePositivePort(options.from, MANAGED_INSTANCE_PORT_FROM);
     const count = parsePositiveCount(options.count, MANAGED_INSTANCE_PORT_COUNT, MANAGED_INSTANCE_PORT_COUNT);
     return { from, count, to: from + count - 1 };
@@ -75,6 +83,7 @@ function buildBaseRow(port: number, status: DashboardInstanceStatus, checkedAt: 
 }
 
 export async function scanPort(port: number, fetchImpl: FetchLike, timeoutMs: number, checkedAt: string): Promise<DashboardInstance> {
+    assertIsolatedQaScan(readIsolatedQaPolicy(process.env, 'manager'), port, 1);
     const baseUrl = `http://${MANAGED_INSTANCE_HOST}:${port}`;
     try {
         const health = await readJson(fetchImpl, `${baseUrl}/api/health`, timeoutMs);
@@ -115,6 +124,7 @@ export async function scanPort(port: number, fetchImpl: FetchLike, timeoutMs: nu
 }
 
 export async function scanSinglePort(port: number, options: DashboardScanOptions = {}): Promise<DashboardInstance> {
+    assertIsolatedQaScan(readIsolatedQaPolicy(process.env, 'manager'), port, 1);
     const checkedAt = new Date().toISOString();
     const timeoutMs = parsePositivePort(options.timeoutMs, DASHBOARD_SCAN_TIMEOUT_MS);
     const fetchImpl = options.fetchImpl || internalFetch;
@@ -154,6 +164,7 @@ export async function scanDashboardInstances(options: DashboardScanOptions = {})
 }
 
 export async function scanPeerDashboards(managerPort: number, options: { fetchImpl?: FetchLike; timeoutMs?: number } = {}): Promise<DashboardInstance[]> {
+    if (readIsolatedQaPolicy(process.env, 'manager')) return [];
     const checkedAt = new Date().toISOString();
     const timeoutMs = options.timeoutMs || DASHBOARD_SCAN_TIMEOUT_MS;
     const fetchImpl = options.fetchImpl || internalFetch;

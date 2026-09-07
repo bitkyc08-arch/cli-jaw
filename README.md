@@ -854,6 +854,8 @@ bash structure/check-doc-drift.sh
 
 Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt context hooks: [pre-prompt-context-hooks.md](docs/dev/pre-prompt-context-hooks.md) · Internal structure docs: [structure/](structure/)
 
+Desktop QA has an explicit [isolated launch profile](structure/infra.md#isolated-desktop-qa): fixed task-owned homes and ports, no global app registration or Manager lifecycle actions. It requires a prepared, scrubbed launch environment; it is not a sandbox for arbitrary commands or proof that a packaged artifact passed QA.
+
 ---
 
 ## How It Compares

@@ -444,10 +444,11 @@ cli-jaw/
 │   │   ├── retention.ts      ← startTraceRetention: boot prune + 6h sweep, {stop(), stopped} 핸들 (server.ts shutdown 이 소유) (22L)
 │   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (38L)
 │   │   └── redact.ts         ← trace event redaction helpers (48L)
-│   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨
+│   ├── shared/               ← shared runtime, presentation and policy contracts (14 files)
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
 │   │   ├── runtime-contract.ts ← native session capabilities, turn outcome and presentation event types (58L)
+│   │   ├── isolated-qa.ts    ← opt-in canonical role homes, strict ports and scrubbed child environment (128L)
 │   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
 │   │   ├── presentation.ts   ← independent Activity/Legacy mode and server-supplied identity parser (24L)
 │   │   ├── activity-state.ts ← bounded pure Activity preview reducer (155L)
@@ -528,8 +529,9 @@ cli-jaw/
 ├── electron/                 ← Electron tray background app (27 TS/TSX files, 3096L) ✨
 │   ├── package.json / electron-builder.yml / electron.vite.config.ts
 │   └── src/
-│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1357L)
-│       ├── main/lib/         ← 24 helper modules (jaw-spawn 207L, install-cli 91L, tray-manager 168L, terminal/ 185L, navigation-policy 113L, app-metrics 93L, health-check 78L, deep-link 78L, permissions, path-security, quit-progress, etc.)
+│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1448L)
+│       ├── main/lib/qa-session.ts ← isolated QA profile paths before lock and sessions (12L)
+│       ├── main/lib/         ← 19 top-level helpers plus subdirectories (jaw-spawn 448L, tray-manager 199L, qa-session, install-cli, terminal, navigation-policy, app-metrics, health-check, deep-link, permissions, path-security, quit-progress, etc.)
 │       └── preload/          ← preload scripts (index 126L + metrics 68L)
 ├── native/
 │   └── claude-e/             ← Claude E native helper source (Rust, builds `jaw-claude-i` compatibility binary; 11 src files, 1934L)
@@ -570,7 +572,7 @@ cli-jaw/
 │       ├── orchestrate.ts    ← IPABCD 상태 제어 CLI (jaw orchestrate [I|P|A|B|C|D|reset]) + Phase60 --attest evidence arg + x-jaw-boss-token header attach (185L)
 │       ├── browser.ts        ← 브라우저 CLI (primitive + tab/debug + web-ai delegator, 876L)
 │       ├── browser-web-ai.ts ← `jaw browser web-ai` ChatGPT/Gemini/Grok 자동화 helper (452L)
-│       ├── dashboard.ts      ← `jaw dashboard serve` + dashboard memory delegation (274L)
+│       ├── dashboard.ts      ← `jaw dashboard serve` + dashboard memory delegation (290L)
 │       ├── dashboard-memory.ts ← `jaw dashboard memory` L2 federation CLI helper (210L)
 │       ├── dashboard-chat.ts ← `jaw dashboard chat search` L2 federation CLI helper (110L)
 │       ├── bgtask.ts         ← server-owned background task CLI add/list/show/cancel + native/shared status display (152L)

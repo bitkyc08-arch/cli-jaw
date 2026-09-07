@@ -191,6 +191,47 @@ PTY 도구는 설치된 Node/tsx/xterm과 Python 3 POSIX 표준 라이브러리�
 | Docker local source | `Dockerfile.dev` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
 | Compose | `docker-compose.yml` | 단일 `jaw` service, `${PORT:-3457}:3457`, `.env`, named volume `jaw-data` |
 
+### Isolated desktop QA
+
+`CLI_JAW_ISOLATED_QA_ROOT` is an explicit controlled-launch profile, not a normal
+user setting. Absence retains existing behavior; present-empty, malformed paths
+or conflicting ports reject rather than falling back. The supervisor must create
+canonical existing directories and scrub the environment **before** Node/CLI
+probes, application imports or Electron starts. `src/shared/isolated-qa.ts` is
+pure on import and owns validation/construction; it does not initialize stores.
+
+| Fixed layout below canonical root R | Environment / role |
+| --- | --- |
+| `home`, `tmp` | `HOME`, `TMPDIR`; constructed `USERPROFILE=home` |
+| `xdg/config`, `xdg/cache`, `xdg/data`, `xdg/state` | Matching `XDG_*_HOME`; constructed `LOCALAPPDATA=xdg/cache`, `APPDATA=xdg/data` |
+| `worker`, `manager`, `dashboard` | Worker `CLI_JAW_HOME=worker`; Manager/Electron `CLI_JAW_HOME=manager`; `CLI_JAW_DASHBOARD_HOME=dashboard` |
+| `providers/codex`, `providers/claude`, `providers/pi` | `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR` |
+| `electron/userData`, `electron/sessionData`, `electron/logs`, `electron/crashDumps` | Electron path adapter, applied before lock/session creation |
+
+All layout directories must exist inside R. Set distinct decimal ports W/M/P:
+`DASHBOARD_SCAN_FROM=W`, `DASHBOARD_PORT=M`, `DASHBOARD_PREVIEW_FROM=P`,
+`DASHBOARD_SCAN_COUNT=1`; worker also requires `PORT=W`. Electron requires the
+exact explicit `http://127.0.0.1:M/` Manager URL. Conflicting/invalid CLI flags,
+including earlier duplicate values, reject before default normalization.
+The child environment is a fresh allowlist, not an ambient overlay. Initial
+supervisors remove inherited renderer tokens; only the app-generated IPC token
+is deliberately forwarded along the Electron-to-Manager chain.
+
+QA Electron suppresses protocol/login/shortcut/Automation/CLI-install actions,
+including menu callbacks and repeated startup. Packaged startup uses the exact
+sidecar Node/CLI, never shell PATH repair, global jaw or picker fallback.
+Dashboard CLI preserves W/M/1/P at its Manager child. Manager rejects foreign
+stored/custom/single scan ranges before fetch/cache/preview/service effects,
+never enumerates peer dashboards, and refuses HTTP/direct lifecycle actions;
+the supervisor owns process teardown. Existing normal-mode behavior remains.
+
+This covers controlled entrypoints, not arbitrary CLI commands, raw imports,
+shell/browser actions or malicious same-user filesystem replacement. Empty
+task-owned messaging/jobs/MCP fixtures are prerequisites, not copied personal
+settings. Import-time DB containment belongs to the supervisor. A built module,
+mocked startup test or this profile alone does not certify the builder-filtered
+packaged resources, actual native UI, provider authentication or OS-wide behavior.
+
 ### 환경변수
 
 | 변수 | 실제 사용처 | 의미 |

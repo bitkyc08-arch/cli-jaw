@@ -2,6 +2,8 @@
 
 # structure/ — Sync Guide
 
+- Isolated desktop QA: `src/shared/isolated-qa.ts` owns opt-in role paths/strict ports/child env; Electron, dashboard CLI and Manager enforce the captured launch policy before their owned side effects. Keep the supervisor-before-import boundary, no global registration/installer or foreign scan/peer/lifecycle actions, normal-mode compatibility and lifetime-safe QA cleanup explicit in `infra.md` and root docs. Do not conflate mocked/compiled launch checks with final packaged native UI proof.
+
 - Keep this folder aligned with the live `cli-jaw` tree. The current hub covers 19 Markdown docs plus 5 support files.
 - Update `INDEX.md` whenever a doc is added, removed, renamed, or re-scoped. Keep the doc map, tier list, and quick links in sync.
 - Update `str_func.md` and `verify-counts.sh` together when source counts, `server.ts`, `src/routes/*`, `src/cli/handlers*.ts`, `src/cli/api-auth.ts`, `src/manager/*` (multi-instance dashboard), `bin/commands/*`, `bin/star-prompt.ts`, `tests/`, `public/`, or generated-dist exclusions change. The verifier now checks every file-tree `(NNNL)` entry in `str_func.md`, not only curated hotspots.
