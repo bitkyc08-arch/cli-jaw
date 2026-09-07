@@ -17,8 +17,8 @@ export const QUOTA_CUSTOM_MSG: Record<string, string> = {};
 
 export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     cursor: {
-        title: 'Enable quota bars (dashboard session)',
-        description: 'Cursor does not expose quota via its CLI. To display usage bars, log in with cursor-agent or manually export your session token from cursor.com DevTools (Application → Cookies → WorkosCursorSessionToken).',
+        title: 'Native quota access',
+        description: 'Log in with cursor-agent to read quota from its selected account. An explicitly configured dashboard session is also supported.',
         commands: [
             'cursor-agent login',
             'export CURSOR_SESSION_TOKEN="<WorkosCursorSessionToken from cursor.com DevTools>"',
@@ -27,7 +27,7 @@ export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     },
     agy: {
         title: 'Enable Gem / Cla quota bars',
-        description: 'Antigravity wraps Google Gemini and Claude models. Log in with antigravity-usage to fetch your remaining Gem/Cla tier quotas.',
+        description: 'Read Gem/Cla quota from the running Antigravity IDE or the selected antigravity-usage account. Use its login command if the stored account needs reauthentication.',
         commands: [
             'npx antigravity-usage login',
             'npx antigravity-usage --json',
@@ -35,14 +35,14 @@ export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     },
     grok: {
         title: 'Grok login',
-        description: 'Authenticate with Grok (X/Twitter AI) to enable quota tracking and model access through the progrok proxy.',
+        description: 'Log in with Grok to read weekly usage. Legacy billing credentials remain supported.',
         commands: [
-            'progrok login',
+            'grok login',
         ],
     },
     opencode: {
         title: 'OpenCode Go quota (API key)',
-        description: 'cli-jaw reads your sk- API key from ~/.local/share/opencode/auth.json (opencode-go) or OPENCODE_GO_API_KEY, then calls GET /zen/go/v1/usage. The usage endpoint is not deployed yet — quota bars appear when upstream ships it. Your key still works for models/chat.',
+        description: 'cli-jaw reads your sk- API key from ~/.local/share/opencode/auth.json (opencode-go) or OPENCODE_GO_API_KEY, then calls GET /zen/go/v1/usage. Rolling, weekly and monthly usage appear when available. Model access and quota availability are checked separately.',
         commands: [
             'opencode providers login',
             'export OPENCODE_GO_API_KEY=sk-...',

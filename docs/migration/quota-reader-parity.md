@@ -3,7 +3,7 @@
 This migration uses OpenCodex source revision
 `b94051fe91e745806102988f6dff2fec8de078ef` as the provider protocol reference.
 It preserves cli-jaw's CLI-keyed `/api/quota` response and native authentication
-ownership. The design below is the implementation contract; verification and
+ownership. The contract below is implemented by the quota migration; verification and
 completion are recorded with the individual pull requests.
 
 | Reader | Required behavior |
