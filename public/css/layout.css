@@ -1,8 +1,8 @@
 /* ── Left Sidebar ── */
 .sidebar-left {
-    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 95%, #000) 100%);
-    border-right: 1px solid color-mix(in oklch, var(--border) 80%, var(--accent) 20%);
-    box-shadow: inset -1px 0 0 var(--border);
+    background: var(--surface-1);
+    border-right: 1px solid var(--border-alpha);
+    box-shadow: none;
     padding: 48px 16px 16px;
     display: flex;
     flex-direction: column;
@@ -14,7 +14,7 @@
 /* Sidebar ambient scanline + glow */
 .sidebar-left::before,
 .sidebar-right::before {
-    content: '';
+    content: none;
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -122,9 +122,9 @@
 
 /* ── Right Sidebar ── */
 .sidebar-right {
-    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 95%, #000) 100%);
-    border-left: 1px solid color-mix(in oklch, var(--border) 80%, var(--accent) 20%);
-    box-shadow: inset 1px 0 0 var(--border);
+    background: var(--surface-1);
+    border-left: 1px solid var(--border-alpha);
+    box-shadow: none;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -134,29 +134,34 @@
 
 .tab-bar {
     display: flex;
-    border-bottom: 1px solid var(--border);
+    margin: 0 8px 6px;
+    padding: 3px;
+    gap: 2px;
+    border: 1px solid var(--border-alpha);
+    border-radius: var(--radius-ctl);
+    background: var(--surface-1);
     flex-shrink: 0;
 }
 
 .tab-btn {
     flex: 1;
-    padding: 10px 8px;
+    padding: 4px 8px;
+    min-height: 28px;
+    border-radius: var(--radius-ctl);
     background: none;
     border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-dim);
+    color: var(--text-muted-60);
     font-size: 11px;
-    font-family: var(--font-display);
+    font-family: var(--font-ui);
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 1px;
-    transition: color 0.15s, border-bottom-color 0.15s;
+    transition: color 0.15s, background-color 0.15s;
 }
 
-.tab-btn.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-}
+.tab-btn:hover { background: var(--surface-2); color: var(--text); }
+.tab-btn.active { color: var(--text); background: var(--surface-3); }
+.tab-btn:focus-visible { box-shadow: var(--focus-ring-shadow); }
 
 .tab-content {
     display: none;
@@ -531,4 +536,10 @@ body:has(#tabSettings.active):not(.right-collapsed) { --sidebar-right-w: min(56v
 .sidebar-right:has(#tabSettings.active) .sidebar-save-bar { display: none; }
 @media (max-width: 768px) {
     .sidebar-right:has(#tabSettings.active) { width: min(92vw, 760px); }
+}
+
+/* Classic header geometry; chat.css owns header typography and pills. */
+.chat-header { height: 44px; flex-shrink: 0; }
+@media (max-width: 900px) {
+    .chat-header { height: auto; min-height: 44px; }
 }
