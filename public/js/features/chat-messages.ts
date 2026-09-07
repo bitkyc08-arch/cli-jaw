@@ -98,7 +98,10 @@ export function formatUserPrompt(text: string): string {
     return text;
 }
 
-export function addMessage(role: string, text: string, cli?: string | null, metadata?: { steered?: boolean }): HTMLDivElement {
+/** Optional receipt metadata for an appended message. Kept as a named alias so the
+ *  perf-processblock source guard still reads the function body as the first brace. */
+export type AddMessageMetadata = { steered?: boolean };
+export function addMessage(role: string, text: string, cli?: string | null, metadata?: AddMessageMetadata): HTMLDivElement {
     const container = document.getElementById('chatMessages');
     const vs = getVirtualScroll();
     hideEmptyState();
