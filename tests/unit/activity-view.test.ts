@@ -45,6 +45,46 @@ async function toggle(node: HTMLDetailsElement, open: boolean): Promise<void> {
 test.beforeEach(setupWebUiDom);
 test.afterEach(resetWebUiDom);
 
+test('compact Activity keeps live status, accessible disclosures and a separate Trace action', async () => {
+    let inspected: ActivityState | undefined;
+    const { model, view, group, answer } = mount(state => { inspected = state; });
+    tool(model, 'one', 'read one'); tool(model, 'two', 'read two');
+    view.render(model);
+    const status = view.element.querySelector<HTMLElement>('.activity-status')!;
+    assert.equal(status.classList.contains('sr-only'), true);
+    assert.equal(status.hidden, false); assert.equal(status.closest('details'), null);
+    assert.equal(status.getAttribute('role'), 'status');
+    assert.equal(status.getAttribute('aria-live'), 'polite'); assert.equal(status.getAttribute('aria-atomic'), 'true');
+    const summary = group.querySelector('summary')!;
+    assert.equal(summary, group.firstElementChild); assert.equal(summary.querySelector('button, a, input'), null);
+    assert.equal(summary.querySelector('.activity-chevron')?.getAttribute('aria-hidden'), 'true');
+    const tools = view.element.querySelector('.activity-group[data-kind="file"]')!;
+    assert.equal(tools.getAttribute('role'), null);
+    const heading = tools.querySelector<HTMLButtonElement>('.activity-group-summary')!;
+    const body = tools.querySelector<HTMLElement>('.activity-group-body')!;
+    assert.equal(heading.tagName, 'BUTTON'); assert.equal(heading.type, 'button');
+    assert.ok(heading.textContent?.trim()); assert.equal(heading.getAttribute('aria-expanded'), 'true');
+    assert.equal(body.hidden, false);
+    heading.click(); assert.equal(heading.getAttribute('aria-expanded'), 'false'); assert.equal(body.hidden, true);
+    heading.click(); assert.equal(heading.getAttribute('aria-expanded'), 'true'); assert.equal(body.hidden, false);
+    for (const row of rows(view.element)) {
+        assert.equal(row.tagName, 'DETAILS'); assert.equal(row.firstElementChild?.tagName, 'SUMMARY');
+        assert.ok(row.querySelector('summary')?.getAttribute('aria-label')?.trim());
+        assert.ok(row.querySelector('.activity-row-label')?.textContent?.trim());
+        assert.equal(row.querySelector('.activity-row-icon')?.getAttribute('aria-hidden'), 'true');
+        assert.equal(row.querySelector('.activity-chevron-sm')?.getAttribute('aria-hidden'), 'true');
+    }
+    await toggle(group, true);
+    const trace = view.element.querySelector<HTMLButtonElement>('.activity-footer .activity-trace')!;
+    assert.ok(trace); assert.equal(trace.closest('details'), group);
+    assert.equal(trace.textContent, 'Open in Trace');
+    assert.equal(trace.getAttribute('aria-label'), 'Inspect retained activity in Trace');
+    trace.click(); assert.equal(inspected, model);
+    send(model, { kind: 'turn-end', status: 'stopped', finalText: null }); view.render(model);
+    assert.equal(status.textContent, 'Stopped'); assert.equal(answer.textContent, 'Canonical answer');
+    assert.equal(view.element.querySelectorAll('.activity-status[role="status"]').length, 1);
+});
+
 test('summary keeps five ordered slots and an independent live status', () => {
     const { model, view, group, answer } = mount(); tool(model, 'one');
     view.render(model, { steered: true });

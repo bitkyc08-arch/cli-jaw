@@ -511,6 +511,25 @@ body.right-collapsed .sidebar-right {
     display: none;
 }
 
+:is(.sidebar-left, .sidebar-right, .chat-header) :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    box-shadow: var(--focus-ring-shadow);
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    :is(.sidebar-left, .sidebar-right, .chat-header),
+    :is(.sidebar-left, .sidebar-right, .chat-header) *,
+    :is(.sidebar-left, .sidebar-right, .chat-header)::before,
+    :is(.sidebar-left, .sidebar-right, .chat-header)::after,
+    :is(.sidebar-left, .sidebar-right, .chat-header) *::before,
+    :is(.sidebar-left, .sidebar-right, .chat-header) *::after,
+    body.left-expanded::after, body.right-expanded::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+}
+
 /* ── Lucide Icons ── */
 .lucide,
 [data-icon] svg,

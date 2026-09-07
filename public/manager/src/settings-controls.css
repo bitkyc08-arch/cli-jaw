@@ -47,7 +47,6 @@
     box-shadow:
         0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent),
         inset 0 1px 0 rgba(255, 255, 255, 0.55);
-    outline: none;
 }
 
 .settings-field input:disabled,
@@ -225,13 +224,22 @@
 .settings-shell .settings-field-error { grid-column:1 / -1; }
 .settings-shell .settings-select-menu { left:auto; right:0; width:min(100%,560px); }
 .settings-shell .settings-field :is(input:not([type=checkbox]),textarea), .settings-shell .settings-select-trigger { background:var(--surface-raised); box-shadow:none; }
-.settings-shell :is(button,input,textarea,select,summary):focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+.workbench-settings-toggle:focus-visible,
+.workbench-settings-panel :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
+.settings-shell :focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 @container (max-width:719px) {
     .settings-shell .settings-field, .settings-shell .dashboard-settings-row { grid-template-columns:minmax(0,1fr); row-gap:12px; }
     .settings-shell .settings-field > :is(input,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:1; grid-row:auto; }
     .settings-shell .settings-field-description { grid-row:auto; }
 }
-@media (prefers-reduced-motion:reduce) { .settings-shell * { transition:none; animation:none; } }
+@media (prefers-reduced-motion: reduce) {
+    .settings-shell, .settings-shell *,
+    .settings-shell *::before, .settings-shell *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
+}
 
 .settings-shell .dashboard-settings-row-main { min-width:0; }
 .settings-shell .dashboard-settings-row-control { grid-column:2; min-width:0; }
