@@ -49,7 +49,7 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 | `src/routes/wiki.ts` | 118L | 3 | 옵트인 위키 status/enable/configure (requireAuth, root 충돌 400, scaffold 실패 시 disabled 유지, 040) |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
-| `src/routes/settings.ts` | 504L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
+| `src/routes/settings.ts` | 756L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
@@ -69,10 +69,10 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 | `src/routes/runtime-context.ts` | 46L | 4 | runtime context entry CRUD (ephemeral prompt injection), mounted at `/api/runtime-context` |
 | `src/routes/security-audit.ts` | 18L | 2 | security audit log entries + verify, mounted at `/api/security-audit` |
 | `src/routes/i18n.ts` | 35L | 2 | language list + locale bundle |
-| `src/routes/quota.ts` | 528L | — | `settings.ts`가 호출하는 quota/auth/status reader helper |
-| `src/routes/quota-kiro-reverse.ts` | 239L | — | Kiro/CodeWhisperer reverse-engineered usage-limits reader (`fetchKiroUsage`) |
-| `src/routes/quota-agy-reverse.ts` | 158L | — | Antigravity quota snapshot reader (`fetchAgyUsage`) |
-| `src/routes/quota-cursor-dashboard.ts` | 203L | — | Cursor dashboard session/usage reader (`fetchCursorUsage`) |
+| `src/routes/quota.ts` | 634L | — | `settings.ts`가 호출하는 quota/auth/status reader helper |
+| `src/routes/quota-kiro-reverse.ts` | 201L | — | Kiro/CodeWhisperer reverse-engineered usage-limits reader (`fetchKiroUsage`) |
+| `src/routes/quota-agy-reverse.ts` | 233L | — | Antigravity quota snapshot reader (`fetchAgyUsage`) |
+| `src/routes/quota-cursor-dashboard.ts` | 334L | — | Cursor dashboard session/usage reader (`fetchCursorUsage`) |
 | `src/routes/types.ts` | 3L | — | shared `AuthMiddleware` type |
 
 ### Dashboard Board/Schedule (P3, mounted in server.ts)
@@ -314,6 +314,8 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 - Confirmations: create/confirm/cancel action confirmations.
 
 ### `/api/quota`
+
+- All provider reads, including Grok, start concurrently. A thrown provider error becomes that row's generic `quota_fetch_failed` result without suppressing successful peers; wrappers retain their underlying provider outcome.
 
 - OpenCode Go reads canonical `usage.rolling/weekly/monthly` directly from `/zen/go/v1/usage`, retaining legacy window shapes. A successful usage response needs no models preflight; unavailable usage may probe model authentication without treating transient failure as invalid credentials.
 

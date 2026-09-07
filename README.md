@@ -576,7 +576,7 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Antigravity** | AGY-selected | checked by `agy` at run time | Experimental AGY print-mode runtime (`agy -p`); optional `--model` is capability-probed (observed in AGY 1.0.12); resume via `--conversation`; no separate effort flag |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
-| **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; quota is auth/status-only |
+| **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; native usage with optional dashboard-session fallback |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; weekly usage pool read from `~/.grok/auth.json` via Grok Build billing |
 | **Kiro** | registry-selected | `kiro` | AWS Kiro free tier; `kiro-cli chat --no-interactive` runtime |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | Free models available |
@@ -588,7 +588,7 @@ On a new install, CLI-JAW prefers **Codex App** when the local `app-server` entr
 
 OpenCodex routing remains owned by Codex's root `openai_base_url` setting. CLI-JAW only compares that read-only URL with the live OpenCodex runtime-port and `/healthz` fingerprint for diagnostics; it does not rewrite Codex config or inject an execution endpoint.
 
-The quota/status panel keeps the same runtime keyset as the registry. Cold status requests return a neutral “checking” snapshot immediately while binary, authentication, and capability probes run in a bounded child process. Wrapper runtimes (`ai-e`, `claude-e`, `codex-app`) delegate to their underlying provider, while Pi/AGY/Cursor/OpenCode are shown as auth/status-only when their CLIs do not expose quota windows. Grok uses the current Grok CLI auth store for the SuperGrok weekly usage pool and falls back to legacy monthly credits when the weekly endpoint is unavailable.
+The quota/status panel keeps the same runtime keyset as the registry. Cold status requests return a neutral “checking” snapshot immediately while binary, authentication, and capability probes run in a bounded child process. Wrapper runtimes (`ai-e`, `claude-e`, `codex-app`) delegate to their underlying provider, while providers without a measured quota remain status-only. AGY uses native IDE/selected-account quota, Cursor uses its selected native account with explicit cookie compatibility, and OpenCode Go reads usage directly. Grok uses the current CLI auth store for JSON weekly credits, with gRPC weekly and legacy monthly fallbacks. Each provider failure is isolated in the quota response.
 
 Native quota readers follow the OpenCodex source contract: Codex window duration/plan policy, Spark and reset-credit metadata; Claude model-scoped windows and credential-scoped cache. Missing measurements remain unknown, 429 alone never means 100%, and upstream bodies are bounded. See `docs/migration/quota-reader-parity.md`.
 
