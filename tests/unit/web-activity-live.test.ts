@@ -9,7 +9,14 @@ let opened: () => void;
 mock.module('../../public/js/event-channel.js', { namedExports: {
     connectEventChannel() {},
     subscribe(topic: string, _event: unknown, callback: typeof dispatch) { if (topic === '*') dispatch = callback; return () => {}; },
-    onChannelOpen(callback: () => void) { opened = callback; }, onChannelDisconnect() {}, onChannelUnavailable() {},
+    onChannelOpen(callback: () => void) { opened = () => {
+        bootstrapDone = Promise.withResolvers<void>();
+        sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+        callback();
+    }; }, onChannelDisconnect() {}, onChannelUnavailable() {},
+} });
+mock.module('../../public/js/features/trace-drawer.js', { namedExports: {
+    closeTraceDrawer() {}, openTraceDrawer() { assert.fail('unexpected raw Trace action'); },
 } });
 let unreadNotifications = 0;
 const attention = await import('../../public/js/features/attention-badge.ts');
@@ -25,6 +32,11 @@ let activeRun: Record<string, unknown> | null = null;
 let holdSnapshot: (() => Promise<void>) | null = null;
 let pendingRequests: Record<string,unknown>[]=[];
 let requestReads=0;
+const bootstrapLoad = Promise.withResolvers<void>();
+const bootstrapRelease = Promise.withResolvers<void>();
+let bootstrapDone = Promise.withResolvers<void>();
+let sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+const unexpectedRequests: string[] = [], requests: string[] = [];
 test.before(async () => {
     setupWebUiDom();
     const warn = console.warn.bind(console);
@@ -34,30 +46,81 @@ test.before(async () => {
         if (String(args[0]).startsWith('[idb-cache]')) return;
         warn(...args);
     });
-    mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
-        const path = String(input);
-        if (path.includes('/messages?')) return Response.json({ ok: true, data: [] });
-        if(path.includes('/api/runtime/requests?')){
-            requestReads++;
-            return new Response(JSON.stringify({ok:true,data:{requests:pendingRequests}}),{headers:{'Content-Type':'application/json'}});
-        }
-        if(path.includes('/api/traces/activity-runs'))return new Response(JSON.stringify({ok:true,data:{runs:[],pageSize:40}}),{headers:{'Content-Type':'application/json'}});
-        if (path.includes('/orchestrate/snapshot') && holdSnapshot) await holdSnapshot();
-        const data = path.includes('/orchestrate/snapshot') ? {
-            activityIdentity: { sessionId: 'chat', scope: 'local:chat' },
-            orc: { state: 'IDLE', scope: 'local:chat', ctx: null },
-            heartbeat: { pending: 0, deferredPending: 0 }, workers: [],
-            runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun,
-        } : { count: 0 };
-        return new Response(JSON.stringify(path.includes('/orchestrate/snapshot') ? data : { ok: true, data }), { headers: { 'Content-Type': 'application/json' } });
+    mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
+        const key = `${init?.method ?? (input instanceof Request ? input.method : 'GET')} ${url.pathname}${url.search}`;
+        requests.push(key);
+        try {
+            assert.equal(url.origin, window.location.origin); assert.ok(key.startsWith('GET '));
+            if (url.pathname === '/api/messages') {
+                assert.deepEqual([...url.searchParams], [['limit', '3000'], ['withSession', '1']]);
+                return Response.json({ ok: true, data: { sessionId: 'chat', messages: [] } });
+            }
+            if (url.pathname === '/api/runtime/requests') {
+                assert.deepEqual([...url.searchParams], [['sessionId', 'chat']]);
+                requestReads++;
+                return Response.json({ ok: true, data: { requests: pendingRequests } });
+            }
+            if (url.pathname === '/api/traces/activity-runs') {
+                assert.deepEqual([...url.searchParams], [['session', 'chat'], ['after', '']]);
+                return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
+            }
+            if (/^\/api\/traces\/(?:activity|buffered-gap|midrun|buffer-overflow)-\d+\/activity$/.test(url.pathname)) {
+                assert.deepEqual([...url.searchParams], [['session', 'chat'], ['after', '0'], ['limit', '40']]);
+                // These live fixtures have no retained journal; never fabricate one.
+                return Response.json({ ok: false, error: 'activity_unavailable' }, { status: 503 });
+            }
+            if (url.pathname === '/api/bgtask' && url.search === '?status=running') return Response.json({ tasks: [] });
+            if (!url.search) {
+                if (url.pathname === '/api/orchestrate/snapshot') {
+                    if (holdSnapshot) await holdSnapshot();
+                    return Response.json({ activityIdentity: { sessionId: 'chat', scope: 'local:chat' },
+                        orc: { state: 'IDLE', scope: 'local:chat', ctx: null },
+                        heartbeat: { pending: 0, deferredPending: 0 }, workers: [],
+                        runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun });
+                }
+                if (url.pathname === '/api/auth/token') return Response.json({ token: 'fixture-token' });
+                if (url.pathname === '/api/settings') return Response.json({ workingDir: process.env.CLI_JAW_HOME });
+                if (url.pathname === '/api/goal') return Response.json({ ok: true, goal: null });
+                if (url.pathname === '/api/messages/count') return Response.json({ ok: true, data: { count: 0 } });
+                if (url.pathname === '/api/memory-files' || url.pathname === '/api/memory/status')
+                    return Response.json({ error: 'fixture_sidebar_unavailable' }, { status: 503 });
+            }
+            throw new Error('Unexpected HTTP route');
+        } catch (error) { unexpectedRequests.push(`${key}: ${String(error)}`); throw error; }
     });
     ui = await import('../../public/js/ui.ts');
+    mock.module('../../public/js/ui.js', { namedExports: { ...ui,
+        async loadMessages() { bootstrapLoad.resolve(); await bootstrapRelease.promise; return ui.loadMessages(); },
+        reconcileChatBottomAfterRestore: (...args: Parameters<typeof ui.reconcileChatBottomAfterRestore>) => {
+            ui.reconcileChatBottomAfterRestore(...args);
+            if (args[0] === 'reconnect') bootstrapDone.resolve();
+        },
+    } });
+    const memory = await import('../../public/js/features/memory.ts');
+    const background = await import('../../public/js/features/bgtask-badge.ts');
+    mock.module('../../public/js/features/memory.js', { namedExports: { ...memory,
+        async refreshMemorySidebar() { await memory.refreshMemorySidebar(); sidebarDone[0]!.resolve(); },
+    } });
+    mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { ...background,
+        async refreshBgtaskBadge() { await background.refreshBgtaskBadge(); sidebarDone[1]!.resolve(); },
+    } });
     live = await import('../../public/js/features/activity-live.ts');
     ({state} = await import('../../public/js/state.ts'));
     ws = await import('../../public/js/ws.ts');
     ws.connect(); opened();
-    for (let i = 0; i < 100 && !state.activityIdentity; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    await bootstrapLoad.promise;
+    try {
+        assert.equal(state.activityIdentity, null, 'held real history cannot admit the snapshot');
+        assert.equal(requests.some(key => key.includes('/api/orchestrate/snapshot')), false);
+    } finally {
+        bootstrapRelease.resolve(); await bootstrapDone.promise;
+        await Promise.all(sidebarDone.map(done => done.promise));
+    }
     assert.deepEqual(state.activityIdentity, { sessionId: 'chat', scope: 'local:chat' });
+    const historyRead = requests.indexOf('GET /api/messages?limit=3000&withSession=1');
+    assert.ok(historyRead >= 0 && historyRead < requests.indexOf('GET /api/orchestrate/snapshot'));
+    assert.deepEqual(unexpectedRequests, []);
 });
 test.beforeEach(async () => {
     activeRun = null; holdSnapshot = null; unreadNotifications = 0;
@@ -66,7 +129,11 @@ test.beforeEach(async () => {
     document.getElementById('chatMessages')!.replaceChildren();
     await ws.syncOrchestrateSnapshot('activity-test', { hydrateRun: true });
 });
-test.after(() => { live.clearLiveActivity(); ui.cleanupToolActivity(); resetWebUiDom(); mock.restoreAll(); });
+test.afterEach(() => { assert.deepEqual(unexpectedRequests, []); });
+test.after(() => {
+    live.clearLiveActivity(); ui.cleanupToolActivity(); resetWebUiDom(); mock.restoreAll();
+    assert.deepEqual(unexpectedRequests, []);
+});
 
 function runtime(runId: string, seq: number, body: RuntimeEventBody, extra = {}) {
     dispatch({event: 'agent_runtime', version: 1, runId, sessionId: 'chat', scope: 'local:chat', turnId: 'turn', seq, ...body, ...extra});
@@ -340,7 +407,8 @@ for (const foreign of [false, true]) test(`pre-admission ${foreign ? 'foreign' :
     dispatch({ event: 'agent_runtime_gap', runId: run, sessionId: foreign ? 'other-chat' : 'chat',
         scope: 'local:chat', reason: 'storage_error' });
     release.resolve();
-    for (let i = 0; i < 100 && !live.findLiveActivity(run); i++) await new Promise<void>(resolve => setImmediate(resolve));
+    await bootstrapDone.promise;
+    await Promise.all(sidebarDone.map(done => done.promise));
     const turn = live.findLiveActivity(run); assert.ok(turn);
     assert.equal(turn.model.end, null, 'check while the run is still active');
     assert.equal(turn.degraded, !foreign);
@@ -448,7 +516,8 @@ for (const budget of ['entries', 'bytes', 'empty-tail']) test(`pre-admission ${b
     for (let i = 2; i <= count; i++) runtime(run, i, { kind: 'message', itemId: 'm', phase: 'commentary',
         operation: 'replace', text: budget === 'bytes' ? 'x'.repeat(30000) : String(i) });
     release.resolve();
-    for (let i = 0; i < 100 && !live.findLiveActivity(run); i++) await new Promise<void>(resolve => setImmediate(resolve));
+    await bootstrapDone.promise;
+    await Promise.all(sidebarDone.map(done => done.promise));
     const turn = live.findLiveActivity(run);
     if (budget === 'empty-tail') {
         assert.equal(turn, undefined);
