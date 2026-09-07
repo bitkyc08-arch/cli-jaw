@@ -101,7 +101,7 @@ test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: { ...li
         await beforeLifecycle?.(input); return lifecycle.handleAgentExit(input);
     } } });
 const { spawnAgent, killActiveAgent, killAgentById, killAllAgents, waitForExitSettled, waitForProcessEnd,
-    waitForAllProcessesEnd, activeMainProcesses, activeProcesses, enqueueMessage, messageQueue, removeQueuedMessage } = await import('../../src/agent/spawn.ts');
+    waitForMainProcessEnd, waitForAllProcessesEnd, activeMainProcesses, activeProcesses, enqueueMessage, messageQueue, removeQueuedMessage } = await import('../../src/agent/spawn.ts');
 const database = await import('../../src/core/db.ts');
 const { db, getMaxMessageId, getSteerSalvageAfter } = database;
 const { subscribe } = await import('../../src/core/event-bus.ts');
@@ -267,6 +267,53 @@ runTest('generation invalidated during pending factory cannot attach or write a 
     assert.notEqual((await run.promise).code, 0);
     assert.deepEqual(db.prepare('SELECT role FROM messages WHERE session_id=?').all(opts.chatSessionId), []);
     assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+});
+
+runTest('pending main factory cancellation settles logically but retains scoped and global cleanup waits', async () => {
+    const entered = deferred(), gate = deferred(), opts = options();
+    const events: Array<{ type: string; data: Record<string, any> }> = [];
+    const off = subscribe(event => events.push({ type: event.event, data: event.data }));
+    let factorySettled = false, mainDone = false, scopedDone = false, shutdownDone = false;
+    const waits: Promise<void>[] = [];
+    beforeFactory = async () => { entered.resolve(); await gate.promise; };
+    const run = spawnAgent('pending main factory', opts);
+    try {
+        await entered.promise;
+        const creation = Promise.all(factoryDone).then(() => { factorySettled = true; });
+        assert.equal(activeMainProcesses.has(opts.scopeKey), true); assert.equal(hasClaudeRuns(opts.scopeKey), true);
+        assert.equal(killActiveAgent(opts.scopeKey, 'user'), true);
+        const result = await run.promise;
+        assert.equal(result.runtimeOutcome?.status, 'stopped'); assert.equal(result.runtimeOutcome?.finalText, null);
+        assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+        assert.equal(factorySettled, false); assert.equal(queries.length, 0);
+        waits.push(waitForMainProcessEnd(opts.scopeKey, 2000).then(() => { mainDone = true; }));
+        waits.push(waitForProcessEnd(opts.scopeKey, 2000).then(() => { scopedDone = true; }));
+        waits.push(waitForAllProcessesEnd(2000).then(() => { shutdownDone = true; }));
+        // A microtask checkpoint can expose an immediate return but cannot run
+        // the waiters' polling/deadline timers. No wall-time success inference.
+        await Promise.resolve();
+        assert.equal(hasClaudeRuns(opts.scopeKey), true, 'main control must survive logical map removal until factory cleanup');
+        assert.equal(mainDone, false, 'main-only wait must include retained main acquisition cleanup');
+        assert.equal(scopedDone, false); assert.equal(shutdownDone, false);
+        assert.ok(result.traceRunId); assertTerminalOrder(events, result.traceRunId);
+        const terminal = structuredClone(events);
+        gate.resolve(); await creation; await Promise.all(waits);
+        assert.equal(hasClaudeRuns(opts.scopeKey), false); assert.equal(factorySettled, true);
+        assert.equal(mainDone, true);
+        assert.equal(scopedDone, true); assert.equal(shutdownDone, true);
+        assert.equal(inputs.length, 1); assert.equal(sessions.length, 0); assert.equal(queries.length, 0);
+        assert.deepEqual(assistantRows(opts.chatSessionId), []); assert.deepEqual(events, terminal);
+        assert.strictEqual(await run.promise, result);
+    } finally {
+        gate.resolve(); killActiveAgent(opts.scopeKey, 'user');
+        await run.promise; await Promise.all(factoryDone);
+        for (const session of sessions) await session.close();
+        for (const query of queries) {
+            await query.done;
+            assert.ok(query.child.exitCode !== null || query.child.signalCode !== null);
+        }
+        await Promise.all(waits); off();
+    }
 });
 
 for (const stage of ['acquire', 'ready', 'settle'] as const) runTest(`${stage} failure wakes one queued follow-up through actual spawn and lifecycle`, async t => {
