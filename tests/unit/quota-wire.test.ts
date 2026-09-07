@@ -78,3 +78,14 @@ test('byte reader preserves protobuf bytes and joins chunks without text convers
     }));
     assert.deepEqual(await readQuotaBytes(response), new Uint8Array([0, 255, 128, 1]));
 });
+
+
+test('continuously ready chunks cannot starve the total deadline timer', async () => {
+    const response = new Response(new ReadableStream({
+        start(controller) {
+            for (let i = 0; i < 50000; i++) controller.enqueue(new Uint8Array([32]));
+            controller.close();
+        },
+    }));
+    await assert.rejects(readQuotaBytes(response, 1), /timed out/);
+});

@@ -44,6 +44,7 @@ export async function readQuotaBytes(response: Response, timeoutMs = QUOTA_BODY_
     }
     const reader = response.body?.getReader();
     if (!reader) throw new Error('Quota response has no body');
+    const deadline = performance.now() + timeoutMs;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error('Quota response body timed out')), timeoutMs);
@@ -52,7 +53,9 @@ export async function readQuotaBytes(response: Response, timeoutMs = QUOTA_BODY_
     let total = 0;
     try {
         while (true) {
+            if (performance.now() >= deadline) throw new Error('Quota response body timed out');
             const { done, value } = await Promise.race([reader.read(), timeout]);
+            if (performance.now() >= deadline) throw new Error('Quota response body timed out');
             if (done) break;
             total += value.byteLength;
             if (total > QUOTA_RESPONSE_MAX_BYTES) throw new Error('Quota response exceeds size limit');
