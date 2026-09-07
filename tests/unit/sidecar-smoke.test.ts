@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import ts from 'typescript';
@@ -224,11 +223,109 @@ test('preflight rejects missing binary/module, .env, escaping links and existing
     fs.rmSync(f.node);await assert.rejects(f.run(),/ENOENT|missing/);
 });
 
-test('CLI absent/default skipped differs from explicit missing and rejects ambiguous arguments',t=>{
-    const cwd=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'sidecar-cli-'));t.after(()=>fs.rmSync(cwd,{recursive:true,force:true}));
-    const run=(args:string[])=>spawnSync(process.execPath,[cli,...args],{cwd,env:{PATH:path.dirname(process.execPath)},encoding:'utf8',timeout:5000});
-    assert.equal(run([]).status,3);assert.equal(run(['--server-root',path.join(cwd,'missing')]).status,1);
-    for(const args of [['--server-root'],['--unknown'],['--report'],['--server-root','a','--server-root','b']])assert.notEqual(run(args).status,0);
+test('CLI absent/default skipped differs from explicit missing and rejects ambiguous arguments',async t=>{
+    const cwd=fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()),'sidecar-cli-'));
+    let cleanupSafe=true;
+    t.after(()=>{if(cleanupSafe)fs.rmSync(cwd,{recursive:true,force:true});});
+    const report=path.join(cwd,'must-not-exist.json');
+    const run=async(args:string[],extraEnv:Record<string,string>={})=>{
+        cleanupSafe=false;
+        const child=childProcess.spawn(process.execPath,[cli,...args],{
+            cwd,env:{PATH:path.dirname(process.execPath),...extraEnv},stdio:['ignore','pipe','pipe'],
+        });
+        let retired=false,closed=false,output='',bytes=0,failure:string|undefined;
+        let hardStop:ReturnType<typeof setTimeout>|undefined;
+        const signal=(name:NodeJS.Signals)=>{
+            if(retired||child.exitCode!==null||child.signalCode!==null)return;
+            try{if(!child.kill(name))retired=true;}catch{retired=true;}
+        };
+        const stop=(reason:string)=>{
+            failure??=reason;signal('SIGTERM');hardStop??=setTimeout(()=>signal('SIGKILL'),1000);
+        };
+        child.once('error',error=>{retired=true;failure??=error.message;});
+        child.once('exit',()=>{retired=true;});
+        const receive=(chunk:string)=>{
+            bytes+=Buffer.byteLength(chunk);if(bytes>256*1024){stop('output overflow');return;}output+=chunk;
+        };
+        child.stdout.setEncoding('utf8').on('data',receive);child.stderr.setEncoding('utf8').on('data',receive);
+        const timer=setTimeout(()=>stop('CLI timeout'),5000);
+        let boundary:ReturnType<typeof setTimeout>;
+        const result=await new Promise<{status:number|null;signal:NodeJS.Signals|null}>(resolve=>{
+            boundary=setTimeout(()=>{
+                failure??='child close unproven';child.stdout.destroy();child.stderr.destroy();child.unref();
+                resolve({status:null,signal:null});
+            },7500);
+            child.once('close',(status,sig)=>{retired=true;closed=true;resolve({status,signal:sig});});
+        });
+        clearTimeout(timer);clearTimeout(boundary!);clearTimeout(hardStop);
+        assert.equal(closed,true,`retain unclosed CLI fixture: ${cwd}`);
+        assert.equal(failure,undefined,`${failure}: fixture retained at ${cwd}`);
+        assert.equal(result.signal,null);assert.notEqual(result.status,null);
+        cleanupSafe=true;
+        assert.equal(fs.existsSync(report),false,'no premature primary report');
+        assert.equal(fs.existsSync(report+'.cleanup.json'),false,'no premature cleanup report');
+        assert.doesNotMatch(output,/Sidecar smoke PASS/);
+        return {...result,output};
+    };
+    assert.equal((await run([])).status,3);
+    assert.equal((await run(['--server-root',path.join(cwd,'missing')])).status,1);
+    const optionalEnvironments:Record<string,string>[]=[{},{CI:'1'},{JAW_GATE_REQUIRE_SIDECAR:'0'}];
+    for(const env of optionalEnvironments){
+        const result=await run(['--report',report],env);
+        assert.equal(result.status,3,result.output);assert.match(result.output,/SKIPPED.*not verified.*nothing imported/);
+    }
+    for(const [args,env] of [
+        [['--report',report],{JAW_GATE_REQUIRE_SIDECAR:'1'}],
+        [['--server-root',path.join(cwd,'missing'),'--report',report],{JAW_GATE_REQUIRE_SIDECAR:'0'}],
+    ] as const){
+        const result=await run([...args],env);
+        assert.equal(result.status,1,result.output);assert.match(result.output,/required a real smoke test/);
+        assert.doesNotMatch(result.output,/SKIPPED/);
+    }
+    for(const args of [
+        ['--server-root'],['--unknown'],['--report'],['--server-root','a','--server-root','b'],
+        ['--report',report,'--server-root'],['--report',report,'--unknown'],
+        ['--report',report,'--report',report+'.other'],['--server-root','--report',report],
+        ['--server-root','','--report',report],['--report',''],['--help','--report',report],
+    ]){
+        const result=await run(args);
+        assert.equal(result.status,2,`${JSON.stringify(args)}: ${result.output}`);
+        assert.match(result.output,/Usage: check-sidecar-smoke/);
+        assert.doesNotMatch(result.output,/SKIPPED|required a real smoke test/);
+        assert.equal(fs.existsSync(report+'.other'),false);
+    }
+    for(const flag of ['--help','-h']){
+        const result=await run([flag]);assert.equal(result.status,0,result.output);
+        assert.match(result.output,/^Usage: check-sidecar-smoke/);assert.doesNotMatch(result.output,/SKIPPED|Sidecar smoke/);
+    }
+    const nonDirectory=path.join(cwd,'file');fs.writeFileSync(nonDirectory,'sentinel');
+    const incomplete=path.join(cwd,'incomplete');fs.mkdirSync(incomplete);
+    for(const root of [nonDirectory,incomplete]){
+        const result=await run(['--server-root',root,'--report',report]);
+        assert.equal(result.status,1,result.output);assert.match(result.output,/Sidecar smoke failed:/);
+        assert.doesNotMatch(result.output,/Usage:|SKIPPED/);
+    }
+    // Otherwise valid inputs: these failures must reach report validation, not missing-module checks.
+    // This artifact shares the CLI's cleanup fence; never delete it after an unproven CLI close.
+    const validRoot=path.join(cwd,'valid-artifact');
+    const put=(name:string,value:string)=>{
+        const file=path.join(validRoot,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,value);
+    };
+    put('package.json','{"name":"cli-report-fixture","version":"0.0.0","type":"module"}');
+    put('dist/src/shared/isolated-qa.js',policy);put('dist/src/telegram/bot.js','export const imported=true;');
+    put('dist/server.js',worker);put('dist/src/manager/server.js',manager);
+    fs.copyFileSync(process.execPath,path.join(validRoot,process.platform==='win32'?'node.exe':'node'),fs.constants.COPYFILE_FICLONE);
+    for(const destination of [path.join(cwd,'absent-parent','report.json'),path.join(validRoot,'report.json')]){
+        const result=await run(['--server-root',validRoot,'--report',destination]);
+        assert.equal(result.status,1,result.output);assert.doesNotMatch(result.output,/Usage:|SKIPPED/);
+        assert.match(result.output,destination.startsWith(validRoot)?/Report destination must be outside/:/ENOENT/);
+        assert.equal(fs.existsSync(destination),false);
+    }
+    const existing=path.join(cwd,'existing.json');fs.writeFileSync(existing,'existing report sentinel');
+    const result=await run(['--server-root',validRoot,'--report',existing]);
+    assert.equal(result.status,1,result.output);assert.match(result.output,/EEXIST/);
+    assert.equal(fs.readFileSync(existing,'utf8'),'existing report sentinel');
+    assert.equal(fs.existsSync(existing+'.cleanup.json'),false);
 });
 
 test('stdout overflow is bounded and never certified from a later clean exit',async t=>{

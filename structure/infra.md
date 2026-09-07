@@ -219,6 +219,13 @@ The bundler binds its runtime candidate through smoke and sealing, then promotes
 only a completed, locally fingerprinted output. `.jaw-sidecar-build.json` is
 local provenance/integrity metadata, not a cryptographic signature.
 
+The smoke CLI exits `0` only for verified runtime success, `1` for a required
+missing artifact or operational failure, `2` for invalid arguments, and `3` for
+an optional absent default bundle (explicitly unverified). Sole help exits `0`
+without probing. CI alone does not require a bundle; an explicit `--server-root`
+or `JAW_GATE_REQUIRE_SIDECAR=1` does. The release wrapper may accept a skip as
+policy success but retains its SKIPPED/nothing-imported detail.
+
 Successful build snapshots/reports and actual previous-output backups remain
 available for inspection. Interrupted/failed work retains staging/extraction/
 lock when completion is uncertain; do not blindly remove a lock or signal old

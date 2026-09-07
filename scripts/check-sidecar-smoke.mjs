@@ -240,18 +240,25 @@ function parseArgs(args){
         options[flag]=args[++i];
     }return options;
 }
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+async function main(argv){
+    const usage='Usage: check-sidecar-smoke.mjs [--server-root DIR] [--report NEW_FILE]';
+    if(argv.length===1&&['--help','-h'].includes(argv[0])){console.log(usage);return;}
+    let args;
+    try{args=parseArgs(argv);}
+    catch(error){console.error(`${String(error.message??error)}\n${usage}`);process.exitCode=2;return;}
     try{
-        if(process.argv.slice(2).length===1&&['--help','-h'].includes(process.argv[2]))console.log('Usage: check-sidecar-smoke.mjs [--server-root DIR] [--report NEW_FILE]');
-        else{
-            const args=parseArgs(process.argv.slice(2)),root=path.resolve(args['--server-root']??'electron/sidecar/server');
-            if(!fs.existsSync(root)&&!args['--server-root']&&process.env['JAW_GATE_REQUIRE_SIDECAR']!=='1'){
-                console.log('Sidecar absent — SKIPPED (not verified)');process.exitCode=3;
+        const root=path.resolve(args['--server-root']??'electron/sidecar/server');
+        if(!fs.existsSync(root)){
+            if(args['--server-root']||process.env['JAW_GATE_REQUIRE_SIDECAR']==='1'){
+                console.error(`Sidecar not bundled at ${root}, but the caller required a real smoke test`);process.exitCode=1;
             }else{
-                const result=await runSidecarSmoke({serverRoot:root,reportPath:args['--report']});
-                console.log(`Sidecar smoke ${result.ok?'PASS':'FAIL'}: ${result.probes.length} critical surfaces; report ${result.reportPath}`);
-                process.exitCode=result.code;
+                console.log(`Sidecar not bundled at ${root} — skipping smoke; SKIPPED (not verified, nothing imported)`);process.exitCode=3;
             }
+            return;
         }
+        const result=await runSidecarSmoke({serverRoot:root,reportPath:args['--report']});
+        console.log(`Sidecar smoke ${result.ok?'PASS':'FAIL'}: ${result.probes.length} critical surfaces; report ${result.reportPath}`);
+        process.exitCode=result.code;
     }catch(error){console.error(`Sidecar smoke failed: ${String(error.message??error)}`);process.exitCode=1;}
 }
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await main(process.argv.slice(2));
