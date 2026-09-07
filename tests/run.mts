@@ -16,8 +16,15 @@
 // isolation:'process' runs each file in its own subprocess (matching the old
 // `--test` default). This keeps real-process/timing tests (bgtask spawn, session
 // probes) from contending in one shared event loop — in-process concurrency made
-// them flaky. CLI_JAW_HOME (set by setup/test-home.ts here) is inherited by the
-// child processes via env; --experimental-test-module-mocks propagates too.
+// them flaky.
+//
+// Every child re-imports setup/test-home.ts through the run() execArgv option, so
+// each FILE gets its own fresh CLI_JAW_HOME and jaw.db. Without that, children
+// inherit the parent's single home and two files can race the same first-open
+// migration (SqliteError: duplicate column name) — a failure that only shows up
+// when enough DB-touching files land in one batch, i.e. exactly what sharding
+// changes. The old CI invocation (--import test-home.ts --test) had per-file homes
+// for the same reason; this keeps that behavior inside the driver.
 //
 // Coverage: node:test only collects coverage when run() receives { coverage: true }
 // (v22.10+); the --experimental-test-coverage flag alone is filtered out of the
@@ -27,6 +34,7 @@ import { run } from 'node:test';
 import { spec } from 'node:test/reporters';
 import { readdirSync, statSync, existsSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import process from 'node:process';
 import { parseArgs, partitionFiles, type RunnerOptions } from './setup/shard.ts';
 
@@ -68,6 +76,7 @@ if (listOnly) { for (const f of files) console.log(f); process.exit(0); }
 const scopeLabel = options.explicit.length ? 'explicit' : options.all ? 'all' : (options.scopes.length ? options.scopes : ['root', 'unit']).join(',');
 console.log(`[tests/run] ${files.length} files (scope=${scopeLabel}, shard=${options.shard ? `${options.shard.index}/${options.shard.total}` : 'none'})`);
 const coverage = process.execArgv.includes('--experimental-test-coverage');
+const execArgv = ['--import', pathToFileURL(join(TESTS_DIR, 'setup', 'test-home.ts')).href];
 let failures = 0;
-run({ files, concurrency: true, watch, isolation: 'process', coverage }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
+run({ files, concurrency: true, watch, isolation: 'process', coverage, execArgv }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
 if (!watch) process.on('beforeExit', () => { if (failures > 0 && !process.exitCode) process.exitCode = 1; });
