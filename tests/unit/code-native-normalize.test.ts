@@ -1,6 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { CodeTurnNormalizer, CODE_ITEM_MAX_CHARS } from '../../src/code-mode/normalize.ts';
+import { CodeTurnNormalizer, CODE_ITEM_MAX_CHARS, redactCodeText } from '../../src/code-mode/normalize.ts';
 import type { CodeTurnNormalizerOptions } from '../../src/code-mode/normalize.ts';
 import type { CodeTurnContext } from '../../src/code-mode/provider.ts';
 import type { CodeItem } from '../../src/code-mode/wire.ts';
@@ -129,7 +129,10 @@ test('1Mi field cap retains plaintext and exposes accurate source/stored counts 
     assert.equal(row.truncation?.storedChars, 1_048_576);
     assert.equal(row.truncation?.sourceChars, 1_048_676);
     assert.match(row.truncation!.reason, /field_limit/);
+    const writes = f.writes.length;
     f.observer.text('message', 'large', 'tail', 'append', 'unknown');
+    assert.equal(f.writes.length, writes, 'retired source-count-only changes wait for final flush');
+    f.normalizer.finish(done);
     row = f.rows('assistant_message')[0]!;
     assert.equal(row.text?.length, 1_048_576);
     assert.equal(row.truncation?.sourceChars, 1_048_680);
@@ -142,7 +145,7 @@ test('raw cap retirement preserves old text and a fresh replacement can recover'
     f.observer.text('message', 'm', 'x'.repeat(33), 'append', 'unknown');
     f.observer.text('message', 'm', 'later', 'append', 'unknown');
     assert.equal(f.rows('assistant_message')[0]?.text, 'retained');
-    assert.equal(f.rows('assistant_message')[0]?.truncation?.sourceChars, 46);
+    assert.equal(f.rows('assistant_message')[0]?.truncation?.sourceChars, 41, 'later retired counts are not committed yet');
     f.observer.text('message', 'm', 'recovered', 'replace', 'final');
     assert.equal(f.rows('assistant_message')[0]?.text, 'recovered');
     assert.equal(f.rows('assistant_message')[0]?.truncation, undefined);
@@ -501,5 +504,372 @@ test('invalid budgets reject construction rather than disabling bounded accumula
         assert.throws(() => fixture({ maxFieldChars: value }), /invalid_code_normalizer_limit/);
         assert.throws(() => fixture({ maxTotalChars: value }), /invalid_code_normalizer_limit/);
         assert.throws(() => fixture({ maxItems: value }), /invalid_code_normalizer_limit/);
+    }
+});
+
+const fencedSecret = 'Before the result:\n```json\n{"password":"canary-value","ok":true}\n```\nAfter the result.';
+const fencedSafe = 'Before the result:\n```json\n{"password":"[REDACTED]","ok":true}\n```\nAfter the result.';
+
+test('redactCodeText masks offset JSON fences independently while retaining surrounding prose', () => {
+    assert.equal(redactCodeText(fencedSecret), fencedSafe);
+    assert.equal(redactCodeText('prose ```json\n{"password":"canary-value"}\n```\ntrailing'),
+        'prose ```json\n{"password":"[REDACTED]"}\n```\ntrailing');
+    assert.equal(redactCodeText('prose ```json{"password":"canary-value"}``` trailing'),
+        'prose [structured content withheld]', 'inline markers do not close a Markdown fence');
+    assert.equal(redactCodeText('ordinary [Markdown](https://example.test)'), 'ordinary [Markdown](https://example.test)');
+    assert.equal(redactCodeText('{"password":"canary-value"}'), '{"password":"[REDACTED]"}');
+    assert.equal(redactCodeText('{"password":"canary-value', true), '[structured content withheld]');
+});
+
+test('every split in an embedded JSON fence is safe before each immediate commit', () => {
+    for (let split = 1; split < fencedSecret.length; split++) {
+        const f = fixture();
+        f.observer.text('message', 'm', fencedSecret.slice(0, split), 'append', 'commentary');
+        f.observer.text('message', 'm', fencedSecret.slice(split), 'append', 'final');
+        f.normalizer.finish(done);
+        assert.equal(f.rows('assistant_message')[0]?.text, fencedSafe, `split ${split}`);
+        assert.ok(!JSON.stringify(f.writes).includes('canary-value'), `split ${split} leaked`);
+    }
+});
+
+test('partial language names, opening fences and closing fences stay private during character chunks', () => {
+    const f = fixture();
+    for (const char of fencedSecret) {
+        f.observer.text('message', 'm', char, 'append', 'commentary');
+        assert.ok(!JSON.stringify(f.writes.at(-1)).includes('canary'), 'no partial secret may appear either');
+    }
+    for (const language of ['j', 'js', 'jso', 'json']) {
+        assert.equal(redactCodeText(`prefix \`\`\`${language}`), 'prefix [structured content withheld]');
+    }
+    assert.equal(f.rows('assistant_message')[0]?.text, fencedSafe);
+});
+
+test('multiple complete and incomplete blocks preserve interstitial text without leaking later blocks', () => {
+    const first = 'one ```json\n{"token":"canary-one"}\n```\nafter one';
+    const second = '\ntwo ```json\n{"password":"canary-two"}\n```\nafter two';
+    const incomplete = '\nthree ```json\n{"secret":"canary-three';
+    const safe = redactCodeText(first + second + incomplete);
+    assert.equal(safe, 'one ```json\n{"token":"[REDACTED]"}\n```\nafter one'
+        + '\ntwo ```json\n{"password":"[REDACTED]"}\n```\nafter two\nthree [structured content withheld]');
+    assert.ok(!safe.includes('canary'));
+    assert.equal(redactCodeText('```json\n{"password":"canary-value"}\n```\nplain suffix'),
+        '```json\n{"password":"[REDACTED]"}\n```\nplain suffix');
+});
+
+test('backticks inside JSON strings and malformed quoted bodies cannot terminate a redaction region', () => {
+    assert.equal(redactCodeText('prefix ```json\n{"password":"canary-```-value","ok":true}\n```\nsuffix'),
+        'prefix ```json\n{"password":"[REDACTED]","ok":true}\n```\nsuffix');
+    assert.equal(redactCodeText('prefix ```json\n{"password":"canary-value\n``` suffix'),
+        'prefix [structured content withheld]');
+    assert.equal(redactCodeText('prefix ````JSON\n{"password":"canary-value"}\n````\nsuffix'),
+        'prefix ````JSON\n{"password":"[REDACTED]"}\n````\nsuffix');
+    assert.ok(!redactCodeText('{"password":"canary-value","description":"```json {} ```"}', true).includes('canary'));
+});
+
+test('embedded fences remain masked through field and total retirement, replacement and final flush', () => {
+    for (const coalesceMs of [0, 50]) for (const caps of [{ maxFieldChars: 80 }, { maxTotalChars: 160 }]) {
+        const f = fixture({ ...caps, coalesceMs });
+        f.observer.text('message', 'm', 'prefix ```json\n{"password":"', 'append', 'commentary');
+        f.observer.text('message', 'm', 'canary-value'.repeat(20), 'append', 'commentary');
+        f.observer.text('message', 'm', '"}\n``` after', 'append', 'final');
+        f.normalizer.finish(done);
+        assert.ok(!JSON.stringify(f.writes).includes('canary'));
+        assert.ok(f.rows('assistant_message')[0]?.truncation);
+        assert.equal(f.rows('notice').length, 1);
+        const replacement = fixture({ ...caps, coalesceMs });
+        replacement.observer.text('message', 'm', fencedSecret + 'x'.repeat(300), 'replace', 'final');
+        replacement.normalizer.finish(done);
+        assert.ok(!JSON.stringify(replacement.writes).includes('canary'));
+    }
+});
+
+test('permission titles, details and options share the embedded fence redactor before bounded view encoding', () => {
+    const f = fixture();
+    const label = 'Read ```json\n{"password":"canary-value"}\n```\nplease';
+    f.normalizer.record(f.context, { ...approval, view: { title: label, fields: [{
+        ...approval.view.fields[0]!, label, options: [{ id: 'opaque', label }],
+    }] } });
+    const permission = f.rows('permission_request')[0]!.permission!;
+    const expected = 'Read ```json\n{"password":"[REDACTED]"}\n```\nplease';
+    assert.equal(permission.title, expected); assert.equal(permission.detail, expected);
+    assert.equal(permission.options[0]?.label, expected);
+    assert.ok(!JSON.stringify(f.writes).includes('canary'));
+});
+
+test('10,000 quick appends coalesce before commits and final flush retains exactly 1,000,000 characters', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const scheduled = t.mock.method(globalThis, 'setTimeout');
+    const cleared = t.mock.method(globalThis, 'clearTimeout');
+    const f = fixture({ coalesceMs: 50 });
+    const chunk = '0123456789'.repeat(10);
+    for (let i = 0; i < 10_000; i++) f.observer.text('message', 'm', chunk, 'append', 'commentary');
+    assert.equal(f.writes.length, 1, 'first item only; no intermediate store sequence allocations');
+    assert.equal(scheduled.mock.callCount(), 1, 'one shared timer, not one per patch');
+    f.normalizer.finish(done);
+    assert.equal(f.writes.length, 2, 'final content and status share a full-item flush');
+    assert.equal(f.rows('assistant_message')[0]?.text, chunk.repeat(10_000));
+    assert.equal(f.rows('assistant_message')[0]?.text?.length, 1_000_000);
+    assert.equal(f.rows('assistant_message')[0]?.status, 'done');
+    assert.ok(cleared.mock.calls.some(call => call.arguments[0] === scheduled.mock.calls[0]?.result));
+    t.mock.timers.tick(5000);
+    assert.equal(f.writes.length, 2); assert.equal(scheduled.mock.callCount(), 1);
+});
+
+test('timed flush publishes full replacements, with immediate first parents, controls and terminal tool state', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture({ coalesceMs: 50 });
+    f.observer.text('message', 'm', 'one', 'append', 'commentary');
+    f.observer.text('message', 'm', ' two', 'append', 'commentary');
+    f.observer.tool('parent', { name: 'Agent' }, {});
+    assert.ok(f.normalizer.resolveParent(f.context, 'parent'));
+    f.normalizer.record(f.context, approval);
+    assert.equal(f.rows('permission_request')[0]?.status, 'pending');
+    f.observer.tool('parent', { delta: 'tool output' }, {});
+    f.observer.tool('parent', { status: 'done' }, {});
+    assert.equal(f.rows('tool_call')[0]?.tool?.output, 'tool output');
+    assert.equal(f.rows('tool_call')[0]?.status, 'done');
+    t.mock.timers.tick(49);
+    assert.equal(f.rows('assistant_message')[0]?.text, 'one');
+    t.mock.timers.tick(1);
+    assert.equal(f.rows('assistant_message')[0]?.text, 'one two');
+    f.observer.text('message', 'm', ' three', 'append', 'final');
+    f.observer.close(end);
+    assert.equal(f.rows('assistant_message')[0]?.text, 'one two three');
+    assert.equal(f.rows('assistant_message')[0]?.status, 'done');
+    const writes = f.writes.length;
+    t.mock.timers.tick(1000); f.normalizer.finish(done);
+    assert.equal(f.writes.length, writes);
+});
+
+test('child close flushes its own pending content while the root coalescing timer remains active', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture({ coalesceMs: 50 }); f.observer.tool('parent', {}, {});
+    const child = f.normalizer.observer({ ...f.context, parentItemId: f.normalizer.resolveParent(f.context, 'parent')! });
+    f.observer.text('message', 'root', 'root', 'append', 'commentary');
+    child.text('message', 'child', 'child', 'append', 'commentary');
+    f.observer.text('message', 'root', ' pending', 'append', 'commentary');
+    child.text('message', 'child', ' pending', 'append', 'final');
+    child.close(end);
+    assert.deepEqual(f.rows('assistant_message').map(row => row.text), ['root', 'child pending']);
+    t.mock.timers.tick(50);
+    assert.deepEqual(f.rows('assistant_message').map(row => row.text), ['root pending', 'child pending']);
+    f.normalizer.finish(done);
+});
+
+test('coalesced tool metadata remains authoritative before flush and native detail survives close', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture({ coalesceMs: 50 });
+    f.observer.tool('terminal', { status: 'done', output: 'authoritative' }, {});
+    f.observer.tool('terminal', { name: 'Read', input: 'original input' }, {});
+    f.observer.tool('terminal', { name: 'Wrong', input: 'wrong input', output: 'wrong output' }, {});
+    f.observer.tool('unfinished', {}, {});
+    f.observer.tool('unfinished', { delta: 'retained output', detail: 'native progress' }, {});
+    f.observer.close(end);
+    assert.deepEqual(f.rows('tool_call')[0]?.tool, { name: 'Read', input: 'original input', output: 'authoritative' });
+    assert.equal(f.rows('tool_call')[1]?.tool?.detail, 'native progress');
+    assert.equal(f.rows('tool_call')[1]?.tool?.output, 'retained output');
+    assert.equal(f.rows('tool_call')[1]?.status, 'cancelled');
+    const before = f.writes.length; t.mock.timers.tick(5000);
+    assert.equal(f.writes.length, before);
+});
+
+test('coalesced embedded JSON never leaks at a timer boundary or the final flush', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture({ coalesceMs: 50 });
+    for (const char of fencedSecret) {
+        f.observer.text('message', 'm', char, 'append', 'commentary');
+        t.mock.timers.tick(50);
+        assert.ok(!JSON.stringify(f.writes.at(-1)).includes('canary'));
+    }
+    f.normalizer.finish(done);
+    assert.equal(f.rows('assistant_message')[0]?.text, fencedSafe);
+});
+
+for (const coalesceMs of [0, 50]) test(`retired source-count-only changes wait until close, with no repeated writes or timers (${coalesceMs})`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const scheduled = t.mock.method(globalThis, 'setTimeout');
+    const f = fixture({ maxFieldChars: 10, coalesceMs });
+    f.observer.text('message', 'm', 'x'.repeat(20), 'replace', 'commentary');
+    const firstWrites = f.writes.length;
+    for (let i = 0; i < 10_000; i++) f.observer.text('message', 'm', 'y', 'append', 'unknown');
+    assert.equal(f.writes.length, firstWrites); assert.equal(scheduled.mock.callCount(), 0);
+    assert.equal(f.rows('assistant_message')[0]?.truncation?.sourceChars, 20);
+    f.observer.close(end);
+    assert.equal(f.writes.length, firstWrites + 1);
+    assert.equal(f.rows('assistant_message')[0]?.text, 'x'.repeat(10));
+    assert.equal(f.rows('assistant_message')[0]?.truncation?.sourceChars, 10_020);
+});
+
+test('unchanged full items and repeated terminal patches do not create duplicate commits', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    for (const coalesceMs of [0, 50]) {
+        const f = fixture({ coalesceMs });
+        f.observer.text('message', 'm', 'same', 'replace', 'final');
+        f.observer.tool('t', { status: 'done', output: 'same' }, {});
+        for (let i = 0; i < 10; i++) {
+            f.observer.text('message', 'm', 'same', 'replace', 'final');
+            f.observer.tool('t', { status: 'done', output: 'same' }, { allowTerminalUpdates: true });
+        }
+        t.mock.timers.tick(50);
+        assert.equal(f.writes.length, 2);
+        f.normalizer.finish(done);
+        assert.equal(f.writes.length, 3, 'only assistant status actually changed');
+    }
+});
+
+for (const fence of ['stale-callback', 'stale-timer', 'failure', 'finish'] as const) test(`coalescing timer is cleared by ${fence}`, t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const scheduled = t.mock.method(globalThis, 'setTimeout');
+    const cleared = t.mock.method(globalThis, 'clearTimeout');
+    let writes = 0, fail = false;
+    const failures: unknown[] = [];
+    const f = fixture({ coalesceMs: 50, commitItem() { if (fail) throw new Error('write failed'); writes++; },
+        failPersistence: error => { failures.push(error); } });
+    f.observer.text('message', 'm', 'one', 'append', 'commentary');
+    f.observer.text('message', 'm', ' two', 'append', 'commentary');
+    if (fence === 'finish') f.normalizer.finish(done);
+    else if (fence === 'failure') { fail = true; assert.throws(() => f.observer.tool('immediate', {}, {}), /write failed/); }
+    else { f.stale(); if (fence === 'stale-callback') f.observer.close(end); }
+    if (fence !== 'stale-timer') assert.ok(cleared.mock.calls.some(call => call.arguments[0] === scheduled.mock.calls[0]?.result));
+    const before = writes;
+    assert.doesNotThrow(() => t.mock.timers.tick(5000));
+    assert.equal(writes, before); assert.equal(scheduled.mock.callCount(), 1);
+    assert.equal(failures.length, fence === 'failure' ? 1 : 0);
+});
+
+test('timer write exceptions latch once without becoming uncaught or allowing native success to flush', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const original = new Error('timed persistence failure');
+    let writes = 0, failures = 0;
+    const f = fixture({ coalesceMs: 50, commitItem() { if (++writes > 1) throw original; },
+        failPersistence(error) { assert.equal(error, original); failures++; throw new Error('cleanup failed too'); } });
+    f.observer.text('message', 'm', 'one', 'append', 'commentary');
+    f.observer.text('message', 'm', ' two', 'append', 'commentary');
+    assert.doesNotThrow(() => t.mock.timers.tick(50));
+    assert.equal(failures, 1); assert.equal(writes, 2);
+    f.normalizer.finish({ ...done, finalText: 'late success' });
+    f.observer.text('message', 'm', ' late', 'append', 'final');
+    t.mock.timers.tick(5000);
+    assert.equal(failures, 1); assert.equal(writes, 2);
+});
+
+test('coalesce delay accepts zero but rejects invalid or overflowing timers', () => {
+    fixture({ coalesceMs: 0 });
+    for (const coalesceMs of [-1, 0.5, NaN, Infinity, 2_147_483_648]) {
+        assert.throws(() => fixture({ coalesceMs }), /invalid_code_coalesce_ms/);
+    }
+});
+
+test('observed stale ownership cannot revive a cleared pending accumulator', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let current = true;
+    const base = fixture();
+    const context = { ...base.context, isCurrent: () => current };
+    const f = fixture({ context, coalesceMs: 50 });
+    f.observer.text('message', 'm', 'first', 'append', 'commentary');
+    f.observer.text('message', 'm', ' pending', 'append', 'commentary');
+    current = false; t.mock.timers.tick(50);
+    current = true;
+    f.observer.text('message', 'm', ' revived', 'append', 'final');
+    f.normalizer.finish(done); t.mock.timers.tick(1000);
+    assert.equal(f.writes.length, 1); assert.equal(f.rows('assistant_message')[0]?.text, 'first');
+});
+
+test('tilde and unlabeled JSON fences preserve surrounding prose at every possible split', () => {
+    for (const opening of ['~~~json', '~~~', '```', '````json', '````']) {
+        const closing = opening.startsWith('~') ? '~~~' : opening.startsWith('````') ? '````' : '```';
+        const text = `Before the result.\n${opening}\n{"password":"canary-value","ok":true}\n${closing}\nAfter the result.`;
+        const expected = `Before the result.\n${opening}\n{"password":"[REDACTED]","ok":true}\n${closing}\nAfter the result.`;
+        assert.equal(redactCodeText(text), expected, opening);
+        for (let split = 1; split < text.length; split++) {
+            const f = fixture();
+            f.observer.text('message', 'm', text.slice(0, split), 'append', 'commentary');
+            assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), `${opening}, prefix ${split}`);
+            f.observer.text('message', 'm', text.slice(split), 'append', 'final');
+            f.normalizer.finish(done);
+            assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), `${opening}, completed ${split}`);
+            assert.equal(f.rows('assistant_message')[0]?.text, expected);
+        }
+    }
+});
+
+test('tilde partial languages and unlabeled partial bodies remain withheld before a closing line', () => {
+    for (const tail of ['~~~', '~~~j', '~~~js', '~~~jso', '~~~json', '~~~\n', '```\n', '~~~\n{',
+        '~~~\n{"password":"canary-value', '```\n[{"password":"canary-value"}']) {
+        assert.equal(redactCodeText(`Before.\n${tail}`), 'Before.\n[structured content withheld]', tail);
+    }
+    const text = 'Before.\n~~~\n[{"password":"canary-value"}]\n~~~\nAfter.';
+    assert.equal(redactCodeText(text), 'Before.\n~~~\n[{"password":"[REDACTED]"}]\n~~~\nAfter.');
+});
+
+test('tilde and unlabeled character chunks never leak through coalesced commit boundaries', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    for (const opening of ['~~~json', '~~~', '```', '````']) {
+        const closing = opening.startsWith('~') ? '~~~' : opening;
+        const text = `Before.\n${opening}\n{"password":"canary-value"}\n${closing}\nAfter.`;
+        const f = fixture({ coalesceMs: 50 });
+        for (const char of text) {
+            f.observer.text('message', 'm', char, 'append', 'commentary');
+            t.mock.timers.tick(50);
+            assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), opening);
+        }
+        f.normalizer.finish(done);
+        assert.equal(f.rows('assistant_message')[0]?.text,
+            `Before.\n${opening}\n{"password":"[REDACTED]"}\n${closing}\nAfter.`);
+    }
+});
+
+test('unquoted inline fence runs in malformed JSON cannot expose the remaining body', () => {
+    for (const fence of ['```', '~~~', '````']) {
+        const text = `Before.\n${fence}json\nnot JSON ${fence} {"password":"canary-value"}\n${fence}\nAfter.`;
+        const f = fixture();
+        for (const char of text) {
+            f.observer.text('message', 'm', char, 'append', 'commentary');
+            assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), fence);
+        }
+        f.normalizer.finish(done);
+        assert.equal(f.rows('assistant_message')[0]?.text,
+            `Before.\n${fence}json\n[structured content withheld]\n${fence}\nAfter.`);
+    }
+});
+
+test('mismatched, short, over-indented and suffixed fence lines do not release structured content', () => {
+    for (const badClosing of ['~~~', '```', '    ````', '```` trailing', 'inline ````']) {
+        const text = `Before.\n\`\`\`\`json\nnot JSON\n${badClosing}\n{"password":"canary-value"}\n\`\`\`\`\nAfter.`;
+        const f = fixture();
+        for (const char of text) {
+            f.observer.text('message', 'm', char, 'append', 'commentary');
+            assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), badClosing);
+        }
+        f.normalizer.finish(done);
+        assert.equal(f.rows('assistant_message')[0]?.text,
+            'Before.\n````json\n[structured content withheld]\n````\nAfter.');
+    }
+});
+
+test('longer closing runs, up to three spaces and CRLF retain valid fence formatting', () => {
+    const text = 'Before.\r\n~~~JSON\r\n{"password":"canary-value"}\r\n   ~~~~~ \t\r\nAfter.';
+    assert.equal(redactCodeText(text),
+        'Before.\r\n~~~JSON\r\n{"password":"[REDACTED]"}\r\n   ~~~~~ \t\r\nAfter.');
+    assert.equal(redactCodeText('Before.\n````\n{"password":"canary-value"}\n`````\nAfter.'),
+        'Before.\n````\n{"password":"[REDACTED]"}\n`````\nAfter.');
+});
+
+test('ordinary and empty code fences remain intact beside unlabeled JSON fences', () => {
+    const text = 'Before.\n```text\nordinary code\n```\n~~~\n~~~\nBetween.\n```\n{"password":"canary-value"}\n```\nAfter.';
+    assert.equal(redactCodeText(text),
+        'Before.\n```text\nordinary code\n```\n~~~\n~~~\nBetween.\n```\n{"password":"[REDACTED]"}\n```\nAfter.');
+});
+
+test('tilde and unlabeled incomplete bodies remain redacted when raw capacity retires the field', () => {
+    for (const opening of ['~~~json', '~~~', '```']) for (const coalesceMs of [0, 50]) {
+        const f = fixture({ coalesceMs, maxFieldChars: 80 });
+        f.observer.text('message', 'm', `Before.\n${opening}\n{"password":"`, 'append', 'commentary');
+        f.observer.text('message', 'm', 'canary-value'.repeat(50), 'append', 'commentary');
+        f.observer.text('message', 'm', '"}\n~~~\nAfter.', 'append', 'final');
+        f.normalizer.finish(done);
+        assert.ok(f.writes.every(item => !JSON.stringify(item).includes('canary-value')), opening);
+        assert.ok(f.rows('assistant_message')[0]?.text?.startsWith('Before.\n'));
+        assert.match(f.rows('assistant_message')[0]!.truncation!.reason, /field_limit/);
     }
 });

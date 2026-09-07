@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { RuntimeEventContext } from '../agent/runtime/events.js';
 import type { RuntimeToolPatch, RuntimeTranscriptObserver } from '../agent/runtime/projection.js';
 import type { RuntimeEvent, RuntimeEventBody, RuntimePhase, RuntimeTurnOutcome } from '../shared/runtime-contract.js';
@@ -13,8 +14,9 @@ const WITHHELD = '[structured content withheld]';
 const UNFINISHED = 'No native terminal tool result received';
 type Field = 'text' | 'name' | 'input' | 'output' | 'detail';
 type Source = { raw: string; safe: string; sourceChars: number; structured: boolean;
-    explicitStructured: boolean; retired: boolean; reason: string };
-type Entry = { item: CodeItem; context: RuntimeEventContext; fields: Map<Field, Source>; committed: boolean };
+    explicitStructured: boolean; retired: boolean; reason: string; dirty: boolean };
+type Entry = { item: CodeItem; context: RuntimeEventContext; fields: Map<Field, Source>; committed: boolean;
+    persisted: CodeItem | null; pending: boolean; metadataOnly: boolean };
 
 export interface CodeTurnNormalizerOptions {
     context: CodeTurnContext;
@@ -24,6 +26,7 @@ export interface CodeTurnNormalizerOptions {
     maxFieldChars?: number;
     maxItems?: number;
     maxTotalChars?: number;
+    coalesceMs?: number;
 }
 
 function limit(value: number | undefined, fallback: number): number {
@@ -39,13 +42,76 @@ function clip(value: string, length: number): string {
 }
 
 function structured(value: string): boolean {
-    return /^(?:\{\s*(?:"|$)|\[\s*(?:["{\[\d-]|true\b|false\b|null\b|$)|```json)/.test(value.trimStart());
+    return /^(?:\{\s*(?:"|$)|\[\s*(?:["{\[\d-]|true\b|false\b|null\b|$)|(?:`{3,}|~{3,})[ \t]*json)/i.test(value.trimStart());
 }
 
-function safeText(value: string, isStructured: boolean): string {
-    const safe = redactRuntimeContent(value, { structured: isStructured });
+function fenceEnd(value: string, start: number, fence: string): { start: number; end: number } | null {
+    let lineStart = start;
+    if (start > 0 && value[start - 1] !== '\n') {
+        const newline = value.indexOf('\n', start);
+        if (newline < 0) return null;
+        lineStart = newline + 1;
+    }
+    while (lineStart < value.length) {
+        const newline = value.indexOf('\n', lineStart);
+        const lineEnd = newline < 0 ? value.length : newline;
+        const closing = /^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/.exec(value.slice(lineStart, lineEnd));
+        if (closing && closing[1]![0] === fence[0] && closing[1]!.length >= fence.length) {
+            return { start: lineStart, end: lineEnd };
+        }
+        if (newline < 0) break;
+        lineStart = newline + 1;
+    }
+    return null;
+}
+
+/** Redacts complete JSON fences anywhere; incomplete fences never expose their body. */
+export function redactCodeText(value: string, isStructured = false): string {
+    // Apply whole-object key masking before interpreting fence-like text inside a JSON value.
+    if (!/^(?:`{3,}|~{3,})/.test(value.trimStart()) && (isStructured || structured(value))) {
+        value = redactRuntimeContent(value, { structured: true });
+    }
+    const fences = /`{3,}|~{3,}/g;
+    const parts: string[] = [];
+    let through = 0, found = false;
+    for (let match = fences.exec(value); match; match = fences.exec(value)) {
+        const headerStart = match.index + match[0].length;
+        const tail = value.slice(headerStart);
+        const header = /^[ \t]*json[ \t]*(?:\r?\n)?/i.exec(tail);
+        const partial = /^[ \t]*(?:j|js|jso)[ \t]*$/i.test(tail);
+        const unlabeled = /^[ \t]*(?:\r?\n|$)/.exec(tail);
+        const bodyStart = headerStart + (header?.[0].length ?? unlabeled?.[0].length ?? 0);
+        const close = fenceEnd(value, bodyStart, match[0]);
+        const body = value.slice(bodyStart, close?.start ?? value.length);
+        const jsonBody = unlabeled && ((!close && !body.trim()) || /^\s*(?:[\[{"\d-]|true\b|false\b|null\b)/.test(body));
+        if (!header && !partial && !jsonBody) {
+            // Keep ordinary code fences intact, including their closing marker.
+            if (close) fences.lastIndex = close.end;
+            continue;
+        }
+        found = true;
+        parts.push(redactRuntimeContent(value.slice(through, match.index)));
+        if (!close || partial) { parts.push(WITHHELD); through = value.length; break; }
+        const safeBody = redactRuntimeContent(body, { structured: true });
+        const padding = safeBody === body ? '' : /\s*$/.exec(body)![0];
+        parts.push(value.slice(match.index, bodyStart), safeBody, padding, value.slice(close.start, close.end));
+        through = close.end;
+        fences.lastIndex = through;
+    }
+    const safe = found
+        ? parts.join('') + redactRuntimeContent(value.slice(through))
+        : redactRuntimeContent(value, { structured: isStructured || structured(value) });
     // Partial credential tokens must not escape while the next chunk is pending.
     return safe.replace(/\b(?:sk-|gh[pousr]_|xox[baprs]-|AIza|AKIA)[A-Za-z0-9_-]*$/g, '[REDACTED]');
+}
+
+function sameItem(left: CodeItem, right: CodeItem, ignoreSourceChars = false): boolean {
+    const { updatedAt: _leftTime, ...a } = left;
+    const { updatedAt: _rightTime, ...b } = right;
+    if (ignoreSourceChars && a.truncation && b.truncation) {
+        b.truncation = { ...b.truncation, sourceChars: a.truncation.sourceChars };
+    }
+    return isDeepStrictEqual(a, b);
 }
 
 /** Owns Code items only. Session settlement and event publication belong to the caller. */
@@ -55,11 +121,14 @@ export class CodeTurnNormalizer {
     private readonly maxFieldChars: number;
     private readonly maxItems: number;
     private readonly maxTotalChars: number;
+    private readonly coalesceMs: number;
+    private timer: ReturnType<typeof setTimeout> | undefined;
     private readonly items = new Map<string, Entry>();
     private readonly closedContexts = new Set<string>();
     private chars = 0;
     private sequence = 0;
     private failed = false;
+    private stale = false;
     private finished = false;
     private finishing = false;
     private capacityNoticed = false;
@@ -71,17 +140,24 @@ export class CodeTurnNormalizer {
         this.maxFieldChars = limit(options.maxFieldChars, CODE_ITEM_MAX_CHARS);
         this.maxItems = limit(options.maxItems, CODE_TURN_MAX_ITEMS);
         this.maxTotalChars = limit(options.maxTotalChars, CODE_TURN_MAX_CHARS);
+        this.coalesceMs = options.coalesceMs ?? 0;
+        if (!Number.isSafeInteger(this.coalesceMs) || this.coalesceMs < 0 || this.coalesceMs > 2_147_483_647) {
+            throw new TypeError('invalid_code_coalesce_ms');
+        }
     }
 
     private current(context: RuntimeEventContext): boolean {
-        if (this.failed || this.finished || context.audience !== 'internal' || this.context.audience !== 'internal') return false;
+        if (this.failed || this.stale || this.finished || context.audience !== 'internal' || this.context.audience !== 'internal') return false;
         if (context.runId !== this.context.runId || context.sessionId !== this.context.sessionId
             || context.turnId !== this.context.turnId || context.scope !== this.context.scope) return false;
         if (context.parentItemId !== this.context.parentItemId) {
             const parent = context.parentItemId ? this.items.get(context.parentItemId) : undefined;
             if (!parent?.committed || parent.item.kind !== 'tool_call') return false;
         }
-        try { return this.context.isCurrent() === true; } catch { return false; }
+        let current = false;
+        try { current = this.context.isCurrent() === true; } catch { /* A failed ownership predicate is stale. */ }
+        if (!current) { this.stale = true; this.release(); }
+        return current;
     }
 
     private guarded<T>(action: () => T): T {
@@ -143,7 +219,8 @@ export class CodeTurnNormalizer {
             this.capacity(); return null;
         }
         const at = this.now();
-        const entry: Entry = { context: { ...context }, fields: new Map(), committed: false, item: {
+        const entry: Entry = { context: { ...context }, fields: new Map(), committed: false,
+            persisted: null, pending: false, metadataOnly: false, item: {
             itemId, kind, turnId: this.context.turnId, status: 'running', createdAt: at, updatedAt: at,
             ...(context.parentItemId === undefined ? {} : { parentItemId: context.parentItemId }),
         } };
@@ -151,41 +228,60 @@ export class CodeTurnNormalizer {
         return entry;
     }
 
-    private source(entry: Entry, field: Field, value: string, append = false, hint?: boolean): void {
+    private source(entry: Entry, field: Field, value: string, append = false, hint?: boolean, immediate = false): void {
         if (typeof value !== 'string') throw new TypeError('invalid_code_native_text');
-        const old = entry.fields.get(field);
+        let old = entry.fields.get(field);
+        if (old?.dirty && (old.raw.length + value.length > this.maxFieldChars
+            || this.chars + value.length > this.maxTotalChars) && append) {
+            this.source(entry, field, old.raw, false, old.explicitStructured, true);
+            old = entry.fields.get(field);
+        }
         const sourceChars = Math.min(Number.MAX_SAFE_INTEGER, (append ? old?.sourceChars ?? 0 : 0) + value.length);
         const explicitStructured = hint ?? (append ? old?.explicitStructured ?? false : false);
         let isStructured = explicitStructured || (append && old?.retired === true && old.structured) || structured(value);
         const oldCharge = (old?.raw.length ?? 0) + (old?.safe.length ?? 0);
         const available = this.maxTotalChars - this.chars + oldCharge;
         const length = (append ? old?.raw.length ?? 0 : 0) + value.length;
-        let raw = '', safe: string, retired = false, reason = '';
+        let raw = '', safe: string, retired = false, reason = '', dirty = false;
         if ((append && old?.retired) || length > this.maxFieldChars || length > available) {
             retired = true;
             reason = length > this.maxFieldChars ? 'field_limit' : old?.reason || 'total_limit';
             // A retired prefix never accepts more fragments. A replacement can recover it.
-            safe = isStructured ? WITHHELD : append && old ? old.safe : safeText(value, false);
+            safe = isStructured ? WITHHELD : append && old ? old.safe : redactCodeText(value);
         } else {
             raw = append ? (old?.raw ?? '') + value : value;
-            isStructured = explicitStructured || structured(raw);
-            safe = safeText(raw, isStructured);
+            dirty = !immediate && this.coalesceMs > 0 && entry.committed;
+            isStructured = explicitStructured || (dirty ? old?.structured === true || structured(value) : structured(raw));
+            safe = dirty ? old?.safe ?? '' : redactCodeText(raw, isStructured);
         }
         if (safe.length > this.maxFieldChars || raw.length + safe.length > available) {
             reason ||= safe.length > this.maxFieldChars ? 'field_limit' : 'total_limit';
             retired = true;
+            if (dirty) { safe = redactCodeText(raw, isStructured); dirty = false; }
             raw = '';
             safe = isStructured ? WITHHELD : safe;
         }
         safe = clip(safe, Math.min(this.maxFieldChars, available));
-        if (isStructured && safe === WITHHELD && !reason) reason = 'structured_incomplete';
-        entry.fields.set(field, { raw, safe, sourceChars, structured: isStructured, explicitStructured, retired, reason });
+        if (!dirty && !reason && safe.includes(WITHHELD) && (isStructured || /`{3,}|~{3,}/.test(raw))) {
+            reason = 'structured_incomplete';
+        }
+        entry.fields.set(field, { raw, safe, sourceChars, structured: isStructured, explicitStructured, retired, reason, dirty });
         this.chars += raw.length + safe.length - oldCharge;
     }
 
-    private save(entry: Entry): void {
+    private save(entry: Entry, force = false): void {
         if (!this.current(entry.context)) return;
-        const next: CodeItem = { ...entry.item, updatedAt: this.now() };
+        const control = !entry.committed || entry.item.kind === 'permission_request' || entry.item.kind === 'notice'
+            || entry.item.status !== entry.persisted?.status;
+        if (!force && !control && this.coalesceMs > 0 && [...entry.fields.values()].some(source => source.dirty)) {
+            entry.pending = true; entry.metadataOnly = false;
+            if ([...entry.fields.values()].some(source => source.retired)) this.capacity();
+            this.schedule(); return;
+        }
+        for (const [field, source] of entry.fields) {
+            if (source.dirty) this.source(entry, field, source.raw, false, source.explicitStructured, true);
+        }
+        const next: CodeItem = { ...entry.item };
         const read = (field: Field) => entry.fields.get(field)?.safe;
         if (read('text') !== undefined) next.text = read('text')!;
         if (next.kind === 'tool_call') next.tool = {
@@ -202,10 +298,51 @@ export class CodeTurnNormalizer {
             reason: reasons.join(','),
         };
         else delete next.truncation;
+        if (entry.persisted && sameItem(entry.persisted, next)) {
+            entry.pending = false; this.clearIdleTimer(); return;
+        }
+        if (!force && !control && entry.persisted && sources.some(source => source.retired)
+            && sameItem(entry.persisted, next, true)) {
+            entry.pending = true; entry.metadataOnly = true; this.clearIdleTimer(); return;
+        }
+        if (!force && !control && this.coalesceMs > 0) {
+            entry.pending = true; entry.metadataOnly = false;
+            if (sources.some(source => source.retired)) this.capacity();
+            this.schedule(); return;
+        }
+        next.updatedAt = this.now();
         this.options.commitItem(structuredClone(next));
         entry.item = next;
+        entry.persisted = { ...next };
         entry.committed = true;
+        entry.pending = false;
+        this.clearIdleTimer();
         if (sources.some(source => source.retired)) this.capacity();
+    }
+
+    private schedule(): void {
+        if (this.timer !== undefined || this.finishing || !this.current(this.context)) return;
+        this.timer = setTimeout(() => {
+            this.timer = undefined;
+            try { this.guarded(() => this.flush()); }
+            catch { /* guarded latched the failure before it reaches this timer boundary. */ }
+        }, this.coalesceMs);
+        this.timer.unref?.();
+    }
+
+    private clearIdleTimer(): void {
+        if ([...this.items.values()].some(entry => entry.pending && !entry.metadataOnly)) return;
+        if (this.timer !== undefined) clearTimeout(this.timer);
+        this.timer = undefined;
+    }
+
+    private flush(context?: RuntimeEventContext, final = false): void {
+        if (!this.current(this.context)) return;
+        for (const entry of this.items.values()) {
+            if (context && this.contextKey(entry.context) !== this.contextKey(context)) continue;
+            if (entry.pending && (final || !entry.metadataOnly)) this.save(entry, true);
+        }
+        this.clearIdleTimer();
     }
 
     private capacity(): void {
@@ -242,7 +379,9 @@ export class CodeTurnNormalizer {
         if (!entry) return;
         const terminal = entry.item.status !== 'running';
         const replaceTerminal = options.allowTerminalUpdates === true && patch.status !== undefined && patch.status !== 'running';
-        if (patch.name && (!entry.fields.get('name')?.safe || entry.fields.get('name')?.safe === 'tool')) {
+        const nameSource = entry.fields.get('name');
+        const name = nameSource?.dirty ? nameSource.raw : nameSource?.safe;
+        if (patch.name && (!name || name === 'tool')) {
             this.source(entry, 'name', patch.name);
         }
         if (patch.input !== undefined && (!terminal || replaceTerminal || !entry.fields.has('input'))) {
@@ -264,7 +403,11 @@ export class CodeTurnNormalizer {
                 scope: context.scope, turnId: context.turnId, seq: ++this.sequence,
                 ...(context.parentItemId === undefined ? {} : { parentItemId: context.parentItemId }) };
             // Full terminal content belongs to finish/observer, not the bounded preview event.
-            const { body: safe } = encodeRuntimeBody(identity, body.kind === 'turn-end' ? { ...body, finalText: null } : body);
+            const prepared = body.kind === 'request' ? { ...body, view: { ...body.view,
+                title: redactCodeText(body.view.title), fields: body.view.fields.map(field => ({ ...field,
+                    label: redactCodeText(field.label), options: field.options.map(option => ({ ...option, label: redactCodeText(option.label) })),
+                })) } } : body;
+            const { body: safe } = encodeRuntimeBody(identity, prepared.kind === 'turn-end' ? { ...prepared, finalText: null } : prepared);
             if (safe.kind === 'request' && !this.closedContexts.has(this.contextKey(context))) this.request(context, safe);
             if (safe.kind === 'request-settled') {
                 if (!this.items.has(this.id(context, 'notice', safe.requestId))) {
@@ -314,10 +457,13 @@ export class CodeTurnNormalizer {
             if (entry.item.status !== 'running' && entry.item.status !== 'pending') continue;
             const unfinished = entry.item.kind === 'tool_call' || entry.item.kind === 'permission_request';
             entry.item.status = status === 'error' ? 'error' : status === 'stopped' || unfinished ? 'cancelled' : 'done';
-            if (entry.item.kind === 'tool_call' && !entry.fields.get('detail')?.safe) this.source(entry, 'detail', UNFINISHED);
-            this.save(entry);
+            const detailSource = entry.fields.get('detail');
+            const detail = detailSource?.dirty ? detailSource.raw : detailSource?.safe;
+            if (entry.item.kind === 'tool_call' && !detail) this.source(entry, 'detail', UNFINISHED);
+            this.save(entry, true);
             for (const source of entry.fields.values()) { this.chars -= source.raw.length; source.raw = ''; }
         }
+        this.flush(context, true);
     }
 
     finish(outcome: RuntimeTurnOutcome): void {
@@ -340,7 +486,9 @@ export class CodeTurnNormalizer {
     }
 
     private release(): void {
-        for (const entry of this.items.values()) entry.fields.clear();
+        if (this.timer !== undefined) clearTimeout(this.timer);
+        this.timer = undefined;
+        for (const entry of this.items.values()) { entry.fields.clear(); entry.pending = false; }
         this.chars = 0;
     }
 }

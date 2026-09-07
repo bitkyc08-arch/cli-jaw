@@ -75,12 +75,25 @@ export interface CodeItem {
 
 export interface CodeWireEvent {
     topic: 'code';
-    event: 'code_item' | 'code_session';
+    event: 'code_item' | 'code_item_update' | 'code_session';
     sessionId: string;
     sequence: number;
     epoch: number;
     item?: CodeItem;
+    update?: CodeItemUpdate;
     session?: CodeSessionInfo;
+}
+
+/** Sequence-ordered compact update; snapshots always contain complete items. */
+export interface CodeItemUpdate {
+    itemId: string;
+    turnId: string | null;
+    firstSequence: number;
+    updatedAt: number;
+    appendText?: string;
+    appendToolOutput?: string;
+    status?: CodeItem['status'];
+    phase?: CodeItem['phase'];
 }
 
 export interface CodeSnapshot {

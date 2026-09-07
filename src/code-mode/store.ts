@@ -1,13 +1,44 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { Database as SqliteDatabase } from 'better-sqlite3';
 import type {
-    CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeItem,
-    CodePatchSessionRequest, CodePromptReceipt, CodePromptRequest, CodeSessionError,
+    CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeItem, CodeItemUpdate,
+    CodePatchSessionRequest, CodePermissionRequest, CodePromptReceipt, CodePromptRequest, CodeSessionError,
     CodeSessionInfo, CodeSessionStatus, CodeSnapshot, CodeWireEvent,
 } from './wire.js';
 
 export const CODE_EVENT_PAGE_MAX = 500;
 export const CODE_SNAPSHOT_ITEM_MAX = 1000;
+export const CODE_MAX_EVENT_BYTES = 4 * 1024 * 1024;
+export const CODE_MAX_REPLAY_PAGE_BYTES = 8 * 1024 * 1024;
+export const CODE_MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+export const CODE_MAX_TURN_EVENT_BYTES = 32 * 1024 * 1024;
+export const CODE_TERMINAL_RESERVE_BYTES = 2 * 1024 * 1024;
+const CODE_CONTROL_FRAME_BYTES = 64 * 1024;
+const CODE_SETTLEMENT_TAIL_BYTES = 2 * CODE_CONTROL_FRAME_BYTES;
+const CODE_ERROR_MAX_CHARS = 1024;
+const CODE_AUTO_TITLE_MAX_CHARS = 120;
+
+export interface CodeStoreLimits {
+    maxEventBytes: number;
+    maxReplayPageBytes: number;
+    maxSnapshotBytes: number;
+    maxTurnEventBytes: number;
+}
+export const CODE_STORE_LIMITS: Readonly<CodeStoreLimits> = Object.freeze({
+    maxEventBytes: CODE_MAX_EVENT_BYTES, maxReplayPageBytes: CODE_MAX_REPLAY_PAGE_BYTES,
+    maxSnapshotBytes: CODE_MAX_SNAPSHOT_BYTES, maxTurnEventBytes: CODE_MAX_TURN_EVENT_BYTES,
+});
+
+function initialTitle(text: string): string {
+    const line = text.trim().split(/\r?\n/, 1)[0] ?? '';
+    let title = '';
+    for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(line)) {
+        if (title.length + segment.length > CODE_AUTO_TITLE_MAX_CHARS) break;
+        title += segment;
+    }
+    return title;
+}
 
 // Capabilities and the captured policy are stored alongside the durable session,
 // so metadata reads never require a provider import or a live runtime.
@@ -24,6 +55,8 @@ CREATE TABLE IF NOT EXISTS code_sessions (
 CREATE TABLE IF NOT EXISTS code_turns (
     session_id TEXT NOT NULL, turn_id TEXT NOT NULL, client_turn_key TEXT NOT NULL,
     prompt_hash TEXT NOT NULL, status TEXT NOT NULL, accepted_sequence INTEGER NOT NULL,
+    event_bytes INTEGER NOT NULL DEFAULT 0, control_event_bytes INTEGER NOT NULL DEFAULT 0,
+    settlement_bytes INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(session_id, turn_id), UNIQUE(session_id, client_turn_key)
 );
 CREATE TABLE IF NOT EXISTS code_events (
@@ -54,7 +87,7 @@ export interface CodeTurnAdmission extends CodeStoreMutation {
     duplicate: boolean;
 }
 export interface CodeTurnSettlement extends CodeStoreMutation { receipt: CodePromptReceipt }
-export interface CodeStoreOptions { now?: () => number; newId?: () => string }
+export interface CodeStoreOptions { now?: () => number; newId?: () => string; limits?: Partial<CodeStoreLimits> }
 export interface CodeSessionCreate extends CodeCreateSessionRequest {
     capabilities: CodeCapabilities;
     sessionId?: string;
@@ -143,6 +176,36 @@ function mapItem(item: CodeItem, firstSequence: number): CodeItem {
     };
 }
 
+const jsonBytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value), 'utf8');
+type EventBudgetMode = 'ordinary' | 'control' | 'settlement';
+type ItemRow = { first_sequence: number; item_json: string };
+
+function compactUpdate(before: CodeItem, after: CodeItem): CodeItemUpdate | null {
+    const { text: oldText, tool: oldTool, status: oldStatus, phase: oldPhase, updatedAt: _oldTime, ...oldMetadata } = before;
+    const { text, tool, status, phase, updatedAt, ...metadata } = after;
+    if (!isDeepStrictEqual(oldMetadata, metadata) || (oldPhase !== undefined && phase === undefined)) return null;
+    if ((oldTool === undefined) !== (tool === undefined)) return null;
+    const { output: oldOutput, ...oldToolMetadata } = oldTool ?? { name: '' };
+    const { output, ...toolMetadata } = tool ?? { name: '' };
+    if (!isDeepStrictEqual(oldToolMetadata, toolMetadata)) return null;
+    if (oldText !== text && (text === undefined || !text.startsWith(oldText ?? ''))) return null;
+    if (oldOutput !== output && (output === undefined || !output.startsWith(oldOutput ?? ''))) return null;
+    return {
+        itemId: after.itemId, turnId: after.turnId, firstSequence: after.firstSequence!, updatedAt,
+        ...(oldText !== text ? { appendText: text!.slice((oldText ?? '').length) } : {}),
+        ...(oldOutput !== output ? { appendToolOutput: output!.slice((oldOutput ?? '').length) } : {}),
+        ...(oldStatus !== status ? { status } : {}),
+        ...(oldPhase !== phase && phase !== undefined ? { phase } : {}),
+    };
+}
+
+// Upper bound for a terminal status-only frame, including maximum safe integer
+// watermarks. Reserve this before admitting each unresolved item.
+function settlementCost(sessionId: string, item: Pick<CodeItem, 'itemId' | 'turnId' | 'status'> | undefined): number {
+    return item && (item.status === 'pending' || item.status === 'running')
+        ? 512 + jsonBytes(sessionId) + jsonBytes(item.itemId) + jsonBytes(item.turnId) : 0;
+}
+
 /** Explicit allowlist, including nested metadata; private record additions stay private. */
 export function toCodeSessionInfo(record: CodeSessionRecord): CodeSessionInfo {
     const reason = record.archivedAt !== null ? 'archived'
@@ -188,11 +251,42 @@ function pageLimit(value: number | undefined, max: number): number {
 export class CodeStore {
     private readonly now: () => number;
     private readonly newId: () => string;
+    private readonly limits: CodeStoreLimits;
 
     constructor(private readonly database: SqliteDatabase, options: CodeStoreOptions = {}) {
         this.now = options.now ?? Date.now;
         this.newId = options.newId ?? randomUUID;
+        this.limits = { ...CODE_STORE_LIMITS, ...options.limits };
+        for (const key of Object.keys(CODE_STORE_LIMITS) as Array<keyof CodeStoreLimits>) {
+            if (!Number.isSafeInteger(this.limits[key]) || this.limits[key] < 1 || this.limits[key] > CODE_STORE_LIMITS[key]) {
+                throw new CodeStoreError('invalid_limit', `${key} must be a positive integer within its hard limit`, 400);
+            }
+        }
         this.database.exec(CREATE_CODE_SCHEMA_SQL);
+        this.ensureBudgetColumns();
+    }
+
+    private ensureBudgetColumns(): void {
+        this.database.transaction(() => {
+            const columns = this.database.prepare('PRAGMA table_info(code_turns)').all() as { name: string }[];
+            const names = new Set(columns.map(column => column.name));
+            for (const column of ['event_bytes', 'control_event_bytes', 'settlement_bytes']) {
+                if (!names.has(column)) this.database.exec(`ALTER TABLE code_turns ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+            }
+            if (!names.has('event_bytes')) this.database.exec(`UPDATE code_turns SET event_bytes = (
+                SELECT COALESCE(SUM(length(CAST(e.event_json AS BLOB))), 0) FROM code_events e
+                WHERE e.session_id = code_turns.session_id AND e.sequence >= code_turns.accepted_sequence - 2
+                AND e.sequence < COALESCE((SELECT MIN(t.accepted_sequence) - 2 FROM code_turns t
+                    WHERE t.session_id = code_turns.session_id AND t.accepted_sequence > code_turns.accepted_sequence), 9223372036854775807)
+            )`);
+            if (!names.has('settlement_bytes')) this.database.exec(`UPDATE code_turns SET settlement_bytes = (
+                SELECT COALESCE(SUM(512 + length(CAST(json_quote(i.session_id) AS BLOB))
+                    + length(CAST(json_quote(i.item_id) AS BLOB)) + length(CAST(json_quote(code_turns.turn_id) AS BLOB))), 0)
+                FROM code_items i WHERE i.session_id = code_turns.session_id
+                AND json_extract(i.item_json, '$.turnId') = code_turns.turn_id
+                AND json_extract(i.item_json, '$.status') IN ('pending', 'running')
+            )`);
+        }).immediate();
     }
 
     private write<T>(operation: () => T): T {
@@ -232,29 +326,66 @@ export class CodeStore {
         return rows.map(row => toCodeSessionInfo(rowToRecord(row)));
     }
 
-    private recentItems(sessionId: string, limit: number): CodeItem[] {
-        const rows = this.database.prepare(`SELECT first_sequence, item_json FROM code_items WHERE session_id = ?
-            ORDER BY first_sequence DESC LIMIT ?`).all(sessionId, limit) as { first_sequence: number; item_json: string }[];
-        return rows.map(row => mapItem(JSON.parse(row.item_json) as CodeItem, row.first_sequence));
-    }
-
     snapshot(sessionId: string, options: { limit?: number } = {}): CodeSnapshot {
         const limit = pageLimit(options.limit, CODE_SNAPSHOT_ITEM_MAX);
         return this.database.transaction(() => {
             const session = toCodeSessionInfo(this.requireRecord(sessionId));
-            const items = this.recentItems(sessionId, limit + 1);
-            // Pending approvals are not hidden by the transcript page limit.
-            const pendingPermissions = this.database.prepare(`SELECT item_json FROM code_items
-                WHERE session_id = ? AND json_extract(item_json, '$.kind') = 'permission_request'
-                AND json_extract(item_json, '$.status') = 'pending' ORDER BY first_sequence`)
-                .all(sessionId) as { item_json: string }[];
-            return { session, items: items.slice(0, limit).reverse(), sequence: session.sequence,
-                pendingPermissions: pendingPermissions.flatMap(row => {
-                    const item = JSON.parse(row.item_json) as CodeItem;
-                    const permission = item.permission;
-                    return permission && permission.sessionId === sessionId && permission.turnId === session.turnId
-                        && permission.epoch === session.epoch && isBusy(session.status) ? [permission] : [];
-                }), truncated: items.length > limit };
+            const snapshot: CodeSnapshot = { session, items: [], sequence: session.sequence, pendingPermissions: [], truncated: false };
+            let bytes = jsonBytes(snapshot);
+            const reserve = (size: number, required: boolean): boolean => {
+                if (bytes + size <= this.limits.maxSnapshotBytes) return true;
+                if (required) throw new CodeStoreError('snapshot_limit', 'Complete active Code transcript exceeds snapshot byte limit', 409);
+                return false;
+            };
+            reserve(0, true);
+            // Control reads do not depend on the history window or its row limit.
+            if (session.turnId !== null && isBusy(session.status)) {
+                const permissions = this.database.prepare(`SELECT item_id,
+                    length(CAST(json_extract(item_json, '$.permission') AS BLOB)) AS byte_length FROM code_items
+                    WHERE session_id = ? AND json_extract(item_json, '$.kind') = 'permission_request'
+                    AND json_extract(item_json, '$.status') = 'pending'
+                    AND json_extract(item_json, '$.permission.sessionId') = ?
+                    AND json_extract(item_json, '$.permission.turnId') = ?
+                    AND json_extract(item_json, '$.permission.epoch') = ? ORDER BY first_sequence`)
+                    .iterate(sessionId, sessionId, session.turnId, session.epoch) as IterableIterator<{ item_id: string; byte_length: number }>;
+                for (const row of permissions) {
+                    const comma = Number(snapshot.pendingPermissions.length > 0);
+                    reserve(row.byte_length + comma, true);
+                    const value = this.database.prepare(`SELECT json_extract(item_json, '$.permission') AS permission_json
+                        FROM code_items WHERE session_id = ? AND item_id = ?`).get(sessionId, row.item_id) as { permission_json: string };
+                    snapshot.pendingPermissions.push(JSON.parse(value.permission_json) as CodePermissionRequest);
+                    bytes += row.byte_length + comma;
+                }
+            }
+            const append = (row: { item_id: string; byte_length: number }, required: boolean): boolean => {
+                const comma = Number(snapshot.items.length > 0);
+                if (!reserve(row.byte_length + comma, required)) return false;
+                const value = this.database.prepare('SELECT first_sequence, item_json FROM code_items WHERE session_id = ? AND item_id = ?')
+                    .get(sessionId, row.item_id) as ItemRow;
+                const item = mapItem(JSON.parse(value.item_json) as CodeItem, value.first_sequence);
+                const size = jsonBytes(item) + comma;
+                if (!reserve(size, required)) return false;
+                bytes += size;
+                snapshot.items.push(item);
+                return true;
+            };
+            if (session.turnId !== null) {
+                const active = this.database.prepare(`SELECT item_id, length(CAST(item_json AS BLOB)) AS byte_length FROM code_items
+                    WHERE session_id = ? AND json_extract(item_json, '$.turnId') = ? ORDER BY first_sequence`)
+                    .iterate(sessionId, session.turnId) as IterableIterator<{ item_id: string; byte_length: number }>;
+                for (const row of active) append(row, true);
+            }
+            const history = this.database.prepare(`SELECT item_id, length(CAST(item_json AS BLOB)) AS byte_length FROM code_items
+                WHERE session_id = ? AND (? IS NULL OR json_extract(item_json, '$.turnId') IS NOT ?)
+                ORDER BY first_sequence DESC`).iterate(sessionId, session.turnId, session.turnId) as IterableIterator<{ item_id: string; byte_length: number }>;
+            for (const row of history) {
+                if (snapshot.items.length >= limit || !append(row, false)) {
+                    snapshot.truncated = true;
+                    break;
+                }
+            }
+            snapshot.items.sort((a, b) => a.firstSequence! - b.firstSequence!);
+            return snapshot;
         })();
     }
 
@@ -266,18 +397,36 @@ export class CodeStore {
         return this.database.transaction(() => {
             const throughSequence = this.requireRecord(sessionId).sequence;
             if (afterSequence > throughSequence) throw new CodeStoreError('invalid_sequence', 'Sequence exceeds session watermark', 409);
-            const rows = this.database.prepare(`SELECT e.event_json, i.first_sequence FROM code_events e
-                LEFT JOIN code_items i ON i.session_id = e.session_id AND i.item_id = json_extract(e.event_json, '$.item.itemId')
-                WHERE e.session_id = ? AND e.sequence > ? AND e.sequence <= ? ORDER BY e.sequence LIMIT ?`)
-                .all(sessionId, afterSequence, throughSequence, size) as { event_json: string; first_sequence: number | null }[];
-            const events = rows.map(row => {
-                const event = JSON.parse(row.event_json) as CodeWireEvent;
-                if (event.item) {
-                    if (row.first_sequence === null) throw new Error('Code event item projection is missing');
-                    event.item = mapItem(event.item, row.first_sequence);
+            const events: CodeWireEvent[] = [];
+            let bytes = jsonBytes({ events, nextSequence: throughSequence, throughSequence, hasMore: false });
+            if (bytes > this.limits.maxReplayPageBytes) throw new CodeStoreError('event_too_large', 'Replay envelope exceeds byte limit', 409);
+            const rows = this.database.prepare(`SELECT sequence, length(CAST(event_json AS BLOB)) AS byte_length FROM code_events
+                WHERE session_id = ? AND sequence > ? AND sequence <= ? ORDER BY sequence LIMIT ?`)
+                .iterate(sessionId, afterSequence, throughSequence, size) as IterableIterator<{ sequence: number; byte_length: number }>;
+            for (const row of rows) {
+                if (row.byte_length > this.limits.maxEventBytes || bytes + row.byte_length + Number(events.length > 0) > this.limits.maxReplayPageBytes) {
+                    if (events.length === 0) throw new CodeStoreError('event_too_large', 'Code event cannot fit the replay byte limit', 409);
+                    break;
                 }
-                return event;
-            });
+                const value = this.database.prepare('SELECT event_json FROM code_events WHERE session_id = ? AND sequence = ?')
+                    .get(sessionId, row.sequence) as { event_json: string };
+                const event = JSON.parse(value.event_json) as CodeWireEvent;
+                const itemId = event.item?.itemId ?? event.update?.itemId;
+                if (itemId !== undefined) {
+                    const projected = this.database.prepare('SELECT first_sequence FROM code_items WHERE session_id = ? AND item_id = ?')
+                        .get(sessionId, itemId) as { first_sequence: number } | undefined;
+                    if (!projected) throw new Error('Code event item projection is missing');
+                    if (event.item) event.item = mapItem(event.item, projected.first_sequence);
+                    if (event.update) event.update.firstSequence = projected.first_sequence;
+                }
+                const eventBytes = jsonBytes(event) + Number(events.length > 0);
+                if (eventBytes - Number(events.length > 0) > this.limits.maxEventBytes || bytes + eventBytes > this.limits.maxReplayPageBytes) {
+                    if (events.length === 0) throw new CodeStoreError('event_too_large', 'Code event cannot fit the replay byte limit', 409);
+                    break;
+                }
+                events.push(event);
+                bytes += eventBytes;
+            }
             const nextSequence = events.at(-1)?.sequence ?? afterSequence;
             return { events, nextSequence, throughSequence, hasMore: nextSequence < throughSequence };
         })();
@@ -294,25 +443,64 @@ export class CodeStore {
                 record.sequence, record.revision, record.lastUsedAt, record.sessionId);
     }
 
-    private event(record: CodeSessionRecord, item?: CodeItem): CodeWireEvent {
+    private persistEvent(record: CodeSessionRecord, event: CodeWireEvent, mode: EventBudgetMode,
+        settlementDelta = 0, budgetTurnId: string | null = record.turnId): CodeWireEvent {
+        const encoded = JSON.stringify(event);
+        const bytes = Buffer.byteLength(encoded, 'utf8');
+        const eventLimit = mode === 'ordinary' ? this.limits.maxEventBytes : Math.min(this.limits.maxEventBytes, CODE_CONTROL_FRAME_BYTES);
+        if (bytes > eventLimit || (mode === 'ordinary' && event.session && jsonBytes(event.session) > CODE_CONTROL_FRAME_BYTES / 2)) {
+            throw new CodeStoreError('event_too_large', 'Code event exceeds its byte limit', 409);
+        }
+        if (budgetTurnId !== null) {
+            const budget = this.database.prepare(`SELECT event_bytes, control_event_bytes, settlement_bytes FROM code_turns
+                WHERE session_id = ? AND turn_id = ?`).get(record.sessionId, budgetTurnId) as {
+                    event_bytes: number; control_event_bytes: number; settlement_bytes: number;
+                };
+            if (mode === 'ordinary' && budget.event_bytes - budget.control_event_bytes + bytes > this.limits.maxTurnEventBytes) {
+                throw new CodeStoreError('transcript_limit', 'Code turn event byte limit reached', 409);
+            }
+            const controlBytes = budget.control_event_bytes + (mode === 'ordinary' ? 0 : bytes);
+            const settlementBytes = Math.max(0, budget.settlement_bytes + settlementDelta);
+            const reserved = mode === 'settlement' ? 0 : settlementBytes + CODE_SETTLEMENT_TAIL_BYTES;
+            if (controlBytes + reserved > CODE_TERMINAL_RESERVE_BYTES) {
+                throw new CodeStoreError('transcript_limit', 'Code turn terminal reserve would be exhausted', 409);
+            }
+            this.database.prepare(`UPDATE code_turns SET event_bytes = event_bytes + ?, control_event_bytes = ?, settlement_bytes = ?
+                WHERE session_id = ? AND turn_id = ?`).run(bytes, controlBytes, settlementBytes, record.sessionId, budgetTurnId);
+        }
+        this.database.prepare('INSERT INTO code_events (session_id, sequence, event_json) VALUES (?, ?, ?)')
+            .run(record.sessionId, event.sequence, encoded);
+        this.save(record);
+        return event;
+    }
+
+    private event(record: CodeSessionRecord, item?: CodeItem, mode: EventBudgetMode = 'ordinary', budgetTurnId = record.turnId): CodeWireEvent {
         record.sequence += 1;
         let retainedItem: CodeItem | undefined;
+        let previousItem: CodeItem | undefined;
+        let update: CodeItemUpdate | null = null;
         if (item) {
-            const previous = this.database.prepare('SELECT first_sequence FROM code_items WHERE session_id = ? AND item_id = ?')
-                .get(record.sessionId, item.itemId) as { first_sequence: number } | undefined;
+            const previous = this.database.prepare('SELECT first_sequence, item_json FROM code_items WHERE session_id = ? AND item_id = ?')
+                .get(record.sessionId, item.itemId) as ItemRow | undefined;
             retainedItem = mapItem(item, previous?.first_sequence ?? record.sequence);
+            if (settlementCost(record.sessionId, retainedItem) > Math.min(this.limits.maxEventBytes, CODE_CONTROL_FRAME_BYTES)) {
+                throw new CodeStoreError('event_too_large', 'Code item identity cannot fit a terminal control event', 409);
+            }
+            if (previous) {
+                previousItem = mapItem(JSON.parse(previous.item_json) as CodeItem, previous.first_sequence);
+                const knownFields = isDeepStrictEqual({ ...item, firstSequence: retainedItem.firstSequence }, retainedItem);
+                if (knownFields) update = compactUpdate(previousItem, retainedItem);
+            }
         }
         const event: CodeWireEvent = {
-            topic: 'code', event: item ? 'code_item' : 'code_session', sessionId: record.sessionId,
+            topic: 'code', event: update ? 'code_item_update' : item ? 'code_item' : 'code_session', sessionId: record.sessionId,
             sequence: record.sequence, epoch: record.epoch,
-            ...(retainedItem ? { item: retainedItem } : { session: toCodeSessionInfo(record) }),
+            ...(update ? { update } : retainedItem ? { item: retainedItem } : { session: toCodeSessionInfo(record) }),
         };
-        this.database.prepare('INSERT INTO code_events (session_id, sequence, event_json) VALUES (?, ?, ?)')
-            .run(record.sessionId, event.sequence, JSON.stringify(event));
+        this.persistEvent(record, event, mode, settlementCost(record.sessionId, retainedItem) - settlementCost(record.sessionId, previousItem), budgetTurnId);
         if (item) this.database.prepare(`INSERT INTO code_items (session_id, item_id, first_sequence, item_json)
             VALUES (?, ?, ?, ?) ON CONFLICT(session_id, item_id) DO UPDATE SET item_json = excluded.item_json`)
-                .run(record.sessionId, item.itemId, event.sequence, JSON.stringify(event.item));
-        this.save(record);
+                .run(record.sessionId, item.itemId, retainedItem!.firstSequence, JSON.stringify(retainedItem));
         return event;
     }
 
@@ -369,6 +557,7 @@ export class CodeStore {
             record.status = 'starting';
             record.error = null;
             record.lastUsedAt = now;
+            if (record.title === null) record.title = initialTitle(input.text) || null;
             record.nativePolicy = { model: record.model, effort: record.effort, permissionMode: record.permissionMode };
             const acceptedSequence = record.sequence + 3;
             this.database.prepare(`INSERT INTO code_turns
@@ -442,7 +631,7 @@ export class CodeStore {
             record.lastUsedAt = this.now();
             if (status === 'streaming') this.database.prepare(`UPDATE code_turns SET status = 'running' WHERE session_id = ? AND turn_id = ?`)
                 .run(record.sessionId, record.turnId);
-            const events = [this.event(record)];
+            const events = [this.event(record, undefined, status === 'streaming' ? 'ordinary' : 'control')];
             return { session: toCodeSessionInfo(record), events };
         });
     }
@@ -464,30 +653,46 @@ export class CodeStore {
         const turn = this.database.prepare(`SELECT ${TURN_COLUMNS} FROM code_turns WHERE session_id = ? AND turn_id = ?`)
             .get(record.sessionId, record.turnId) as TurnRow | undefined;
         if (!turn) throw new CodeStoreError('turn_not_found', 'Code turn not found', 404);
+        const turnId = turn.turn_id;
+        const errorChars = Math.min(CODE_ERROR_MAX_CHARS, Math.floor(this.limits.maxEventBytes / 16));
+        const error = result.error ? { ...mapError(result.error)!, code: result.error.code.slice(0, 64), message: result.error.message.slice(0, errorChars) } : null;
         const now = this.now();
         const events: CodeWireEvent[] = [];
-        const unfinished = this.database.prepare(`SELECT item_json FROM code_items WHERE session_id = ?
-            AND json_extract(item_json, '$.turnId') = ?
-            AND json_extract(item_json, '$.status') IN ('pending', 'running') ORDER BY first_sequence`)
-            .all(record.sessionId, record.turnId) as { item_json: string }[];
-        for (const row of unfinished) {
-            const item = JSON.parse(row.item_json) as CodeItem;
+        let after = 0;
+        while (true) {
+            // Fetch only control metadata; a large materialized answer is never
+            // loaded or copied into its terminal status event.
+            const item = this.database.prepare(`SELECT item_id, first_sequence,
+                json_extract(item_json, '$.kind') AS kind, json_extract(item_json, '$.status') AS status
+                FROM code_items WHERE session_id = ? AND first_sequence > ?
+                AND json_extract(item_json, '$.turnId') = ?
+                AND json_extract(item_json, '$.status') IN ('pending', 'running') ORDER BY first_sequence LIMIT 1`)
+                .get(record.sessionId, after, turnId) as { item_id: string; first_sequence: number; kind: CodeItem['kind']; status: CodeItem['status'] } | undefined;
+            if (!item) break;
             const status = item.kind === 'permission_request' ? 'cancelled'
                 : result.status === 'failed' ? 'error' : result.status === 'cancelled' ? 'cancelled'
                     : item.kind === 'tool_call' || item.kind === 'file_change' ? 'cancelled' : 'done';
-            events.push(this.event(record, { ...item, status, updatedAt: now }));
+            record.sequence += 1;
+            events.push(this.persistEvent(record, {
+                topic: 'code', event: 'code_item_update', sessionId: record.sessionId, sequence: record.sequence, epoch: record.epoch,
+                update: { itemId: item.item_id, turnId, firstSequence: item.first_sequence, status, updatedAt: now },
+            }, 'settlement', -settlementCost(record.sessionId, { itemId: item.item_id, turnId, status: item.status }), turnId));
+            this.database.prepare(`UPDATE code_items SET item_json = json_set(item_json,
+                '$.status', ?, '$.updatedAt', ?, '$.firstSequence', first_sequence) WHERE session_id = ? AND item_id = ?`)
+                .run(status, now, record.sessionId, item.item_id);
+            after = item.first_sequence;
         }
         const kind = result.status === 'completed' ? 'turn_completed' : result.status === 'failed' ? 'turn_failed' : 'turn_cancelled';
         events.push(this.event(record, { itemId: `${record.turnId}:terminal`, turnId: record.turnId, kind,
             status: result.status === 'completed' ? 'done' : result.status === 'failed' ? 'error' : 'cancelled',
-            ...(result.error ? { text: result.error.message } : {}), createdAt: now, updatedAt: now }));
+            ...(error ? { text: error.message } : {}), createdAt: now, updatedAt: now }, 'settlement', turnId));
         this.database.prepare('UPDATE code_turns SET status = ? WHERE session_id = ? AND turn_id = ?')
             .run(result.status, record.sessionId, record.turnId);
         record.turnId = null;
         record.status = result.status === 'failed' ? 'failed' : 'idle';
-        record.error = result.error ?? null;
+        record.error = error;
         record.lastUsedAt = now;
-        events.push(this.event(record));
+        events.push(this.event(record, undefined, 'settlement', turnId));
         return { session: toCodeSessionInfo(record), events, receipt: { ...receipt(turn), status: result.status } };
     }
 

@@ -3,9 +3,11 @@ import { test } from 'node:test';
 import Database from 'better-sqlite3';
 import {
     CodeStore, CodeStoreError, toCodeSessionInfo,
-    type CodeSessionCreate, type CodeSessionRecord, type CodeStoreOwner,
+    CODE_MAX_EVENT_BYTES, CODE_MAX_REPLAY_PAGE_BYTES, CODE_MAX_SNAPSHOT_BYTES, CODE_MAX_TURN_EVENT_BYTES,
+    CODE_TERMINAL_RESERVE_BYTES, CREATE_CODE_SCHEMA_SQL,
+    type CodeSessionCreate, type CodeSessionRecord, type CodeStoreOwner, type CodeStoreOptions,
 } from '../../src/code-mode/store.js';
-import type { CodeItem, CodeSessionInfo } from '../../src/code-mode/wire.js';
+import type { CodeItem, CodeSessionInfo, CodeWireEvent } from '../../src/code-mode/wire.js';
 
 const capabilities = {
     resume: true, interrupt: true, permissions: true, setModelMidSession: false,
@@ -21,11 +23,11 @@ const dtoKeys = [
     'createdAt', 'lastUsedAt',
 ].sort();
 
-function fixture(t: { after(fn: () => void): void }) {
+function fixture(t: { after(fn: () => void): void }, options: CodeStoreOptions = {}) {
     const db = new Database(':memory:');
     t.after(() => db.close());
     let id = 0;
-    const store = new CodeStore(db, { now: () => 1234, newId: () => `turn-${++id}` });
+    const store = new CodeStore(db, { now: () => 1234, newId: () => `turn-${++id}`, ...options });
     store.create(creation);
     return { db, store };
 }
@@ -46,6 +48,278 @@ function expectError(fn: () => unknown, code: string, statusCode = 409) {
     assert.throws(fn, (error: unknown) => error instanceof CodeStoreError && error.code === code && error.statusCode === statusCode);
 }
 
+// Independent client reducer: expected content below comes from literal fixtures,
+// not the store's compact-update detector or materialized-row mapper.
+function replayItems(events: CodeWireEvent[]): CodeItem[] {
+    const items = new Map<string, CodeItem>();
+    for (const event of events) {
+        if (event.event === 'code_item') {
+            assert.ok(event.item);
+            items.set(event.item.itemId, structuredClone(event.item));
+        } else if (event.event === 'code_item_update') {
+            assert.ok(event.update);
+            const item = items.get(event.update.itemId);
+            assert.ok(item, 'compact update requires its first item');
+            assert.equal(event.update.firstSequence, item.firstSequence);
+            if (event.update.appendText !== undefined) item.text = (item.text ?? '') + event.update.appendText;
+            if (event.update.appendToolOutput !== undefined) {
+                assert.ok(item.tool);
+                item.tool.output = (item.tool.output ?? '') + event.update.appendToolOutput;
+            }
+            if (event.update.status !== undefined) item.status = event.update.status;
+            if (event.update.phase !== undefined) item.phase = event.update.phase;
+            item.updatedAt = event.update.updatedAt;
+        }
+    }
+    return [...items.values()].sort((a, b) => a.firstSequence! - b.firstSequence!);
+}
+
+test('append text/output and status/phase updates reconstruct fixture content without repeating full items', t => {
+    const { store } = fixture(t);
+    const admitted = admit(store);
+    const current = owner(admitted.session);
+    const item: CodeItem = { ...message(admitted.receipt.turnId), kind: 'tool_call', text: 'Hello ', phase: 'commentary',
+        tool: { name: 'example', input: '{}', detail: 'detail', output: 'line one\n' } };
+    const created = store.commitItem(current, item);
+    const appended = store.commitItem(current, { ...item, text: 'Hello world', status: 'done', phase: 'final', updatedAt: 2000,
+        tool: { ...item.tool!, output: 'line one\nline two\n' } });
+    assert.equal(created.events[0]?.event, 'code_item');
+    assert.deepEqual(appended.events[0]?.update, { itemId: 'answer', turnId: 'turn-1', firstSequence: 5, updatedAt: 2000,
+        appendText: 'world', appendToolOutput: 'line two\n', status: 'done', phase: 'final' });
+    assert.equal(appended.events[0]?.item, undefined);
+    const expected: CodeItem = { itemId: 'answer', firstSequence: 5, turnId: 'turn-1', kind: 'tool_call', status: 'done',
+        phase: 'final', text: 'Hello world', tool: { name: 'example', input: '{}', detail: 'detail', output: 'line one\nline two\n' },
+        createdAt: 1234, updatedAt: 2000 };
+    assert.deepEqual(replayItems(store.readEvents('session-a', 4).events), [expected]);
+    assert.deepEqual(store.snapshot('session-a').items.at(-1), expected);
+});
+
+test('non-prefix replacement, phase removal and metadata changes retain full events', t => {
+    const { store } = fixture(t);
+    const admitted = admit(store);
+    const current = owner(admitted.session);
+    const initial = { ...message(admitted.receipt.turnId, 'answer', 'prefix'), phase: 'commentary' as const };
+    store.commitItem(current, initial);
+    const replaced = store.commitItem(current, { ...initial, text: 'replacement' });
+    assert.equal(replaced.events[0]?.event, 'code_item');
+    const metadata = store.commitItem(current, { ...initial, text: 'replacement extended', parentItemId: 'new-parent' });
+    assert.equal(metadata.events[0]?.event, 'code_item');
+    const unknown = { ...initial, text: 'replacement extended again', parentItemId: 'new-parent', futureMetadata: 'private' };
+    const changed = store.commitItem(current, unknown);
+    assert.equal(changed.events[0]?.event, 'code_item');
+    assert.doesNotMatch(JSON.stringify(changed), /futureMetadata|private/);
+    const removedPhase = store.commitItem(current, { ...message(admitted.receipt.turnId, 'answer', 'replacement extended again'), parentItemId: 'new-parent' });
+    assert.equal(removedPhase.events[0]?.event, 'code_item');
+    assert.equal(removedPhase.events[0]?.item?.phase, undefined);
+});
+
+test('one million characters streamed in 100-character chunks stays bounded in SQLite', t => {
+    const { store, db } = fixture(t);
+    const admitted = admit(store);
+    const current = owner(admitted.session);
+    const expected = '0123456789'.repeat(100_000);
+    for (let end = 100; end <= expected.length; end += 100) {
+        store.commitItem(current, message(admitted.receipt.turnId, 'answer', expected.slice(0, end)));
+    }
+    const stored = db.prepare(`SELECT SUM(length(CAST(event_json AS BLOB))) AS bytes,
+        SUM(json_extract(event_json, '$.event') = 'code_item_update') AS updates FROM code_events`).get() as { bytes: number; updates: number };
+    assert.equal(stored.updates, 9999);
+    assert.ok(stored.bytes < 6 * 1024 * 1024, `event bytes: ${stored.bytes}`);
+    const pages = db.pragma('page_count', { simple: true }) as number;
+    const pageSize = db.pragma('page_size', { simple: true }) as number;
+    assert.ok(pages * pageSize < 16 * 1024 * 1024, `SQLite bytes: ${pages * pageSize}`);
+    const events: CodeWireEvent[] = [];
+    let after = 0;
+    do {
+        const page = store.readEvents('session-a', after);
+        events.push(...page.events);
+        after = page.nextSequence;
+        if (!page.hasMore) break;
+    } while (true);
+    assert.equal(replayItems(events).find(item => item.itemId === 'answer')?.text, expected);
+    assert.equal(store.snapshot('session-a').items.at(-1)?.text, expected);
+});
+
+test('non-prefix replacement rolls back on turn byte budget exhaustion and failure still settles', t => {
+    const { store, db } = fixture(t);
+    const admitted = admit(store);
+    const current = owner(admitted.session);
+    store.commitItem(current, message(admitted.receipt.turnId, 'answer', 'a'.repeat(1800)));
+    const usage = db.prepare('SELECT event_bytes FROM code_turns WHERE session_id = ? AND turn_id = ?')
+        .get('session-a', admitted.receipt.turnId) as { event_bytes: number };
+    const bounded = new CodeStore(db, { now: () => 2000, limits: { maxTurnEventBytes: usage.event_bytes + 200 } });
+    const before = bounded.snapshot('session-a');
+    expectError(() => bounded.commitItem(current, message(admitted.receipt.turnId, 'answer', 'b'.repeat(1800))), 'transcript_limit');
+    assert.deepEqual(bounded.snapshot('session-a'), before);
+    assert.deepEqual(bounded.readEvents('session-a', before.sequence).events, []);
+    assert.deepEqual(db.prepare('SELECT event_bytes FROM code_turns WHERE session_id = ? AND turn_id = ?')
+        .get('session-a', admitted.receipt.turnId), usage);
+    bounded.setRuntimeState(current, 'stopping');
+    const failed = bounded.settleTurn(current, { status: 'failed', error: { code: 'transcript_limit', message: 'Transcript limit reached', at: 2000, recoverable: true } });
+    assert.equal(failed.receipt.status, 'failed');
+    assert.equal(failed.session.error?.code, 'transcript_limit');
+    assert.equal(bounded.snapshot('session-a').items.find(item => item.itemId === 'answer')?.text, 'a'.repeat(1800));
+    const budget = db.prepare('SELECT event_bytes, control_event_bytes, settlement_bytes FROM code_turns WHERE session_id = ? AND turn_id = ?')
+        .get('session-a', admitted.receipt.turnId) as { event_bytes: number; control_event_bytes: number; settlement_bytes: number };
+    assert.equal(budget.event_bytes - budget.control_event_bytes, usage.event_bytes);
+    assert.ok(budget.control_event_bytes > 0 && budget.control_event_bytes <= CODE_TERMINAL_RESERVE_BYTES);
+    assert.equal(budget.settlement_bytes, 0);
+});
+
+test('terminal tool status events remain compact while materialized output stays complete', t => {
+    const { store } = fixture(t);
+    const admitted = admit(store);
+    const output = 'x'.repeat(1_000_000);
+    store.commitItem(owner(admitted.session), { ...message(admitted.receipt.turnId, 'tool', ''), kind: 'tool_call', tool: { name: 'tool', output } });
+    const result = store.settleTurn(owner(admitted.session), { status: 'failed', error: { code: 'failed', message: 'Provider exited', at: 1234, recoverable: true } });
+    const toolEvent = result.events.find(event => event.update?.itemId === 'tool');
+    assert.equal(toolEvent?.event, 'code_item_update');
+    assert.equal(toolEvent?.update?.status, 'error');
+    assert.equal(toolEvent?.update?.appendToolOutput, undefined);
+    assert.ok(Buffer.byteLength(JSON.stringify(result.events), 'utf8') < 4096);
+    assert.equal(store.snapshot('session-a').items.find(item => item.itemId === 'tool')?.tool?.output, output);
+});
+
+test('new unresolved items cannot consume the reserve needed to settle already-admitted items', t => {
+    const { store, db } = fixture(t);
+    const admitted = admit(store);
+    const current = owner(admitted.session);
+    let accepted = 0;
+    for (let index = 0; index < 40; index++) {
+        try {
+            store.commitItem(current, message(admitted.receipt.turnId, `${'x'.repeat(60_000)}-${index}`, 'small output'));
+            accepted += 1;
+        } catch (error) {
+            assert.ok(error instanceof CodeStoreError);
+            assert.equal(error.code, 'transcript_limit');
+            break;
+        }
+    }
+    assert.ok(accepted > 0 && accepted < 40);
+    const result = store.settleTurn(current, { status: 'failed' });
+    assert.equal(result.receipt.status, 'failed');
+    const budget = db.prepare('SELECT control_event_bytes, settlement_bytes FROM code_turns').get() as { control_event_bytes: number; settlement_bytes: number };
+    assert.ok(budget.control_event_bytes <= CODE_TERMINAL_RESERVE_BYTES);
+    assert.equal(budget.settlement_bytes, 0);
+});
+
+test('event size rejection is transactional and old oversized replay rows are not silently skipped', t => {
+    const { store, db } = fixture(t, { limits: { maxEventBytes: 2048 } });
+    const admitted = admit(store);
+    const before = store.snapshot('session-a');
+    expectError(() => store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, 'large', 'x'.repeat(2048))), 'event_too_large');
+    assert.deepEqual(store.snapshot('session-a'), before);
+    store.commitItem(owner(admitted.session), message(admitted.receipt.turnId));
+    db.prepare(`UPDATE code_events SET event_json = json_set(event_json, '$.item.text', ?) WHERE session_id = ? AND sequence = 5`)
+        .run('x'.repeat(3000), 'session-a');
+    const page = store.readEvents('session-a');
+    assert.equal(page.nextSequence, 4);
+    assert.equal(page.hasMore, true);
+    expectError(() => store.readEvents('session-a', 4), 'event_too_large');
+});
+
+test('replay pages obey UTF-8 byte budgets and retain contiguous cursor semantics', t => {
+    const { store } = fixture(t, { limits: { maxReplayPageBytes: 1600 } });
+    const admitted = admit(store);
+    for (let index = 0; index < 5; index++) store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, `item-${index}`, '💻'.repeat(80)));
+    const sequences: number[] = [];
+    let after = 0;
+    let pages = 0;
+    do {
+        const page = store.readEvents('session-a', after);
+        assert.ok(Buffer.byteLength(JSON.stringify(page), 'utf8') <= 1600);
+        assert.ok(page.events.length > 0);
+        assert.equal(page.events[0]?.sequence, after + 1);
+        assert.equal(page.nextSequence, page.events.at(-1)?.sequence);
+        assert.equal(page.throughSequence, 9);
+        sequences.push(...page.events.map(event => event.sequence));
+        after = page.nextSequence;
+        pages += 1;
+        if (!page.hasMore) break;
+    } while (true);
+    assert.ok(pages > 1);
+    assert.deepEqual(sequences, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+});
+
+test('snapshots include complete active items or fail explicitly on the byte cap', t => {
+    const { store } = fixture(t, { limits: { maxSnapshotBytes: 4096 } });
+    const admitted = admit(store);
+    store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, 'first', 'a'.repeat(1800)));
+    const complete = store.snapshot('session-a', { limit: 1 });
+    assert.deepEqual(complete.items.map(item => item.itemId), ['turn-1:user', 'turn-1:started', 'first']);
+    assert.equal(complete.truncated, false);
+    assert.ok(Buffer.byteLength(JSON.stringify(complete), 'utf8') <= 4096);
+    store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, 'second', 'b'.repeat(1800)));
+    expectError(() => store.snapshot('session-a', { limit: 1 }), 'snapshot_limit');
+});
+
+test('snapshot byte budget retains newest history after reserving all current-turn items', t => {
+    const { store } = fixture(t, { limits: { maxSnapshotBytes: 3000 } });
+    const first = admit(store);
+    for (let index = 0; index < 5; index++) store.commitItem(owner(first.session), { ...message(first.receipt.turnId, `old-${index}`, 'x'.repeat(700)), status: 'done' });
+    store.settleTurn(owner(first.session), { status: 'completed' });
+    const current = admit(store, 'next-key');
+    const snapshot = store.snapshot('session-a');
+    assert.ok(Buffer.byteLength(JSON.stringify(snapshot), 'utf8') <= 3000);
+    assert.equal(snapshot.truncated, true);
+    assert.deepEqual(snapshot.items.filter(item => item.turnId === current.receipt.turnId).map(item => item.kind), ['user_message', 'turn_started']);
+    assert.ok(snapshot.items.some(item => item.itemId === 'old-4'));
+    assert.ok(!snapshot.items.some(item => item.itemId === 'old-0'));
+    const order = snapshot.items.map(item => item.firstSequence!);
+    assert.deepEqual(order, [...order].sort((a, b) => a - b));
+});
+
+test('legacy turn schema gains durable byte accounting without losing keys or blocking orphan settlement', t => {
+    const db = new Database(':memory:');
+    t.after(() => db.close());
+    db.exec(`CREATE TABLE code_turns (session_id TEXT NOT NULL, turn_id TEXT NOT NULL, client_turn_key TEXT NOT NULL,
+        prompt_hash TEXT NOT NULL, status TEXT NOT NULL, accepted_sequence INTEGER NOT NULL,
+        PRIMARY KEY(session_id, turn_id), UNIQUE(session_id, client_turn_key));`);
+    db.exec(CREATE_CODE_SCHEMA_SQL);
+    db.prepare(`INSERT INTO code_sessions (session_id, provider, cwd, model, permission_mode, status, active_turn_id,
+        capabilities_json, epoch, sequence, created_at, last_used_at) VALUES ('legacy', 'claude', '/workspace', 'model', 'ask',
+        'starting', 'old-turn', ?, 1, 4, 1, 1)`).run(JSON.stringify(capabilities));
+    db.exec("INSERT INTO code_turns VALUES ('legacy', 'old-turn', 'consumed-key', 'old-hash', 'accepted', 4)");
+    const oldItems: CodeItem[] = [
+        { itemId: 'old-item', turnId: 'old-turn', kind: 'user_message', status: 'done', text: 'retained history', createdAt: 1, updatedAt: 1 },
+        { itemId: 'old-started', turnId: 'old-turn', kind: 'turn_started', status: 'running', createdAt: 1, updatedAt: 1 },
+    ];
+    const oldSession: CodeSessionInfo = {
+        sessionId: 'legacy', provider: 'claude', cwd: '/workspace', title: null, model: 'model', effort: null,
+        permissionMode: 'ask', status: 'starting', turnId: 'old-turn', archivedAt: null, error: null,
+        capabilities, resume: { available: false, reason: 'not_started' }, epoch: 1, sequence: 4, revision: 0, createdAt: 1, lastUsedAt: 1,
+    };
+    const oldEvents: CodeWireEvent[] = [
+        { topic: 'code', event: 'code_session', sessionId: 'legacy', sequence: 1, epoch: 0,
+            session: { ...oldSession, status: 'idle', turnId: null, epoch: 0, sequence: 1 } },
+        ...oldItems.map((item, index): CodeWireEvent => ({ topic: 'code', event: 'code_item', sessionId: 'legacy', sequence: index + 2, epoch: 1, item })),
+        { topic: 'code', event: 'code_session', sessionId: 'legacy', sequence: 4, epoch: 1, session: oldSession },
+    ];
+    oldItems.forEach((item, index) => db.prepare('INSERT INTO code_items VALUES (?, ?, ?, ?)').run('legacy', item.itemId, index + 2, JSON.stringify(item)));
+    for (const event of oldEvents) db.prepare('INSERT INTO code_events VALUES (?, ?, ?)').run('legacy', event.sequence, JSON.stringify(event));
+    const store = new CodeStore(db, { now: () => 100, limits: { maxTurnEventBytes: 1 } });
+    const usage = db.prepare('SELECT event_bytes, control_event_bytes, settlement_bytes FROM code_turns').get() as { event_bytes: number; control_event_bytes: number; settlement_bytes: number };
+    assert.equal(usage.event_bytes, oldEvents.slice(1).reduce((sum, event) => sum + Buffer.byteLength(JSON.stringify(event), 'utf8'), 0));
+    assert.equal(usage.control_event_bytes, 0);
+    assert.ok(usage.settlement_bytes > 0);
+    assert.equal(store.readTurn('legacy', 'consumed-key')?.status, 'accepted');
+    store.recoverInterrupted();
+    assert.equal(store.readTurn('legacy', 'consumed-key')?.status, 'failed');
+    assert.equal(store.snapshot('legacy').items[0]?.text, 'retained history');
+    assert.deepEqual(store.readEvents('legacy').events.map(event => event.sequence), [1, 2, 3, 4, 5, 6, 7]);
+    const settled = db.prepare('SELECT event_bytes FROM code_turns').get();
+    new CodeStore(db);
+    assert.deepEqual(db.prepare('SELECT event_bytes FROM code_turns').get(), settled);
+});
+
+test('exported hard byte limits cannot be raised by constructor configuration', t => {
+    const db = new Database(':memory:');
+    t.after(() => db.close());
+    assert.deepEqual([CODE_MAX_EVENT_BYTES, CODE_MAX_REPLAY_PAGE_BYTES, CODE_MAX_SNAPSHOT_BYTES, CODE_MAX_TURN_EVENT_BYTES],
+        [4, 8, 8, 32].map(value => value * 1024 * 1024));
+    expectError(() => new CodeStore(db, { limits: { maxEventBytes: CODE_MAX_EVENT_BYTES + 1 } }), 'invalid_limit', 400);
+});
+
 test('constructor adds only Code schema and repeated initialization preserves records', t => {
     const db = new Database(':memory:');
     t.after(() => db.close());
@@ -57,6 +331,21 @@ test('constructor adds only Code schema and repeated initialization preserves re
     assert.deepEqual(db.prepare('SELECT content FROM messages').all(), [{ content: 'existing history' }]);
     assert.deepEqual(reopened.snapshot('session-a').items, []);
     assert.deepEqual(reopened.readEvents('session-a').events, created.events);
+});
+
+test('first prompt supplies a bounded Unicode title without overwriting a user title', t => {
+    const { store } = fixture(t);
+    const first = admit(store, 'first', 'session-a', '  세션 💻 요청\nMore details');
+    assert.equal(first.session.title, '세션 💻 요청');
+    store.settleTurn(owner(first.session), { status: 'completed' });
+    assert.equal(admit(store, 'second', 'session-a', 'Different prompt').session.title, '세션 💻 요청');
+
+    store.create({ ...creation, sessionId: 'pinned', title: 'My title' });
+    assert.equal(admit(store, 'pinned-key', 'pinned', 'Generated candidate').session.title, 'My title');
+
+    store.create({ ...creation, sessionId: 'unicode' });
+    const prefix = '가'.repeat(119);
+    assert.equal(admit(store, 'unicode-key', 'unicode', prefix + '👨‍👩‍👧‍👦').session.title, prefix);
 });
 
 test('full row mapping includes every field and public surfaces exclude private native metadata', t => {
@@ -180,23 +469,24 @@ test('old tool updates retain firstSequence and first-appearance order while eve
     assert.equal(snapshot.sequence, 7);
     assert.deepEqual(store.readEvents('session-a', 4).events.map(event => event.sequence), [5, 6, 7]);
     assert.deepEqual(store.readEvents('session-a', 4).events.map(event => event.item?.firstSequence), [5, 6, 5]);
-    assert.deepEqual(store.snapshot('session-a', { limit: 1 }).items.map(item => item.itemId), ['second']);
+    assert.deepEqual(store.snapshot('session-a', { limit: 1 }).items.map(item => item.itemId), ['turn-1:user', 'turn-1:started', 'first', 'second']);
 });
 
 test('snapshot retains the newest 1000 items in ascending firstSequence order', t => {
     const { store } = fixture(t);
     const admitted = admit(store);
     for (let index = 0; index < 1005; index++) {
-        store.commitItem(owner(admitted.session), message(admitted.receipt.turnId, `item-${index}`, `message ${index}`));
+        store.commitItem(owner(admitted.session), { ...message(admitted.receipt.turnId, `item-${index}`, `message ${index}`), status: 'done' });
     }
+    store.settleTurn(owner(admitted.session), { status: 'completed' });
     const snapshot = store.snapshot('session-a');
     assert.equal(snapshot.items.length, 1000);
     assert.equal(snapshot.truncated, true);
-    assert.deepEqual(snapshot.items.map(item => item.itemId), Array.from({ length: 1000 }, (_, index) => `item-${index + 5}`));
-    assert.deepEqual(snapshot.items.map(item => item.firstSequence), Array.from({ length: 1000 }, (_, index) => index + 10));
-    assert.equal(snapshot.items.at(-1)?.text, 'message 1004');
-    assert.equal(snapshot.sequence, 1009);
-    assert.equal(snapshot.session.sequence, 1009);
+    assert.deepEqual(snapshot.items.map(item => item.itemId), [...Array.from({ length: 999 }, (_, index) => `item-${index + 6}`), 'turn-1:terminal']);
+    assert.deepEqual(snapshot.items.slice(0, -1).map(item => item.firstSequence), Array.from({ length: 999 }, (_, index) => index + 11));
+    assert.equal(snapshot.items.at(-2)?.text, 'message 1004');
+    assert.equal(snapshot.sequence, 1012);
+    assert.equal(snapshot.session.sequence, 1012);
 });
 
 test('caller firstSequence is ignored on insertion and update; projected row owns snapshot and replay order', t => {
@@ -255,7 +545,7 @@ test('all item fields round-trip and retained events are detached from mutable i
     assert.doesNotMatch(JSON.stringify(committed), /nativeCursor|privatePolicy|hidden|private/);
 });
 
-test('replay advances only to last returned sequence and bounded snapshot reports truncation', t => {
+test('replay advances only to last returned sequence and snapshot never clips an active turn by row count', t => {
     const { store } = fixture(t);
     admit(store);
     const first = store.readEvents('session-a', 0, 2);
@@ -265,10 +555,10 @@ test('replay advances only to last returned sequence and bounded snapshot report
     assert.deepEqual([next.nextSequence, next.throughSequence, next.hasMore], [4, 4, false]);
     assert.deepEqual(store.readEvents('session-a', 4), { events: [], nextSequence: 4, throughSequence: 4, hasMore: false });
     const snapshot = store.snapshot('session-a', { limit: 1 });
-    assert.equal(snapshot.truncated, true);
-    assert.equal(snapshot.items.length, 1);
-    assert.equal(snapshot.items[0]?.itemId, 'turn-1:started');
-    assert.equal(snapshot.items[0]?.firstSequence, 3);
+    assert.equal(snapshot.truncated, false);
+    assert.equal(snapshot.items.length, 2);
+    assert.deepEqual(snapshot.items.map(item => item.itemId), ['turn-1:user', 'turn-1:started']);
+    assert.deepEqual(snapshot.items.map(item => item.firstSequence), [2, 3]);
     assert.equal(snapshot.sequence, 4);
     assert.equal(snapshot.session.sequence, 4);
     expectError(() => store.readEvents('session-a', 5), 'invalid_sequence');
@@ -413,7 +703,7 @@ test('restart expires approvals, fails orphaned work, fences callbacks and prese
     });
     store.commitItem(current, message(admitted.receipt.turnId, 'after-permission'));
     const recent = store.snapshot('session-a', { limit: 1 });
-    assert.deepEqual(recent.items.map(item => item.itemId), ['after-permission']);
+    assert.deepEqual(recent.items.map(item => item.itemId), ['turn-1:user', 'turn-1:started', 'permission', 'after-permission']);
     assert.equal(recent.pendingPermissions.length, 1);
     assert.equal(recent.pendingPermissions[0]?.permissionId, 'p');
     store.create({ ...creation, sessionId: 'session-b' });

@@ -9,6 +9,11 @@ export interface CodeTurnContext extends RuntimeEventContext {
     isCurrent(): boolean;
 }
 
+export interface CodeRuntimeResource {
+    readonly closed: boolean;
+    close(): Promise<void>;
+}
+
 /** Native adapters receive captured Code ownership, never a Jaw runtime lease. */
 export interface CodeOpenOptions {
     sessionId: string;
@@ -19,6 +24,8 @@ export interface CodeOpenOptions {
     nativeCursor: string | null;
     signal: AbortSignal;
     registry: RuntimeRequests;
+    /** Register ownership before asynchronous native initialization can fail. */
+    onResource(resource: CodeRuntimeResource): void;
     getTurnContext(): CodeTurnContext;
     record(context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent | null;
     transcript(context: RuntimeEventContext): RuntimeTranscriptObserver;
@@ -27,9 +34,11 @@ export interface CodeOpenOptions {
     onExit(error: Error | null): void;
 }
 
-export interface CodeProviderSession {
+export interface CodeProviderSession extends CodeRuntimeResource {
     readonly nativeSessionId: string;
     readonly alive: boolean;
+    /** True only when owned native resources have actually exited/drained. */
+    readonly closed: boolean;
     send(text: string): Promise<RuntimeTurnOutcome>;
     cancel(): Promise<void>;
     close(): Promise<void>;
