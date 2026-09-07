@@ -1,7 +1,10 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { atob, btoa } from 'node:buffer';
+import { setImmediate as nextTick } from 'node:timers/promises';
+import { setupWebUiDom, resetWebUiDom } from './web-ui-test-dom.ts';
 
 // Phase 127 (#127) mermaid render latency — source-string contract for ui.ts.
 
@@ -9,23 +12,64 @@ const uiSrc = readFileSync(
     join(import.meta.dirname, '../../public/js/ui.ts'),
     'utf8',
 );
-const historySrc = readFileSync(
-    join(import.meta.dirname, '../../public/js/features/message-history.ts'),
-    'utf8',
-);
 const mainSrc = readFileSync(
     join(import.meta.dirname, '../../public/js/main.ts'),
     'utf8',
 );
 
-test('F5: finalizeAgent triggers immediate mermaid render after innerHTML', () => {
-    const idx = uiSrc.indexOf('export function finalizeAgent');
-    assert.ok(idx >= 0, 'finalizeAgent must exist');
-    const block = uiSrc.slice(idx, idx + 3500);
-    assert.ok(block.includes('renderMermaidBlocks('),
-        'finalizeAgent must call renderMermaidBlocks to bypass the 100ms debounce');
-    assert.ok(block.includes('immediate: true'),
-        'finalizeAgent mermaid call must use immediate mode');
+// F5/import behavior is owned by web-final-answer-render.test.ts: both the
+// non-VS finalizer and owned-answer replacement execute the real Markdown
+// parser, then dispatch scoped widgets/Mermaid with immediate:true. Import-line
+// formatting and a fixed byte window are not behavior contracts.
+
+const globalNames = ['window', 'document', 'HTMLElement', 'HTMLAnchorElement', 'Element', 'Node',
+    'NodeFilter', 'navigator', 'localStorage', 'MutationObserver', 'getComputedStyle',
+    'requestAnimationFrame', 'cancelAnimationFrame', 'IntersectionObserver', 'ResizeObserver',
+    'atob', 'btoa', 'indexedDB'] as const;
+const globals = new Map(globalNames.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+const unexpected: string[] = [];
+const dispatches: { root: HTMLElement | undefined; html: string; options: unknown }[] = [];
+let rendering: typeof import('../../public/js/render.ts');
+let history: typeof import('../../public/js/features/message-history.ts');
+let vs: ReturnType<typeof import('../../public/js/virtual-scroll.ts')['getVirtualScroll']>;
+
+test.before(async () => {
+    setupWebUiDom();
+    mock.method(globalThis, 'atob', atob); mock.method(globalThis, 'btoa', btoa);
+    mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : String(input), 'http://127.0.0.1');
+        const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+        if (method === 'GET' && url.href === 'http://127.0.0.1/api/auth/token')
+            return Response.json({ token: 'wp37-mermaid' });
+        unexpected.push(`${method} ${url.href}`);
+        throw new Error(`Unexpected fixture HTTP: ${method} ${url.href}`);
+    });
+    rendering = await import('../../public/js/render.ts');
+    mock.module('../../public/js/render.js', { namedExports: {
+        ...rendering,
+        renderMermaidBlocks(root?: HTMLElement, options?: unknown) {
+            dispatches.push({ root, html: root?.innerHTML ?? '', options });
+            return Promise.resolve();
+        },
+    } });
+    history = await import('../../public/js/features/message-history.ts');
+    vs = (await import('../../public/js/virtual-scroll.ts')).getVirtualScroll();
+});
+test.afterEach(async () => {
+    rendering.cancelPostRender(); vs.clear(); dispatches.length = 0;
+    document.getElementById('chatMessages')!.replaceChildren();
+    await nextTick();
+    assert.deepEqual(unexpected, [], 'caught unexpected HTTP must still fail the test');
+});
+test.after(() => {
+    try { rendering?.cancelPostRender(); vs?.clear(); resetWebUiDom(); }
+    finally {
+        mock.restoreAll();
+        for (const [name, descriptor] of globals) {
+            if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+            else Reflect.deleteProperty(globalThis, name);
+        }
+    }
 });
 
 // F9 promotion is driven through the real finalizer/VS snapshot boundary in
@@ -42,42 +86,44 @@ test('F9: finalizeAgent skips immediate Mermaid queue for DOM promoted to VS', (
 });
 
 test('F7a: VS onLazyRender triggers immediate mermaid render', () => {
-    const idx = historySrc.indexOf('vs.onLazyRender = ');
-    assert.ok(idx >= 0, 'onLazyRender assignment must exist');
-    const block = historySrc.slice(idx, idx + 1800);
-    assert.ok(block.includes('renderMermaidBlocks('),
-        'onLazyRender must trigger mermaid render on fresh markdown');
-    assert.ok(block.includes('immediate: true'),
-        'onLazyRender mermaid call must use immediate mode');
+    history.registerVirtualScrollCallbacks(vs);
+    assert.ok(vs.onLazyRender);
+    const content = document.createElement('div'); content.className = 'msg-content lazy-pending';
+    content.setAttribute('data-raw', '**Fresh**\n\n```mermaid\ngraph TD; A-->B\n```');
+    content.innerHTML = '<span>stale markup</span>';
+    document.getElementById('chatMessages')!.append(content);
+    const outside = document.createElement('div'); outside.className = 'lazy-pending';
+    outside.textContent = 'outside scope'; content.after(outside);
+    const untouched = outside.outerHTML;
+    vs.onLazyRender([content]);
+    // No timer advancement: this dispatch must bypass Markdown's debounce.
+    assert.equal(dispatches.length, 1);
+    assert.equal(dispatches[0]!.root, content);
+    assert.deepEqual(dispatches[0]!.options, { immediate: true });
+    const captured = document.createElement('div'); captured.innerHTML = dispatches[0]!.html;
+    assert.equal(captured.querySelector('strong')?.textContent, 'Fresh');
+    assert.equal(decodeURIComponent(captured.querySelector<HTMLElement>('.mermaid-pending')!.dataset['mermaidCodeRaw']!), 'graph TD; A-->B');
+    assert.equal(content.classList.contains('lazy-pending'), false);
+    assert.equal(outside.outerHTML, untouched);
+    vs.onLazyRender([content]);
+    assert.equal(dispatches.length, 1, 'already-rendered content must not dispatch again');
 });
 
 test('F7b: VS onPostRender triggers immediate mermaid render for mounted scope', () => {
-    const idx = historySrc.indexOf('vs.onPostRender = ');
-    assert.ok(idx >= 0, 'onPostRender assignment must exist');
-    const block = historySrc.slice(idx, idx + 800);
-    assert.ok(block.includes('renderMermaidBlocks('),
-        'onPostRender must trigger mermaid render for pre-rendered pending blocks');
-    assert.ok(block.includes('immediate: true'),
-        'onPostRender mermaid call must use immediate mode');
-    assert.ok(/renderMermaidBlocks\(\s*viewport/.test(block),
-        'onPostRender must scope the mermaid render to the viewport argument');
-});
-
-test('imports: renderMermaidBlocks is imported in ui.ts without touching existing render import', () => {
-    assert.ok(uiSrc.includes("import { renderMermaidBlocks } from './render.js';"),
-        'renderMermaidBlocks must be imported on its own line from ./render.js');
-    assert.ok(historySrc.includes("import { renderMermaidBlocks } from '../render.js';"),
-        'message-history must import renderMermaidBlocks for virtual-scroll callbacks');
-    // Existing import must remain intact
-    assert.ok(
-        uiSrc.includes("import { renderMarkdown, escapeHtml, stripOrchestration, linkifyFilePaths } from './render.js';"),
-        'original render.js import line must be preserved untouched',
-    );
-    // activateWidgets must still come from iframe-renderer
-    assert.ok(
-        uiSrc.includes("import { activateWidgets } from './diagram/iframe-renderer.js';"),
-        'activateWidgets must stay imported from ./diagram/iframe-renderer.js',
-    );
+    history.registerVirtualScrollCallbacks(vs);
+    assert.ok(vs.onPostRender);
+    const viewport = document.createElement('div');
+    viewport.innerHTML = rendering.renderMarkdown('```mermaid\ngraph TD; C-->D\n```');
+    rendering.cancelPostRender();
+    document.getElementById('chatMessages')!.append(viewport);
+    const outside = document.createElement('div'); outside.innerHTML = '<div class="mermaid-pending">outside</div>';
+    viewport.after(outside); const untouched = outside.outerHTML;
+    vs.onPostRender(viewport);
+    assert.equal(dispatches.length, 1);
+    assert.equal(dispatches[0]!.root, viewport);
+    assert.deepEqual(dispatches[0]!.options, { immediate: true });
+    assert.ok(viewport.querySelector('.mermaid-pending'), 'pre-rendered Mermaid input remains available at dispatch');
+    assert.equal(outside.outerHTML, untouched);
 });
 
 test('F2: main.ts imports prewarmMermaid and calls it in bootstrap', () => {
