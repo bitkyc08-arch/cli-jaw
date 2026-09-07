@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { stripVTControlCharacters } from 'node:util';
+import { renderTranscriptItem } from '../../bin/commands/tui/fullscreen-mode.ts';
+import { appendToolItem, createTranscriptState, toggleToolExpansion } from '../../src/cli/tui/transcript.ts';
+import { visualWidth } from '../../src/cli/tui/renderers.ts';
 
 const source = readFileSync(new URL('../../bin/commands/tui/fullscreen-mode.ts', import.meta.url), 'utf8');
 
@@ -12,12 +16,10 @@ test('fullscreen user transcript renderer splits embedded newlines into frame ro
 });
 
 test('fullscreen thinking renderer returns labeled rows without embedded newline templates', () => {
-    const thinkBlock = source.slice(
-        source.indexOf('if (thinkMatch)'),
-        source.indexOf('const mdText = item.text'),
-    );
-    assert.ok(thinkBlock.includes('...(agentLabel ?'));
-    assert.doesNotMatch(thinkBlock, /return \[`.*\\n.*`\]/s);
+    const rows = renderTranscriptItem({ type: 'assistant', text: '<think>\nreasoning',
+        streaming: false, timestamp: 1, agentId: 'worker' }, 40);
+    assert.deepEqual(rows.map(stripVTControlCharacters), ['  [worker] ', '  Thinking … +2 lines']);
+    assert.ok(rows.every(row => !row.includes('\n')));
 });
 
 test('fullscreen tool renderer uses transcript status and detail fields', () => {
@@ -29,18 +31,23 @@ test('fullscreen tool renderer uses transcript status and detail fields', () => 
     assert.doesNotMatch(source, /item\.status === 'done' \|\| item\.collapsed/);
 });
 
-test('fullscreen completed tool expansion is full-sweep and newline-safe', () => {
-    // Tool detail expansion was extracted from fullscreen-mode into renderToolBlock;
-    // fullscreen-mode delegates and the bridge owns the newline-safe full sweep + row cap.
-    // Ctrl-O is scoped to the uncommitted tail: committed items' pixels are
-    // frozen in native scrollback (jawcode parity).
-    assert.match(source, /toggleToolExpansion\(ctx\.store\.transcript, viewport\.currentFrontier\(\)\.itemIndex\)/);
-    assert.match(source, /const toolDetail = item\.detail \?\? parsed\.detail/);
-    assert.match(source, /renderToolBlock\(parsed\.label, toolDetail, state, \{/);
-    assert.match(source, /collapsed: item\.collapsed/);
-    const bridge = readFileSync(new URL('../../src/cli/tui/jawcode-bridge.ts', import.meta.url), 'utf8');
-    assert.match(bridge, /const detailLines = detail\.split\('\\n'\)/);
-    assert.match(bridge, /const maxRows = 14/);
+test('fullscreen completed tool expansion keeps the committed prefix frozen and bounds detail rows', () => {
+    const state = createTranscriptState();
+    const detail = Array.from({ length: 20 }, (_, i) => `line ${i + 1} 한글`).join('\n');
+    appendToolItem(state, 'Bash', { status: 'done', detail });
+    appendToolItem(state, 'Read', { status: 'error', detail });
+    const frozen = renderTranscriptItem(state.items[0]!, 40);
+    toggleToolExpansion(state, 1);
+    assert.deepEqual(renderTranscriptItem(state.items[0]!, 40), frozen);
+    const rows = renderTranscriptItem(state.items[1]!, 40);
+    const plain = rows.map(stripVTControlCharacters);
+    assert.equal(rows.length, 16, 'header + 14 detail rows + omitted-row receipt');
+    assert.match(plain[0]!, /✖ Read/);
+    assert.match(plain[14]!, /line 14 한글/);
+    assert.match(plain[15]!, /… \+6 lines/);
+    assert.ok(rows.every(row => !row.includes('\n') && visualWidth(row) <= 40));
+    toggleToolExpansion(state, 1);
+    assert.equal(renderTranscriptItem(state.items[1]!, 40).length, 1);
 });
 
 test('fullscreen live tool handling keeps running tools out of committed transcript', () => {

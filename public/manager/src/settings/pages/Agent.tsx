@@ -17,6 +17,8 @@ import { FlushAgentSection } from './components/agent/FlushAgentSection';
 import { AgentEmployeesSection } from './components/agent/AgentEmployeesSection';
 import {
     metaFor,
+    CLI_META,
+    selectableRuntimeOptions,
     normalizeCliMetaRegistry,
     optionList,
     runtimeEffortFor,
@@ -327,7 +329,10 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const settingsData = state.kind === 'ready' ? state.data : {};
     const perCli = settingsData.perCli || {};
     const activeOverrides = settingsData.activeOverrides || {};
-    const cliOptions = useMemo(() => Object.keys(perCli), [perCli]);
+    const cliOptions = useMemo(() => {
+        const saved = selectableRuntimeOptions(Object.keys(perCli));
+        return saved.length ? saved : selectableRuntimeOptions(Object.keys(cliMeta || CLI_META));
+    }, [perCli, cliMeta]);
     const activeMeta = metaFor(draft.cli, cliMeta);
     const activeProvider = draft.provider || activeMeta.defaultProvider || activeMeta.providers?.[0] || '';
     const isPiRuntime = draft.cli === 'pi';
@@ -459,13 +464,13 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     <option value="interrupt">interrupt — 현재 실행을 중단하고 즉시 실행</option>
                 </select>
                 <span className="settings-field-hint">
-                    다중 세션이 켜져 있을 때 적용됩니다. jwc·codex-app은 같은 턴에 입력을 전달합니다. Cursor·Grok의 native 모드는 현재 요청의 취소와 정리가 끝난 뒤 같은 세션에 다시 요청합니다(cancel-reprompt). 그 외 런타임은 중단 후 새 실행으로 이어갑니다(kill-steer). 보존되는 맥락은 런타임에 따라 다릅니다. 끝난 뒤 실행하려면 followup을 선택하세요.
+                    다중 세션이 켜져 있을 때 적용됩니다. codex-app은 같은 턴에 입력을 전달합니다. Cursor·Grok의 native 모드는 현재 요청의 취소와 정리가 끝난 뒤 같은 세션에 다시 요청합니다(cancel-reprompt). 그 외 런타임은 중단 후 새 실행으로 이어갑니다(kill-steer). 보존되는 맥락은 런타임에 따라 다릅니다. 끝난 뒤 실행하려면 followup을 선택하세요.
                 </span>
             </label>
             <CliProbeNotice status={cliStatus[draft.cli]} exhausted={cliStatusExhausted} />
             <RuntimeHeader
                 cli={draft.cli}
-                cliOptions={cliOptions.length > 0 ? cliOptions : [draft.cli || 'claude']}
+                cliOptions={cliOptions}
                 provider={activeProvider}
                 providerOptions={isPiRuntime ? [] : (activeMeta.providers || [])}
                 model={draft.model}

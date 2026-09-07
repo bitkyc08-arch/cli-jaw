@@ -1,6 +1,6 @@
 import { SelectField, TextField } from '../../../fields';
 import { SettingsSection } from '../../page-shell';
-import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS, type CliMeta } from './agent-meta';
+import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS, isRetiredCliSelection, type CliMeta } from './agent-meta';
 
 type RuntimeHeaderProps = {
     cli: string;
@@ -40,6 +40,7 @@ export function RuntimeHeader({
     onWorkingDirChange,
 }: RuntimeHeaderProps) {
     const orderedCliOptions = orderRuntimeCliOptions(cliOptions);
+    const retired = isRetiredCliSelection(cli);
     const orderedPrimaryCliCount = orderedCliOptions.filter((value) => PRIMARY_CLIS.includes(value)).length;
 
     return (
@@ -52,6 +53,8 @@ export function RuntimeHeader({
                     id="agent-cli"
                     label="Active CLI"
                     value={cli}
+                    missingValueLabel={retired ? 'JWC (retired)' : undefined}
+                    error={retired ? 'This runtime is retired. Select an available runtime to continue.' : null}
                     options={orderedCliOptions.map((value) => ({ value, label: metaFor(value, cliMeta).label || value }))}
                     collapsedAfter={orderedPrimaryCliCount}
                     onChange={onCliChange}
@@ -69,6 +72,7 @@ export function RuntimeHeader({
                     id="agent-model"
                     label="Active model"
                     value={model}
+                    disabled={retired}
                     options={modelOptions.length > 0 ? modelOptions : [{ value: '', label: '(default)' }]}
                     onChange={onModelChange}
                 />
@@ -80,7 +84,7 @@ export function RuntimeHeader({
                         { value: '', label: '(default)' },
                         ...effortOptions.map((value) => ({ value, label: value })),
                     ]}
-                    disabled={effortOptions.length === 0}
+                    disabled={retired || effortOptions.length === 0}
                     onChange={onEffortChange}
                 />
                 <TextField

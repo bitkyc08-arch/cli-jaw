@@ -129,8 +129,9 @@ if (command === 'curl') {
     const metadata = mode === 'premature-install' ? '.jaw-install-state.json' : '.jaw-sidecar-build.json';
     write(path.join(a[a.indexOf('--server-root') + 1], metadata), '{}');
   }
-  process.argv = [process.execPath, ...a];
-  import(require('node:url').pathToFileURL(a[0]).href).catch(e => { console.error(e); process.exitCode = 1; });
+  const checked = require('node:child_process').spawnSync(process.execPath, a, { stdio: 'inherit', timeout: 10000 });
+  if (checked.error) { console.error(checked.error); process.exit(1); }
+  process.exit(checked.status ?? 1);
 } else if (command === 'native' && a[0] === '-e') {
   log({ command: 'native', args: a });
   if (a[1].includes('p.scripts&&p.scripts.install')) process.stdout.write('no');

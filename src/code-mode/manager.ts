@@ -1,0 +1,296 @@
+import { CodeSession, CodeServiceError } from './session.js';
+import { CodeStore, CodeStoreError, type CodeSessionListOptions, type CodeSessionRecord } from './store.js';
+import type { CodeProviders } from './provider.js';
+import { DEFAULT_CODE_SETTINGS } from './types.js';
+import type {
+    CodeCancelRequest, CodeCapabilities, CodeCreateSessionRequest, CodeEventsPage, CodeHistoryPage,
+    CodeModelCatalog, CodePatchSessionRequest, CodePermissionAnswer, CodePromptReceipt,
+    CodePromptRequest, CodeProviderCatalog, CodeProviderId, CodeSessionInfo, CodeSnapshot, CodeWireEvent,
+} from './wire.js';
+
+export { CodeServiceError } from './session.js';
+export type { CodeSessionListOptions } from './store.js';
+
+const PROVIDER_IDS: readonly CodeProviderId[] = ['codex-app', 'claude', 'cursor', 'grok'];
+
+export interface CodeSessionManagerOptions {
+    store: CodeStore;
+    providers: CodeProviders;
+    publish: (event: CodeWireEvent) => void;
+    maxConcurrentSessions?: number;
+    idleReapMs?: number;
+    now?: () => number;
+}
+
+/** Injectable composition owner. Construction neither reads storage nor starts runtimes. */
+export class CodeSessionManager {
+    private readonly sessions = new Map<string, CodeSession>();
+    private readonly idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private readonly maxConcurrentSessions: number;
+    private readonly idleReapMs: number;
+    private readonly now: () => number;
+    private recovered = false;
+    private admitted = false;
+    private disposed = false;
+    private disposePromise: Promise<void> | null = null;
+
+    constructor(private readonly options: CodeSessionManagerOptions) {
+        this.maxConcurrentSessions = options.maxConcurrentSessions ?? DEFAULT_CODE_SETTINGS.maxConcurrentSessions;
+        this.idleReapMs = options.idleReapMs ?? DEFAULT_CODE_SETTINGS.idleReapMs;
+        this.now = options.now ?? Date.now;
+        if (!Number.isSafeInteger(this.maxConcurrentSessions) || this.maxConcurrentSessions < 1
+            || !Number.isSafeInteger(this.idleReapMs) || this.idleReapMs < 0) {
+            throw new CodeStoreError('invalid_limits', 'Code capacity and idle timeout must be nonnegative integers with positive capacity', 400);
+        }
+    }
+
+    private ready(): void {
+        if (this.disposed) throw new CodeServiceError('manager_disposed', 'Code session manager is disposed');
+        this.reconcileSessions();
+    }
+
+    private storage<T>(action: () => T): T {
+        try { return action(); }
+        catch (error) {
+            if (error instanceof CodeStoreError || error instanceof CodeServiceError) throw error;
+            throw new CodeServiceError('persistence_failed', 'Code storage is unavailable');
+        }
+    }
+
+    private record(id: string): CodeSessionRecord {
+        const record = this.storage(() => this.options.store.readRecord(id));
+        if (!record) throw new CodeStoreError('session_not_found', 'Code session not found', 404);
+        return record;
+    }
+
+    private publish(events: CodeWireEvent[]): void {
+        for (const event of events) {
+            try {
+                void Promise.resolve(this.options.publish(event)).catch(() => console.warn('[code] subscriber_failed'));
+            } catch { console.warn('[code] subscriber_failed'); }
+        }
+    }
+
+    private catalog(id: CodeProviderId): CodeProviderCatalog {
+        const provider = this.options.providers[id];
+        if (!provider || provider.id !== id) throw new CodeStoreError('unsupported_provider', 'Code provider is unsupported', 400);
+        return provider.describe();
+    }
+
+    private validate(input: CodeCreateSessionRequest, fixed?: CodeCapabilities): CodeProviderCatalog {
+        const catalog = this.catalog(input.provider);
+        if (!catalog.available) throw new CodeServiceError('provider_unavailable', 'Code provider is unavailable');
+        if (!catalog.models.includes(input.model)) throw new CodeStoreError('unsupported_model', 'Code model is unsupported', 400);
+        for (const capabilities of fixed ? [fixed, catalog.capabilities] : [catalog.capabilities]) {
+            if (!capabilities.permissionModes.includes(input.permissionMode)) {
+                throw new CodeStoreError('unsupported_policy', 'Code permission mode is unsupported', 400);
+            }
+            if (input.effort !== null && !capabilities.efforts.includes(input.effort)) {
+                throw new CodeStoreError('unsupported_effort', 'Code effort is unsupported', 400);
+            }
+        }
+        return catalog;
+    }
+
+    create(input: CodeCreateSessionRequest): CodeSessionInfo {
+        this.ready();
+        const catalog = this.validate(input);
+        const result = this.storage(() => this.options.store.create({ ...input, capabilities: catalog.capabilities }));
+        this.publish(result.events);
+        return result.session;
+    }
+
+    list(options?: CodeSessionListOptions): CodeSessionInfo[] {
+        this.ready();
+        return this.storage(() => this.options.store.list(options)).map(row => {
+            try { return { ...row, pendingPermissionCount: this.sessions.get(row.sessionId)?.pendingPermissions().length ?? 0 }; }
+            catch { return row; } // An unavailable attention read stays unknown, never inferred zero.
+        });
+    }
+
+    snapshot(id: string): CodeSnapshot {
+        this.ready();
+        const session = this.sessions.get(id);
+        session?.assertHealthy();
+        // Registry pruning can commit settled permission items; do it before capturing H.
+        const pendingPermissions = session?.pendingPermissions() ?? [];
+        const snapshot = this.storage(() => this.options.store.snapshot(id));
+        const current = pendingPermissions.filter(permission =>
+            permission.turnId === snapshot.session.turnId && permission.epoch === snapshot.session.epoch);
+        return { ...snapshot, session: { ...snapshot.session, pendingPermissionCount: current.length }, pendingPermissions: current };
+    }
+
+    history(id: string, beforeSequence?: number, limit?: number): CodeHistoryPage {
+        this.ready();
+        return this.storage(() => this.options.store.history(id, beforeSequence, limit));
+    }
+
+    readEvents(id: string, afterSequence?: number, limit?: number): CodeEventsPage {
+        this.ready();
+        this.sessions.get(id)?.assertHealthy();
+        return this.storage(() => this.options.store.readEvents(id, afterSequence, limit));
+    }
+
+    private clearIdle(id: string): void {
+        const timer = this.idleTimers.get(id);
+        if (timer !== undefined) clearTimeout(timer);
+        this.idleTimers.delete(id);
+    }
+
+    private reconcileSessions(): void {
+        for (const [id, session] of this.sessions) {
+            const resident = session.resident;
+            // Retain unresolved persistence faults for reads, independently of residency.
+            if (session.busy || resident || session.poisoned) continue;
+            this.clearIdle(id);
+            this.sessions.delete(id);
+        }
+    }
+
+    private changed(id: string, session: CodeSession): void {
+        this.reconcileSessions();
+        if (this.sessions.get(id) !== session) return;
+        this.clearIdle(id);
+        if (session.busy || session.poisoned) return;
+        if (!session.resident) { this.sessions.delete(id); return; }
+        if (this.disposed || session.closing) return;
+        const delay = Math.max(0, this.idleReapMs - (this.now() - session.lastUsedAt));
+        const timer = setTimeout(() => {
+            this.idleTimers.delete(id);
+            if (this.sessions.get(id) !== session || session.busy) return;
+            void session.dispose().then(() => this.changed(id, session))
+                .catch(() => console.warn('[code] idle_cleanup_failed'));
+        }, delay);
+        timer.unref();
+        this.idleTimers.set(id, timer);
+    }
+
+    private reserve(record: CodeSessionRecord): CodeSession {
+        this.reconcileSessions();
+        let session = this.sessions.get(record.sessionId);
+        if (session) {
+            session.assertHealthy();
+            if (session.closing) throw new CodeServiceError('session_closing', 'Code session is closing');
+            if (session.busy) throw new CodeStoreError('session_busy', 'Code session already has active work', 409);
+            if (session.cleanupPending) throw new CodeServiceError('cleanup_pending', 'Previous Code runtime has not closed');
+            this.clearIdle(record.sessionId);
+            return session;
+        }
+        const occupied = [...this.sessions.values()].filter(entry => entry.busy || entry.resident).length;
+        if (occupied >= this.maxConcurrentSessions) {
+            throw new CodeServiceError('session_capacity', 'Code runtime capacity is full');
+        }
+        session = new CodeSession({ sessionId: record.sessionId, store: this.options.store,
+            provider: this.options.providers[record.provider], publish: event => this.publish([event]),
+            now: this.now, changed: () => this.changed(record.sessionId, reserved) });
+        const reserved = session;
+        // Count opening reservations before any native/provider await.
+        this.sessions.set(record.sessionId, session);
+        return session;
+    }
+
+    prompt(id: string, input: CodePromptRequest): { receipt: CodePromptReceipt; duplicate: boolean } {
+        this.ready();
+        this.sessions.get(id)?.assertHealthy();
+        const record = this.record(id);
+        if (this.storage(() => this.options.store.readTurn(id, input.clientTurnKey))) {
+            const duplicate = this.storage(() => this.options.store.admitTurn({ ...input, sessionId: id }));
+            return { receipt: duplicate.receipt, duplicate: true };
+        }
+        this.validate(record, record.capabilities);
+        const session = this.reserve(record);
+        try {
+            const result = this.storage(() => this.options.store.admitTurn({ ...input, sessionId: id,
+                expectedRevision: record.revision }));
+            if (!result.duplicate) {
+                this.admitted = true;
+                session.start({ ...record, ...result.session }, input.text);
+            }
+            this.publish(result.events);
+            return { receipt: result.receipt, duplicate: result.duplicate };
+        } catch (error) { this.changed(id, session); throw error; }
+    }
+
+    async cancel(id: string, input: CodeCancelRequest): Promise<CodeSessionInfo> {
+        this.ready();
+        const record = this.record(id);
+        const session = this.sessions.get(id);
+        session?.assertHealthy();
+        if (record.epoch !== input.epoch || (record.turnId !== null && record.turnId !== input.turnId)) {
+            throw new CodeStoreError('stale_owner', 'Code turn ownership has changed', 409);
+        }
+        if (record.turnId !== null) {
+            if (!session) throw new CodeServiceError('orphaned_turn', 'Code turn has no live owner; recovery is required');
+            await session.cancel(input);
+        }
+        return this.storage(() => this.options.store.snapshot(id)).session;
+    }
+
+    async attach(id: string): Promise<CodeSessionInfo> {
+        this.ready();
+        const record = this.record(id);
+        this.validate(record, record.capabilities);
+        const session = this.reserve(record);
+        try {
+            const result = this.storage(() => this.options.store.beginAttach(id, record.revision));
+            this.admitted = true;
+            session.start({ ...record, ...result.session }, null);
+            this.publish(result.events);
+        } catch (error) { this.changed(id, session); throw error; }
+        await session.wait();
+        return this.storage(() => this.options.store.snapshot(id)).session;
+    }
+
+    async patch(id: string, input: CodePatchSessionRequest): Promise<CodeSessionInfo> {
+        this.ready();
+        const record = this.record(id);
+        const session = this.sessions.get(id);
+        session?.assertHealthy();
+        const policy = input.model !== undefined || input.effort !== undefined || input.permissionMode !== undefined;
+        const policyChanged = (input.model !== undefined && input.model !== record.model)
+            || (input.effort !== undefined && input.effort !== record.effort)
+            || (input.permissionMode !== undefined && input.permissionMode !== record.permissionMode);
+        if (policy) {
+            this.validate({ ...record, ...input }, record.capabilities);
+            if (policyChanged && record.nativeStarted && (!record.nativeCursor || !record.capabilities.resume)) {
+                throw new CodeStoreError('resume_unavailable', 'Code policy change requires resumable native history', 409);
+            }
+        }
+        const result = this.storage(() => this.options.store.patchSession(id, input));
+        // Invalidate residency before exposing the new metadata to subscribers.
+        const closing = session && (policyChanged || input.archived === true) ? session.dispose() : null;
+        this.publish(result.events);
+        if (closing) await closing;
+        return result.session;
+    }
+
+    answerPermission(permissionId: string, input: CodePermissionAnswer): void {
+        this.ready();
+        this.record(input.sessionId);
+        const session = this.sessions.get(input.sessionId);
+        if (!session) throw new CodeStoreError('request_not_current', 'Code permission is no longer current', 409);
+        session.answerPermission(permissionId, input);
+    }
+
+    models(): CodeModelCatalog {
+        this.ready();
+        return { providers: PROVIDER_IDS.map(id => structuredClone(this.catalog(id))), defaultProvider: 'codex-app' };
+    }
+
+    recover(): void {
+        this.ready();
+        if (this.recovered) return;
+        if (this.admitted || this.sessions.size) throw new CodeStoreError('recovery_after_admission', 'Recover Code sessions before admitting work', 409);
+        const events = this.storage(() => this.options.store.recoverInterrupted());
+        this.recovered = true;
+        this.publish(events);
+    }
+
+    dispose(): Promise<void> {
+        if (this.disposePromise) return this.disposePromise;
+        this.disposed = true;
+        for (const id of this.idleTimers.keys()) this.clearIdle(id);
+        this.disposePromise = Promise.all([...this.sessions.values()].map(session => session.dispose())).then(() => undefined);
+        return this.disposePromise;
+    }
+}

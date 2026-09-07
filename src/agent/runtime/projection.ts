@@ -10,8 +10,15 @@ type Tool = Extract<RuntimeEventBody, { kind: 'tool' }>;
 type Preview = Extract<RuntimeEventBody, { kind: 'tool' | 'message' | 'reasoning' }>;
 type Notice = 'capacity' | 'truncated' | 'persistence' | 'malformed' | 'missing-id';
 type Recorder = (context: RuntimeEventContext, body: RuntimeEventBody) => RuntimeEvent | null;
-type ToolPatch = { name?: string; status?: Tool['status']; input?: string;
+export type RuntimeToolPatch = { name?: string; status?: Tool['status']; input?: string;
     output?: string; delta?: string; detail?: string; inputStructured?: boolean; outputStructured?: boolean };
+/** Trusted raw patches. The owner must latch write failures before returning or throwing. */
+export interface RuntimeTranscriptObserver {
+    text(kind: 'message' | 'reasoning', nativeRef: string, value: string,
+        operation: 'append' | 'replace', phase: RuntimePhase): void;
+    tool(nativeRef: string, patch: RuntimeToolPatch, options: { allowTerminalUpdates?: boolean }): void;
+    close(end: RuntimeEnd): void;
+}
 type SourcePreview = { value: string; structured: boolean; retired: boolean };
 const MAX_ITEMS = 160;
 const FIELD_CHARS = 3000;
@@ -26,6 +33,7 @@ export class RuntimeProjection {
     private sourceChars = 0;
     private started = false;
     private ended = false;
+    private closingTranscript = false;
     private recordingFailed = false;
     private nextItem = 0;
     private total = 0;
@@ -37,6 +45,7 @@ export class RuntimeProjection {
         private readonly notify: (reason: Notice) => void = (reason) => {
             console.warn('[runtime:projection]', reason, context.runId);
         },
+        private readonly observer?: RuntimeTranscriptObserver,
     ) {}
 
     report(reason: Notice): void {
@@ -169,7 +178,10 @@ export class RuntimeProjection {
         this.emit(next);
     }
 
-    tool(nativeRef: string, patch: ToolPatch, options: { allowTerminalUpdates?: boolean } = {}): void {
+    tool(nativeRef: string, patch: RuntimeToolPatch, options: { allowTerminalUpdates?: boolean } = {}): void {
+        if (this.ended || this.recordingFailed || this.closingTranscript) return;
+        try { this.observer?.tool(nativeRef, patch, options); }
+        catch { this.report('persistence'); return; }
         if (this.ended || this.recordingFailed) return;
         const key = this.key('tool', nativeRef);
         const previous = this.items.get(key);
@@ -202,6 +214,9 @@ export class RuntimeProjection {
 
     text(kind: 'message' | 'reasoning', nativeRef: string, text: string,
         operation: 'append' | 'replace', phase: RuntimePhase = 'unknown'): void {
+        if (this.ended || this.recordingFailed || this.closingTranscript) return;
+        try { this.observer?.text(kind, nativeRef, text, operation, phase); }
+        catch { this.report('persistence'); return; }
         if (this.ended || this.recordingFailed) return;
         const key = this.key(kind, nativeRef);
         const itemId = this.id(key);
@@ -225,7 +240,12 @@ export class RuntimeProjection {
     }
 
     close(end: RuntimeEnd): void {
-        if (this.ended) return;
+        if (this.ended || this.closingTranscript) return;
+        if (this.observer && !this.recordingFailed) {
+            this.closingTranscript = true;
+            try { this.observer.close(end); }
+            catch { this.report('persistence'); }
+        }
         for (const [key, item] of this.items) {
             if (item.kind === 'tool' && item.status === 'running') this.save(key, {
                 ...item, status: end.status === 'error' ? 'error' : 'stopped',

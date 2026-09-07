@@ -56,14 +56,6 @@ test('output rules fire only in their configured scope', () => {
     assert.equal(applyOutputPolicy('secret', { scope: 'heartbeat' }, { jawHome }).text, '[hb]');
 });
 
-test('policy wiring: jwc applies output policy before durable persistence', () => {
-    // Wiring assertion plus primitive tests is the accepted activation bar for the JWC seam.
-    const src = fs.readFileSync(path.join(process.cwd(), 'src/agent/spawn.ts'), 'utf8');
-    const settle = src.slice(src.indexOf('const settleJwcTurn'), src.indexOf('jawRuntime.prompt', src.indexOf('const settleJwcTurn')));
-    assert.ok(settle.indexOf('applyOutputPolicy(rawFinalText') >= 0);
-    assert.ok(settle.indexOf('applyOutputPolicy(rawFinalText') < settle.indexOf('insertMessageWithTraceRun.run'));
-});
-
 test('policy wiring: pending reminder prepends before heartbeat anchor assembly', () => {
     // Wiring assertion plus flag lifecycle tests is the accepted activation bar for pipeline injection.
     const src = fs.readFileSync(path.join(process.cwd(), 'src/orchestrator/pipeline.ts'), 'utf8');

@@ -102,7 +102,7 @@ The version1 envelope carries jaw `sessionId`, routing `scope`, `runId`, logical
 
 Classic's live Activity dispatcher admits against the existing snapshot bridge's captured session/scope, with independently suspended stream admission. Pre-admission runtime events and projection-gap notices share a256-entry/1MiB queue; gaps retain their original identity. The bridge's live non-replayed terminal schedules its existing request GET to recover a missed settlement notice, never a POST. Closed Activity does not hide live decision controls.
 
-The journal's canonical terminal is redacted; a later owned public native-present or print answer can correct the same rendered/cache row without repeating lifecycle or notification. Native-absent diagnostics remain separate from that answer. Missing journal frames never disable compatibility final delivery. Same-turn native-input and same-session cancel-reprompt steer receipts do not terminate the current Activity; JWC's pre-acceptance receipt remains pre-acceptance despite its mechanism label. Cold journal hydration and TUI display are separate from this Classic live consumer.
+The journal's canonical terminal is redacted; a later owned public native-present or print answer can correct the same rendered/cache row without repeating lifecycle or notification. Native-absent diagnostics remain separate from that answer. Missing journal frames never disable compatibility final delivery. Same-turn native-input and same-session cancel-reprompt steer receipts do not terminate the current Activity. Cold journal hydration and TUI display are separate from this Classic live consumer.
 
 Owner-bound `activity-journal.ts` now persists immutable canonical events before SSE publication. Internal append is allowed without public replay. Storage/budget loss stops canonical append and remains visible on bounded history reads; finals and interrupted salvage stay independent. Runtime/gap broadcasts bypass all messaging listeners and require original nonempty run/session/scope before ambient-scope stamping. Discovery/replay use explicit-session trace routes and fixed sparse high-water cursors; no old event can re-open a live decision. Private control metadata and whole-prefix retention are documented in `runtime-integration.md`.
 
@@ -168,16 +168,11 @@ approval never answers it. Raw pipe retains existing NDJSON/agent_done terminati
 
 ### Direct topic `publish()` events
 
-이 이벤트들은 `broadcast()`를 거치지 않고 `src/core/event-bus.ts`의 `publish(topic, event, data)`로 직접 SSE bus에 들어간다. Public allowlist는 topic 단위이며 `jwc`는 public, `trace`는 internal-only다.
+이 이벤트들은 `broadcast()`를 거치지 않고 `src/core/event-bus.ts`의 `publish(topic, event, data)`로 직접 SSE bus에 들어간다. Public allowlist는 topic 단위이며 `code`는 native Code 세션의 public topic이며 `trace`는 internal-only다.
 
 | Topic | Event | 대표 payload | 발행 위치 / 용도 |
 | --- | --- | --- | --- |
-| `jwc` | `code_child_exit` | `{ code }` | `src/code-mode/acp-host.ts`; ACP child exit |
-| `jwc` | `code_<sessionUpdate>` | `{ sessionId, update }` | `src/code-mode/acp-host.ts`; ACP `session/update` sanitized public lane |
-| `jwc` | `code_permission_request` | `{ id, sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode permission prompt |
-| `jwc` | `code_session_created` / `code_session_loaded` / `code_session_forked` / `code_session_error` / `code_session_closed` | `{ sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode session lifecycle |
-| `jwc` | `code_turn_done` | `{ sessionId, stopReason }` | `src/code-mode/acp-host.ts`; Code mode turn completion |
-| `jwc` | `code_compaction` / `code_retry` | `{ phase, ... }` | `src/agent/jwc-event-mapper.ts`; JWC compaction/retry status |
+| `code` | `code_item` / `code_item_update` / `code_session` | `{ sessionId, sequence, ... }` | `src/code-mode/host.ts`; persisted native session events; compact updates apply once in contiguous sequence |
 | `worker` | `instance-status-changed` / `worker_settings_change` | worker diff/settings metadata | manager-side worker cache invalidation and settings change bridge |
 
 ### Internal-only `trace` events

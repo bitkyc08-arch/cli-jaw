@@ -15,7 +15,7 @@
 //      no longer typecheck without it once P00.5 lands).
 //   3. Update fixtures and per-engine event extractors (P11+).
 
-export type CliEngine =
+export type ExecutableCliEngine =
     | 'agy'
     | 'ai-e'
     | 'claude'
@@ -25,10 +25,20 @@ export type CliEngine =
     | 'copilot'
     | 'cursor'
     | 'grok'
-    | 'jwc'
     | 'kiro-code'
     | 'opencode'
     | 'pi';
+
+/** Historical selections stay readable but never become execution candidates. */
+export type RetiredCliSelection = 'jwc';
+export type StoredCliSelection = ExecutableCliEngine | RetiredCliSelection;
+export type CliEngine = ExecutableCliEngine;
+
+export function isRetiredCliSelection(value: unknown): value is RetiredCliSelection {
+    return value === 'jwc';
+}
+
+export const RETIRED_RUNTIME_DIAGNOSTIC = 'retired_runtime:jwc' as const;
 
 /**
  * Runtime list of all engines, derived from the type via a `satisfies`
@@ -47,7 +57,6 @@ export const CLI_ENGINES = [
     'copilot',
     'cursor',
     'grok',
-    'jwc',
     'kiro-code',
     'opencode',
     'pi',

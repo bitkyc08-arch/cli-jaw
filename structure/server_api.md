@@ -32,7 +32,7 @@ serialized response are bounded to16MiB (413); repository failure returns generi
 All responses use no-store. A copied fork MESSAGE is readable in its own chat, but
 this endpoint never grants permission to read the original chat's journal or raw Trace.
 
-`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton/JWC file, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
+`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
 
 Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
 
@@ -126,7 +126,7 @@ Both routes use the same existing requireAuth and global Host/Origin guards as t
 
 Each listed request has the four binding fields, `requestId`, `requestType`, `view`, and `expiresAt`. Views contain canonical sanitized labels and opaque jaw field/option handles. For ACP permissions, send `response:{optionId:<displayed-handle>}` or `{optionId:null}` to cancel, never a provider-native ID. Raw provider mappings and callbacks are private. Limits are128 pending requests globally,120-second expiry and32 per ACP connection; view admission must fit the32KiB event record. Accepted records a decision, not a provider tool result, and concurrent cancellation can still win before dispatch.
 
-Cursor/Grok activation and Activity controls are separate from this API foundation. Unsupported client-side filesystem, terminal and unproven question extensions are refused; existing JWC permissions and messaging final/ACK/queue paths are unchanged.
+Cursor/Grok activation and Activity controls are separate from this API foundation. Unsupported client-side filesystem, terminal and unproven question extensions are refused; messaging final/ACK/queue paths are unchanged.
 
 ## Base Route Surface (`server.ts`)
 
@@ -445,3 +445,29 @@ Text responses from the hub outbound relay may include `bodyDelivered`, a server
 `POST /api/file/open` keeps the existing auth middleware and `{path}` input. Missing/invalid paths return `400 path_required`; nonexistent targets return `404 file_not_found`. Document paths (including supported line/column suffixes) open directly; other files open their parent directory, and directories open themselves. An existing literal filename takes precedence over suffix stripping.
 
 On Linux, `xdg-open` launches asynchronously with detached lifecycle and ignored stdio. The handler returns `200 {ok:true,data:{opened,resolvedTarget,strategy}}` after the process spawns, without waiting for the desktop application's lifetime. Launch failures such as missing executable or execute permission return `500 {ok:false,error:"open_failed"}`. A later opener failure/nonzero exit does not change the completed HTTP response; success confirms dispatch, not a visible desktop window. macOS and Windows behavior is unchanged.
+
+## Native Code API
+
+The `/api/code` routes use the existing instance authentication
+policy on both the worker and Manager. Responses use `{ok:true,...}` or
+`{ok:false,error}`; private native cursor data is never returned.
+
+| Method and suffix | Contract |
+|---|---|
+| GET `/models` | Four CLI catalogs, availability and honest per-provider capabilities |
+| GET `/sessions` | Durable index; canonical cwd, archive, limit and offset filters; current pending permission counts |
+| GET `/sessions/:id` | Full-item snapshot, session watermark and current pending permissions |
+| GET `/sessions/:id/items` | Byte-bounded older materialized items before `beforeSequence`; never advances the live replay cursor |
+| GET `/sessions/:id/events` | Contiguous replay after `afterSequence`; byte/row-bounded page with `nextSequence`, `throughSequence`, `hasMore` |
+| POST `/sessions` | Explicit provider, existing absolute cwd, model, effort and permissionMode;201 metadata creation |
+| PATCH `/sessions/:id` | `expectedRevision` plus title/model/effort/permissionMode/archive;409 on conflict or busy policy/archive change |
+| POST `/sessions/:id/prompt` | `text` and `clientTurnKey`;202 new admission,200 existing receipt,409 mismatched key/busy |
+| POST `/sessions/:id/cancel` | Captured `turnId` and `epoch`; never cancels a successor |
+| POST `/sessions/:id/attach` | Explicit native resume; selecting or reading a session does not attach |
+| POST `/permissions/:id` | Captured session/turn/epoch and opaque optionId; stale or unknown decisions fail |
+
+Snapshots contain complete items. Replay may contain `code_item_update` append
+suffixes and status/phase changes; apply only once in contiguous sequence to the
+existing item. Preserve `firstSequence` ordering. JSON parser errors receive a
+JSON Code error response before any lazy host initialization. Old JWC-specific
+role/preset/ext/fork/config routes in this namespace return410.

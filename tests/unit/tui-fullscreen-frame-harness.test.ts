@@ -8,7 +8,7 @@ import { appendAssistantTurnText, appendCommandItem, appendThinkingTurnText, app
 import { Viewport } from '../../src/cli/tui/render/viewport.ts';
 import { VIEWPORT_FILL } from '../../src/cli/tui/render/frame.ts';
 import { solveLayout } from '../../src/cli/tui/render/layout.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { visualWidth } from '../../src/cli/tui/renderers.ts';
 
 function withTerminalSize<T>(cols: number, rows: number, fn: () => T): T {
@@ -28,9 +28,9 @@ function makeCtx(): TuiContext {
     return {
         ws: { send() { /* no-op */ }, close() { /* no-op */ } },
         apiUrl: '',
-        info: { cli: 'jwc', workingDir: '/tmp/project', model: 'test-model' },
+        info: { cli: 'codex', workingDir: '/tmp/project', model: 'test-model' },
         accent: '',
-        label: 'jwc',
+        label: 'codex',
         dir: '/tmp/project',
         runtimeLocale: 'en',
         tuiConfig: { theme: 'dark', fullscreen: true, pasteCollapseLines: 2, pasteCollapseChars: 160, keymapPreset: 'default', diffStyle: 'summary' },
@@ -63,7 +63,7 @@ function makeCtx(): TuiContext {
         promptPrefix: '  > ',
         footer: renderStatusBar({
             model: 'test-model',
-            engine: 'jwc',
+            engine: 'codex',
             engineAccent: '\x1b[36m',
             state: 'idle',
             cwd: '/tmp/project',
@@ -107,7 +107,7 @@ test('fullscreen composeFrame keeps frame rows newline-free and input pinned', (
         const regions = solveLayout(96, 28, 1);
         assert.equal(expanded.length, 28);
         assert.match(expanded[regions.statusLine.y - 1] ?? '', /\x1b\[(36|46)m/);
-        assert.match(expanded[regions.statusLine.y - 1] ?? '', /test-model|jwc/);
+        assert.match(expanded[regions.statusLine.y - 1] ?? '', /test-model|codex/);
         assert.match(expanded[regions.statusLine.y - 1] ?? '', /\/quit/);
         assert.match(expanded[regions.composer.y - 2] ?? '', /┌/);
         assert.match(expanded[regions.composer.y - 1] ?? '', /Type your message/);

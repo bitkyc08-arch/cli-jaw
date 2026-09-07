@@ -2,7 +2,7 @@ import type { RuntimeCapabilities, RuntimeEvent, RuntimeEventBody, RuntimeTurnOu
 import { parseRuntimeEvent } from '../../../shared/runtime-event-parse.js';
 import { FULLTEXT_MAX_CHARS } from '../../events/fulltext-bound.js';
 import { recordRuntimeEvent, type RuntimeEventContext } from '../events.js';
-import { RuntimeProjection, type RuntimeEnd } from '../projection.js';
+import { RuntimeProjection, type RuntimeEnd, type RuntimeTranscriptObserver } from '../projection.js';
 import { runtimeRequests, type RuntimeRequests } from '../requests.js';
 import type { NativeRuntimeSession, RuntimeInputAcceptance, RuntimePrompt } from '../session.js';
 import type { AcpSession } from './session.js';
@@ -17,6 +17,7 @@ export interface AcpRuntimeSessionOptions {
     deferTurnEnd?: boolean;
     registry?: RuntimeRequests;
     record?: typeof recordRuntimeEvent;
+    transcript?(context: RuntimeEventContext): RuntimeTranscriptObserver;
     resultUsage?: (result: Record<string, unknown>) => Extract<RuntimeEventBody, { kind: 'usage' }> | null;
     createReplacement?: AcpReplacementFactory;
     prepareReplacement?: AcpPrepareReplacement;
@@ -88,7 +89,8 @@ export class AcpRuntimeSession implements NativeRuntimeSession {
             try { onEvent(event); } catch { console.warn('[runtime:acp] event observer failed'); }
             return event;
         };
-        const projection = new RuntimeProjection(context, (_context, body) => emit(body));
+        const projection = new RuntimeProjection(context, (_context, body) => emit(body),
+            undefined, this.options.transcript?.(context));
         this.boundOwner ??= { sessionId, scope };
         return { context, current, projection, acp: new AcpProjection(projection), emit, cancelled: false };
     }

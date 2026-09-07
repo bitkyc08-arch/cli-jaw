@@ -2,6 +2,8 @@
 
 System-level AI agent with full computer control via CLI wrapping (pi, agy, ai-e, claude, claude-e, codex, codex-app, cursor, kiro-code, gemini, grok, opencode, copilot).
 
+Native Code API: `/api/code` is composed by `src/code-mode/host.ts` and `src/routes/code-native.ts`. Keep per-backend storage, captured turn ownership, full snapshots/compact replay, byte limits, native approval capabilities, and observed process-exit proof aligned with `structure/runtime-integration.md` and `server_api.md`. It uses direct native adapters rather than Jaw orchestration or its runtime pools.
+
 ## Repository Structure
 
 ```
@@ -247,7 +249,7 @@ exact saved answer (16MiB,409 ambiguity), never grants source Trace access to fo
 Cache/VS IDs are not server MESSAGE IDs. Keep raw Trace at80 rows with paging and
 honor denied/unverified actions. See frontend/API docs; TUI request records remain read-only.
 
-`presentation.mode` accepts only activity/legacy; absence defaultsActivity for fresh/upgraded homes, explicitLegacy survives reload, and perCli.transport is independent. Explicit known mode and/or eligible transport-only API patches preserve admitted-run ownership and skip fallback reset/singleton sync/JWC rewrite. Keep legacy presentation-subtree skips separately, and retain serialization, persistence rollback and messaging dispatch. Mixed execution-changing/unknown/empty leaves retain invalidation; external-file transport edits still invalidate while API self-write echoes are ignored. Classic preference refresh uses the existing bounded reader and shared load/event generation; never replace native-request-bridge with the old Web donor. Manager Display owns singleflight, disabled/guarded edits, captured dirty acknowledgement and client/port epochs. Classic live and retained Activity consume the canonical stream and journal; Manager and TUI have separate instance and input lifecycle owners. Keep bounded views, current-run final ownership and independent request controls.
+`presentation.mode` accepts only activity/legacy; absence defaultsActivity for fresh/upgraded homes, explicitLegacy survives reload, and perCli.transport is independent. Explicit known mode and/or eligible transport-only API patches preserve admitted-run ownership and skip fallback reset/singleton sync. Keep legacy presentation-subtree skips separately, and retain serialization, persistence rollback and messaging dispatch. Mixed execution-changing/unknown/empty leaves retain invalidation; external-file transport edits still invalidate while API self-write echoes are ignored. Classic preference refresh uses the existing bounded reader and shared load/event generation; never replace native-request-bridge with the old Web donor. Manager Display owns singleflight, disabled/guarded edits, captured dirty acknowledgement and client/port epochs. Classic live and retained Activity consume the canonical stream and journal; Manager and TUI have separate instance and input lifecycle owners. Keep bounded views, current-run final ownership and independent request controls.
 
 Print Activity uses `runtime/print-projection.ts` and `print-activity.ts` as observers, never final selectors. Only accepted parser text enters; stderr/control output stays raw. Lifecycle supplies the application-final and existing bypass/retry paths close once. `merge-tool-log.ts` reconciles exact run/ref or run/seq identities; unknown workers never borrow boss identity. Bounded snapshot hydration retains known RAM omission with the sanitizer's explicit max-overlap option; default append/storage counting is unchanged. Only print opts into terminal tool refresh; native default freeze/enrichment, Claude pending-worker cancellation and Slack final/ACK/queue owners remain intact.
 
@@ -421,3 +423,11 @@ git tag backup/feat-hwpx-pre-rebase-$(date +%y%m%d-%H%M) feat/hwpx
   - `dotnet test tests/OfficeCli.Tests/OfficeCli.Tests.csproj --filter FullyQualifiedName~HwpBridge --no-build`
   - `dotnet test tests/OfficeCli.Tests/OfficeCli.Tests.csproj --no-build`
 - Push rebased `feat/hwpx` with `git push --force-with-lease origin feat/hwpx`, then commit the updated `officecli` submodule pointer in this repo.
+
+### Retired runtime boundary
+
+JWC is a recognized stored tombstone, never an executable CLI key. Preserve the
+saved selection and unrelated settings; report `retired_runtime:jwc` before any
+fallback or admission. Do not silently select another provider. Manager/Classic
+show the retired selection without making it selectable. TUI uses local
+`src/cli/tui/presentation.ts`; keep SDK, bundles and installer payloads absent.

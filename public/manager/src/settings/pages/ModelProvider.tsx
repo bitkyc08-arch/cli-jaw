@@ -14,7 +14,7 @@ import {
     type SnapshotState,
 } from './page-shell';
 import { PerCliRow, type PiRegistration } from './components/PerCliRow';
-import { metaFor, normalizeCliMetaRegistry } from './components/agent/agent-meta';
+import { metaFor, normalizeCliMetaRegistry, selectableRuntimeOptions, isRetiredCliSelection } from './components/agent/agent-meta';
 import type { CliMeta, PerCliEntry } from './components/agent/agent-meta';
 import type { PiSettingsView } from './components/pi-profile';
 import { expandPatch } from './path-utils';
@@ -37,7 +37,7 @@ function savedModelSnapshot(updated: unknown): ModelSnapshot {
 }
 
 export function orderModelCliKeys(keys: string[]): string[] {
-    return [...keys].sort((a, b) => {
+    return selectableRuntimeOptions(keys).sort((a, b) => {
         if (a === 'pi') return -1;
         if (b === 'pi') return 1;
         if (a === 'ai-e') return b === 'pi' ? 1 : -1;
@@ -331,6 +331,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                 <ChipListField
                     id="model-fallbackOrder"
                     label="Fallback order"
+                    error={fallback.some(isRetiredCliSelection) ? 'A saved JWC fallback is retired. Remove it before changing this order.' : null}
                     disabled={saving || resetting}
                     value={fallback}
                     onChange={(next) => {
@@ -339,7 +340,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                         setEntry('fallbackOrder', {
                             value: next,
                             original: data.fallbackOrder || [],
-                            valid: true,
+                            valid: !next.some(isRetiredCliSelection),
                         });
                     }}
                     placeholder="cli name"

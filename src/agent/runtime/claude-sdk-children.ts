@@ -1,7 +1,7 @@
 import type { RuntimeEvent, RuntimeEventBody } from '../../shared/runtime-contract.js';
 import type { RuntimeEventContext } from './events.js';
 import type { ClaudePermissionOwner } from './claude-sdk-permissions.js';
-import { RuntimeProjection } from './projection.js';
+import { RuntimeProjection, type RuntimeTranscriptObserver } from './projection.js';
 import { ClaudeSdkEvents } from './claude-sdk-events.js';
 
 export interface ClaudeChildOwner {
@@ -15,7 +15,8 @@ export interface ClaudeChildOwner {
 type Obj = Record<string, unknown>;
 type Status = 'done' | 'error' | 'stopped';
 type Child = { parent: string; prefix: string; owner?: ClaudeChildOwner; ancestor?: Child;
-    context?: RuntimeEventContext; projection?: RuntimeProjection; mapper?: ClaudeSdkEvents; terminal?: Status };
+    context?: RuntimeEventContext; projection?: RuntimeProjection; mapper?: ClaudeSdkEvents; terminal?: Status;
+    transcript?: RuntimeTranscriptObserver };
 type Task = { child?: Child; retired?: boolean };
 type Pending = { frame: Obj; child?: Child; task?: Task; bytes: number };
 const MAX_CHILDREN = 128, MAX_TOOLS = 512, MAX_FRAMES = 32, BUFFER_BYTES = 64 * 1024;
@@ -48,7 +49,11 @@ export class ClaudeSdkChildren {
     private pendingBytes = 0;
     private incomplete = false;
 
-    constructor(private readonly options: { resolveParent(toolUseId: string): ClaudeChildOwner | null }) {}
+    constructor(private readonly options: {
+        resolveParent(toolUseId: string): ClaudeChildOwner | null;
+        transcript?(context: RuntimeEventContext): RuntimeTranscriptObserver;
+        resolveTranscriptParent?(context: RuntimeEventContext, nativeToolRef: string): string | null;
+    }) {}
 
     accept(raw: unknown): boolean {
         const frame = obj(raw);
@@ -184,13 +189,21 @@ export class ClaudeSdkChildren {
         if (!child.owner) return;
         if (this.incomplete) child.owner.projection.report('capacity');
         if (!this.active(child)) { this.finish(child, 'stopped'); return; }
-        const projector = child.ancestor?.projection ?? child.owner.projection;
-        const localId = projector?.itemId('tool', 'claude:tool:' + child.parent);
-        if (!localId) return;
-        const parentItemId = (child.ancestor?.prefix ?? '') + localId;
-        child.context = Object.freeze({ ...child.owner.context, parentItemId });
+        const parentContext = child.ancestor?.context ?? child.owner.context;
+        let parentItemId: string | null;
+        if (this.options.resolveTranscriptParent) {
+            if (child.ancestor && !child.ancestor.context) return;
+            parentItemId = this.options.resolveTranscriptParent(parentContext, 'claude:tool:' + child.parent);
+        } else {
+            const projector = child.ancestor?.projection ?? child.owner.projection;
+            const localId = projector?.itemId('tool', 'claude:tool:' + child.parent);
+            parentItemId = localId ? (child.ancestor?.prefix ?? '') + localId : null;
+        }
+        if (!parentItemId) return;
+        child.context = Object.freeze({ ...parentContext, parentItemId });
+        if (this.options.transcript) child.transcript = this.options.transcript(child.context);
         child.projection = new RuntimeProjection(child.context, (context, body) => this.record(child, context, body),
-            reason => child.owner!.projection.report(reason));
+            reason => child.owner!.projection.report(reason), child.transcript);
         child.mapper = new ClaudeSdkEvents(child.projection);
     }
 
@@ -283,10 +296,13 @@ export class ClaudeSdkChildren {
         child.terminal = status; // fence before recorder callbacks (including reentrant Stop).
         if (!child.owner || (!child.owner.isCurrent() && !child.owner.canRecordTerminal?.())) return;
         for (const [taskId, task] of this.tasks) if (task.child === child) {
-            if (child.projection?.itemId('tool', 'claude:task:' + taskId))
-                child.projection.tool('claude:task:' + taskId, { status });
+            if (child.transcript || child.projection?.itemId('tool', 'claude:task:' + taskId))
+                child.projection?.tool('claude:task:' + taskId, { status });
         }
         child.mapper?.finishChild(status);
+        // Child completion has no preview turn-end; its transcript still owns unfinished items.
+        try { child.transcript?.close({ kind: 'turn-end', status, finalText: null }); }
+        catch { child.owner.projection.report('persistence'); }
     }
 
     private flush(): void {

@@ -191,7 +191,6 @@ gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 
 | 런타임 | busy + steer 정책 | 맥락 보존 |
 |--------|-------------------|-----------|
-| jwc | in-band (pi `session.prompt` streamingBehavior 'steer') | 완전 (같은 턴) |
 | codex-app | in-band (app-server `turn/steer` — `MainRunState.steerTurnInBand` 훅이 active-turn 동안만 설치됨) | 완전 (같은 턴) |
 | cursor native | `cancel-reprompt`: 원래 prompt 취소 응답·callback·업데이트 drain 뒤 같은 native session에 재요청. jaw 논리 run과 최종 정산은 하나 | 원래 요청·수락된 추가 지시·제한된 부분 출력과 현재 운영 지침을 복원 |
 | grok native | 원래 prompt 취소 응답·drain·idle 뒤 같은 native session에 `cancel-reprompt`. jaw 논리 run과 최종 정산은 하나 | 애플리케이션 재주입 없이 native 문맥 사용. 검증된 버전의 관측이며 모든 버전의 보장을 뜻하지 않음 |
@@ -244,7 +243,7 @@ cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"ran checks","checkOu
 
 `src/core/policy-hooks.ts` + `src/core/policy-flags.ts` + `~/.cli-jaw/policy-hooks.json` (optional; layer inert without config, kill switch `CLI_JAW_POLICY_HOOKS=0`).
 
-- afterOutput warn/block/redact rules (bounded: 16 rules / 200-char patterns / 256KiB eval) applied before the durable assistant insert (`src/agent/lifecycle-handler.ts`), at the jwc settle path (`src/agent/spawn.ts`), on outbound channel sends (`src/messaging/send.ts`), and on heartbeat results before quiet-check/anchor insert (`src/memory/heartbeat.ts`)
+- afterOutput warn/block/redact rules (bounded: 16 rules / 200-char patterns / 256KiB eval) applied before the durable assistant insert (`src/agent/lifecycle-handler.ts`), on outbound channel sends (`src/messaging/send.ts`), and on heartbeat results before quiet-check/anchor insert (`src/memory/heartbeat.ts`)
 - Built-in event flags: `record_pending` (tool-log pattern -> `~/.cli-jaw/policy-flags.json` -> next-turn `[POLICY FLAG]` reminder prepended in `src/orchestrator/pipeline.ts`), `heartbeatQuietOk` extra quiet markers alongside `[SILENT]`
 - beforeSpawn deterministic checks (prompt-size warn, forbidden patterns) at the spawn choke point — warn/trace only, never blocking
 - Known v1 limitation: live streaming deltas reach the web UI before final-output policy; only final text is checked

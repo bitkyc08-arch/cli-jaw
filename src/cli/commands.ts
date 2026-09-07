@@ -301,7 +301,7 @@ export const COMMANDS: SlashCommand[] = [
     { name: 'switch', aliases: ['sw'], descKey: '', desc: 'Switch session', args: '<seq>', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: switchSessionHandler },
     { name: 'sessions', aliases: ['ss'], descKey: '', desc: 'List sessions', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: sessionsListHandler },
     { name: 'fork', descKey: '', desc: 'Fork current session', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord', 'slack'], handler: forkSessionHandler },
-    // ── Phase 9-10: jawcode parity commands ──
+    // ── Runtime controls and session tools ──
     { name: 'effort', desc: 'Set reasoning effort level (accepted values depend on the active CLI and model)', args: '[level]', category: 'model', interfaces: ['cli', 'web'], handler: effortHandler },
     { name: 'fast', desc: 'Toggle fast/priority mode', category: 'model', interfaces: ['cli', 'web'], handler: fastHandler },
     { name: 'context', desc: 'Show token usage and context stats', category: 'session', interfaces: ['cli', 'web'], handler: contextHandler },

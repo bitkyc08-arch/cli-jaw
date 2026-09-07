@@ -36,18 +36,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
  */
 const SERVER_SOURCES = ['dist', 'src', 'bin', 'server.ts'];
 
-/**
- * Packages loaded by a computed specifier, which no regex over the source can
- * find. `src/agent/jwc-runtime.ts` does `import(spec)` where spec comes from an
- * env var or a default constant, and the audit was right that the scan misses
- * it. Listing them here is a deliberate escape hatch: each entry names why it
- * cannot be discovered automatically.
- */
-const RUNTIME_LOADED = [
-    // JWC SDK: `import(spec)` with spec from JWC_SDK_PATH or DEFAULT_JWC_SDK_SPEC.
-    '@jawcode/engine-sdk',
-];
-
 /** Packages the prune step removes, read from the shell script itself. */
 function prunedPackages() {
     const script = fs.readFileSync(path.join(repoRoot, 'scripts/bundle-sidecar.sh'), 'utf8');
@@ -136,7 +124,6 @@ function closure(roots) {
 export function findUnsafePrunes() {
     const pruned = prunedPackages();
     const imported = serverImports();
-    for (const pkg of RUNTIME_LOADED) imported.add(pkg);
     // Only walk from packages the server actually imports; the closure of every
     // dependency would sweep the frontend back in.
     const required = closure([...imported]);

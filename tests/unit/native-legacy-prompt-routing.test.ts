@@ -45,15 +45,24 @@ test.mock.module('../../src/agent/args.js', { namedExports: { ...args,
         argvCalls.push({ kind: 'resume', prompt: input[4], argv }); return argv;
     },
 } });
+const builder = await import('../../src/prompt/builder.ts');
+let regenerations = 0;
+test.mock.module('../../src/prompt/builder.js', { namedExports: { ...builder,
+    regenerateB: (...input: Parameters<typeof builder.regenerateB>) => {
+        regenerations++;
+        return builder.regenerateB(...input);
+    },
+} });
 const { spawnAgent, activeMainProcesses } = await import('../../src/agent/spawn.ts');
+const requests = await import('../../src/orchestrator/request-registry.ts');
+const { addBroadcastListener, removeBroadcastListener } = await import('../../src/core/bus.ts');
 const database = await import('../../src/core/db.ts');
-const { runtimeForScope, jawRuntimesByScope } = await import('../../src/agent/jwc-runtime.ts');
-const { appendLiveRunText } = await import('../../src/agent/live-run-state.ts');
 const { setPendingBootstrapPrompt, peekPendingBootstrapPrompt } = await import('../../src/core/main-session.ts');
 const home = config.JAW_HOME;
 let serial = 0;
 test.beforeEach(t => {
     calls.length = 0; argvCalls.length = 0; bootstrapInputs.length = 0;
+    regenerations = 0;
     config.settings.workingDir = home; config.settings.projectDirs = [home];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = [];
     config.settings.activeOverrides = {};
@@ -70,36 +79,106 @@ function options(cli: string) {
         scopeKey: `legacy-routing-${id}`, chatSessionId: `legacy-chat-${id}`, _isSmokeContinuation: true };
 }
 
-test('JWC resident branch passes each current prompt directly, without bootstrap/history/argv wrapping', async t => {
+test('retired selection fails before prompt preparation and preserves pending context', async t => {
     const opts = options('jwc');
     config.settings.perCli = { ...config.settings.perCli,
-        jwc: { model: 'resident-model', provider: 'anthropic' } };
-    database.insertMessage.run('user', 'OLD_HISTORY_NOT_CURRENT', 'jwc', 'default', home, opts.chatSessionId);
+        jwc: { model: 'saved-model', provider: 'anthropic' } };
     setPendingBootstrapPrompt('COMPACT_NOT_CURRENT', opts.scopeKey);
     const historyRead = t.mock.method(database.getRecentMessages, 'all');
-    const resident = runtimeForScope(opts.scopeKey);
-    const prompt = t.mock.method(resident, 'prompt', async (_cwd: string, _text: string) => {
-        appendLiveRunText(opts.scopeKey, 'resident final');
-        return { text: '', code: 0 };
-    });
     try {
-        for (const current of ['CURRENT_REQUEST_A\nkeep exact whitespace  ', 'CURRENT_REQUEST_B']) {
-            const run = spawnAgent(current, opts);
-            assert.equal(run.child, null);
-            assert.deepEqual(await run.promise, { text: 'resident final', code: 0 });
-            assert.equal(runtimeForScope(opts.scopeKey), resident, 'reuse the scoped resident');
-        }
-        assert.deepEqual(prompt.mock.calls.map(call => call.arguments), [
-            [home, 'CURRENT_REQUEST_A\nkeep exact whitespace  '], [home, 'CURRENT_REQUEST_B'],
-        ]);
+        const run = spawnAgent('CURRENT_REQUEST', opts);
+        assert.equal(run.child, null);
+        const result = await run.promise;
+        assert.equal(result.code, 78);
+        assert.match(result.text, /^retired_runtime:jwc:/);
         assert.equal(historyRead.mock.callCount(), 0);
         assert.equal(peekPendingBootstrapPrompt(opts.scopeKey), 'COMPACT_NOT_CURRENT');
         assert.deepEqual(argvCalls, []); assert.deepEqual(bootstrapInputs, []);
-        assert.deepEqual(calls, [], 'resident must not run CLI capability/preflight probes');
+        assert.deepEqual(calls, [], 'retired selection must not probe another provider');
+        assert.equal(regenerations, 0);
     } finally {
-        await resident.dispose(); jawRuntimesByScope.delete(opts.scopeKey);
         setPendingBootstrapPrompt(null, opts.scopeKey);
     }
+});
+
+for (const selection of ['settings', 'override', 'session', 'employee', 'fallback'] as const) {
+    test(`retired ${selection} selection settles its request and releases only its scope`, async () => {
+        config.settings.cli = selection === 'settings' ? 'jwc' : selection === 'session' ? '' : 'pi';
+        if (selection === 'session') database.updateSession.run('jwc', null, 'saved', 'auto', home, 'high');
+        const opts = { ...options('jwc'), requestId: `retired-${selection}`,
+            ...(selection === 'employee' ? { agentId: 'retired-worker' } : {}),
+            ...(selection === 'fallback' ? { _isFallback: true } : {}) };
+        const events: Record<string, unknown>[] = [];
+        const listener = (type: string, data: Record<string, unknown>) => {
+            if (type === 'request_settled' && data['requestId'] === opts.requestId) events.push(data);
+        };
+        requests.admitRequest(opts.requestId, opts.scopeKey);
+        addBroadcastListener(listener);
+        const other = { process: null, starting: true, steering: false, ownerGeneration: 0,
+            meta: { origin: 'web', cli: 'pi' } };
+        activeMainProcesses.set('unrelated-retirement-test', other);
+        try {
+            const { cli, ...withoutCli } = opts;
+            const run = spawnAgent('must not dispatch', selection === 'settings' || selection === 'session' ? withoutCli : opts);
+            assert.equal(run.child, null);
+            assert.equal((await run.promise).code, 78);
+            assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+            assert.equal(activeMainProcesses.get('unrelated-retirement-test'), other);
+            assert.equal(requests.pendingRequestIds().includes(opts.requestId), false);
+            assert.equal(events.length, 1);
+            assert.equal(events[0]!['outcome'], 'failed');
+            assert.equal(events[0]!['error'], 'retired_runtime:jwc');
+            assert.equal(events[0]!['sessionId'], opts.chatSessionId);
+            assert.equal(regenerations, 0);
+            assert.deepEqual(calls, []);
+        } finally {
+            activeMainProcesses.delete('unrelated-retirement-test');
+            removeBroadcastListener(listener);
+            config.settings.cli = 'pi';
+        }
+    });
+}
+
+test('queued request resolves the saved retired selection when its lane is released', async () => {
+    const { createQueueController } = await import('../../src/agent/spawn/queue.ts');
+    const { SessionLanes } = await import('../../src/orchestrator/session-lanes.ts');
+    const opts = options('jwc');
+    const requestId = 'retired-queued-request';
+    config.settings.cli = 'jwc';
+    let busy = true;
+    let finish!: () => void;
+    const done = new Promise<void>(resolve => { finish = resolve; });
+    let result: Awaited<ReturnType<typeof spawnAgent>['promise']> | undefined;
+    const queue = createQueueController({
+        migrateQueuedMessagesV1ToV2: () => {}, isSpawnBusy: () => busy,
+        hasBlockingWorkers: () => false, hasPendingWorkerReplays: () => false,
+        insertMessage: { run: () => {} }, insertQueuedMessage: { run: () => {} },
+        deleteQueuedMessage: { run: () => {} }, listQueuedMessages: { all: () => [] },
+        getActiveChatSession: () => opts.chatSessionId, getWorkingDir: () => home,
+        isMultiSessionEnabled: () => true, broadcast: () => {},
+        importPipeline: async () => ({
+            orchestrate: async (prompt: string, meta: { scope: string; chatSessionId: string; requestId: string }) => {
+                try {
+                    result = await spawnAgent(prompt, { scopeKey: meta.scope, chatSessionId: meta.chatSessionId,
+                        requestId: meta.requestId, _skipInsert: true }).promise;
+                } finally { finish(); }
+            },
+            orchestrateContinue: async () => { assert.fail('unexpected continue'); },
+            orchestrateReset: async () => { assert.fail('unexpected reset'); },
+            isContinueIntent: () => false, isResetIntent: () => false, drainPendingReplays: async () => {},
+        }),
+    }, new SessionLanes(() => 1));
+    requests.admitRequest(requestId, opts.scopeKey);
+    queue.enqueueMessage('queued user prompt', 'web', { scope: opts.scopeKey, chatSessionId: opts.chatSessionId, requestId });
+    assert.equal(requests.pendingRequestIds().includes(requestId), true);
+    busy = false;
+    await queue.processQueue(opts.scopeKey);
+    await done;
+    assert.equal(result?.code, 78);
+    assert.equal(requests.pendingRequestIds().includes(requestId), false);
+    assert.equal(regenerations, 0);
+    assert.deepEqual(calls, []);
+    config.settings.cli = 'pi';
 });
 
 for (const resume of [false, true]) for (const order of ['task-first', 'context-first'] as const) {

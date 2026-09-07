@@ -137,12 +137,12 @@ for (const [name, patch] of [
     ['mixed', { presentation: { mode: 'activity' }, locale: 'en' }],
     ['empty', {}],
 ] as const) {
-    test(`${name} patch preserves existing fallback, session and JWC side effects`, async () => {
+    test(`${name} patch preserves fallback and session effects while retired storage stays untouched`, async () => {
         await apply(patch);
         assert.equal(resets, 1);
         assert.equal(session().model, 'settings-model');
         assert.equal(session().session_id, 'native-session-sentinel');
-        assert.equal(readFileSync(jwcPath, 'utf8'), 'modelRoles:\n  default: anthropic/settings-model\ncustom: keep\n');
+        assert.equal(readFileSync(jwcPath, 'utf8'), jwcSentinel);
         assert.equal(dispatches, 1);
         assert.equal(starts, name === 'mixed' ? 1 : 0);
         assert.equal(stops, name === 'mixed' ? 1 : 0);

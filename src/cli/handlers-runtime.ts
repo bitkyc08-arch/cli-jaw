@@ -6,6 +6,9 @@ import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
 import { applyCodexModelsToChoices, resolveOpenCodexCodexModels } from './opencodex-models.js';
 import { t } from '../core/i18n.js';
 import { detectCli, settings } from '../core/config.js';
+import { getSession } from '../core/db.js';
+import { resolveMainCli, type MainSessionRecord } from '../core/main-session.js';
+import { isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 import { beginSteerInput } from '../agent/steer-input-guard.js';
@@ -236,6 +239,9 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     if (!prompt) {
         return { ok: false, type: 'error', text: t('cmd.steer.noPrompt', {}, L) };
     }
+    if (isRetiredCliSelection(resolveMainCli(null, settings, getSession() as MainSessionRecord | undefined))) {
+        return { ok: false, type: 'error', text: RETIRED_RUNTIME_DIAGNOSTIC };
+    }
     const { currentSessionScope } = await import('../core/session-context.js');
     const scopeKey = currentSessionScope()?.scope ?? 'default';
     const { isAgentBusy, killActiveAgent, waitForMainProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent, canSteerAgent, steerAgent } = await import('../agent/spawn.js');
@@ -245,12 +251,13 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     const iface = ctx.interface || 'cli';
 
-    // Prefer an owning runtime hook: in-band for JWC/Codex, or native cancel-reprompt.
+    // Prefer an owning runtime hook: Codex App in-band steer or native cancel-reprompt.
     // A typed no-start queues once; a fatal/indeterminate dispatch propagates without resend.
     if (canSteerAgent(scopeKey)) {
         const inputGuard = beginSteerInput(scopeKey);
         try {
             const outcome = await steerAgent(scopeKey, prompt, iface, sessionScopeMeta());
+            if (outcome === 'retired') return { ok: false, type: 'error', text: RETIRED_RUNTIME_DIAGNOSTIC };
             if (outcome === 'steered' || outcome === 'new-run') {
                 return { ok: true, type: 'steer', text: t('cmd.steer.started', {}, L) };
             }

@@ -1,3 +1,4 @@
+import { isRetiredCliSelection } from '../../src/types/cli-engine.js';
 // ── Shared constants (frontend) ──
 import { api } from './api.js';
 
@@ -260,6 +261,7 @@ function toModelMap(registry: CliRegistry): ModelMap {
 function normalizeRegistry(input: Record<string, unknown>): CliRegistry {
     const out: CliRegistry = {};
     for (const [key, value] of Object.entries(input || {})) {
+        if (isRetiredCliSelection(key)) continue;
         if (!value || typeof value !== 'object') continue;
         const v = value as Record<string, unknown>;
         const normalized: CliEntry = {

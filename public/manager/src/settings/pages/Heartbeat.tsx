@@ -35,7 +35,7 @@ import {
     validateHHMM,
     validateInterval,
 } from './components/heartbeat-helpers';
-import { metaFor } from './components/agent/agent-meta';
+import { metaFor, selectableRuntimeOptions, isRetiredCliSelection } from './components/agent/agent-meta';
 
 // Re-export helpers (and types) that tests import from this module.
 export {
@@ -156,13 +156,13 @@ export default function Heartbeat({ port, client, dirty, registerSave }: Setting
     const endError = !validateHHMM(hbEnd) ? 'Use HH:MM (24h)' : null;
 
     const perCli = settingsSnap.state.data.perCli || {};
-    const cliKeys = Object.keys(perCli);
+    const cliKeys = selectableRuntimeOptions(Object.keys(perCli));
     const targetSource = cliKeys.length > 0 ? cliKeys : [...TARGET_FALLBACK];
     const targetOptions = [
         { value: 'all', label: 'all (broadcast)' },
         ...targetSource.map((cli) => ({ value: cli, label: metaFor(cli).label || cli })),
     ];
-    if (!targetOptions.some((opt) => opt.value === hbTarget)) {
+    if (!isRetiredCliSelection(hbTarget) && !targetOptions.some((opt) => opt.value === hbTarget)) {
         targetOptions.push({ value: hbTarget, label: `${metaFor(hbTarget).label || hbTarget} (legacy)` });
     }
 
@@ -240,6 +240,8 @@ export default function Heartbeat({ port, client, dirty, registerSave }: Setting
                     id="hb-target"
                     label="Target"
                     value={hbTarget}
+                    missingValueLabel={isRetiredCliSelection(hbTarget) ? 'JWC (retired)' : undefined}
+                    error={isRetiredCliSelection(hbTarget) ? 'The saved target runtime is retired. Choose an available target.' : null}
                     options={targetOptions}
                     onChange={(next) => {
                         setHbTarget(next);

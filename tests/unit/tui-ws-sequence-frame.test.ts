@@ -6,7 +6,7 @@ import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
 import { Viewport } from '../../src/cli/tui/render/viewport.ts';
 import { VIEWPORT_FILL } from '../../src/cli/tui/render/frame.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { visualWidth } from '../../src/cli/tui/renderers.ts';
 import { appendUserItem, toggleToolExpansion } from '../../src/cli/tui/transcript.ts';
 import { isSpinning, stopSpinner } from '../../src/cli/tui/spinner.ts';
@@ -40,9 +40,9 @@ function makeCtx(): TuiContext {
     return {
         ws: { send() { /* no-op */ }, close() { /* no-op */ } },
         apiUrl: '',
-        info: { cli: 'jwc', workingDir: '/tmp/project', model: 'test-model' },
+        info: { cli: 'codex', workingDir: '/tmp/project', model: 'test-model' },
         accent: '',
-        label: 'jwc',
+        label: 'codex',
         dir: '/tmp/project',
         runtimeLocale: 'en',
         tuiConfig: { theme: 'dark', fullscreen: true, pasteCollapseLines: 2, pasteCollapseChars: 160, keymapPreset: 'default', diffStyle: 'summary' },
@@ -75,7 +75,7 @@ function makeCtx(): TuiContext {
         promptPrefix: '  > ',
         footer: renderStatusBar({
             model: 'test-model',
-            engine: 'jwc',
+            engine: 'codex',
             engineAccent: '\x1b[36m',
             state: 'idle',
             cwd: '/tmp/project',

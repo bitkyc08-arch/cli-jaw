@@ -1,5 +1,5 @@
 import { SelectField, TextField } from '../../../fields';
-import { metaFor, optionList, type CliMeta } from './agent-meta';
+import { metaFor, optionList, selectableRuntimeOptions, isRetiredCliSelection, type CliMeta } from './agent-meta';
 import {
     isStaticEmployee,
     runtimeEmployeeError,
@@ -27,7 +27,8 @@ export function RuntimeEmployeeRow({
     const meta = metaFor(employee.cli, cliMeta);
     const modelOptions = optionList(meta.models, employee.model);
     const error = runtimeEmployeeError(employee);
-    const cliChoices = Array.from(new Set([...cliOptions, employee.cli, 'claude'])).filter(Boolean);
+    const retired = isRetiredCliSelection(employee.cli);
+    const cliChoices = selectableRuntimeOptions(Array.from(new Set([...cliOptions, employee.cli, 'claude'])).filter(Boolean));
 
     return (
         <fieldset className="settings-runtime-employee-row">
@@ -48,6 +49,8 @@ export function RuntimeEmployeeRow({
                     id={`runtime-employee-${employee.id}-cli`}
                     label="CLI"
                     value={employee.cli}
+                    missingValueLabel={retired ? 'JWC (retired)' : undefined}
+                    error={retired ? 'This saved runtime cannot execute. Choose an available runtime.' : null}
                     disabled={locked}
                     options={cliChoices.map((value) => ({ value, label: metaFor(value, cliMeta).label || value }))}
                     onChange={(next) => {
@@ -59,6 +62,7 @@ export function RuntimeEmployeeRow({
                     id={`runtime-employee-${employee.id}-model`}
                     label="Model"
                     value={employee.model}
+                    disabled={retired}
                     options={modelOptions.length > 0 ? modelOptions : [{ value: 'default', label: 'default' }]}
                     onChange={(next) => onChange({ model: next })}
                 />

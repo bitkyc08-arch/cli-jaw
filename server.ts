@@ -13,6 +13,8 @@ import fs from 'fs';
 
 import { registerBrowserRoutes } from './src/routes/browser.js';
 import { registerCodeRoutes } from './src/routes/code.js';
+import { registerNativeCodeRoutes } from './src/routes/code-native.js';
+import { createCodeHost } from './src/code-mode/host.js';
 import { registerRuntimeRequestRoutes } from './src/routes/runtime-requests.js';
 import { registerEmployeeRoutes } from './src/routes/employees.js';
 import { registerHeartbeatRoutes } from './src/routes/heartbeat.js';
@@ -465,8 +467,14 @@ app.use('/api/dashboard/schedule', requireAuth, createDashboardScheduleRouter())
 
 // ─── Browser API (Phase 7) — see src/routes/browser.js
 registerBrowserRoutes(app, requireAuth);
-// ─── Code mode API (jwc resident ACP host) — see src/routes/code.js
+// ─── Native Code workspace and session APIs ────────────
 registerCodeRoutes(app, requireAuth);
+const nativeCodeHost = createCodeHost({ home: JAW_HOME, role: 'worker', port: () => {
+    const address = server.address();
+    return address && typeof address === 'object' ? address.port : Number(PORT);
+},
+    maxConcurrentSessions: settings['code']?.['maxConcurrentSessions'], idleReapMs: settings['code']?.['idleReapMs'] });
+registerNativeCodeRoutes(app, requireAuth, () => nativeCodeHost.get(), '/api/code');
 registerRuntimeRequestRoutes(app, requireAuth);
 
 registerI18nRoutes(app, requireAuth, projectRoot);
@@ -486,6 +494,7 @@ const shutdown = async (sig: string) => {
         process.exit(1);
     }, 5000);
     forceExitTimer.unref();
+    const codeShutdown = nativeCodeHost.dispose().catch(() => console.warn('[server] Code runtime shutdown failed'));
 
     try {
         getSecurityAuditLog().append('service_stop', 'server', { signal: sig, port: PORT });
@@ -519,6 +528,7 @@ const shutdown = async (sig: string) => {
         console.warn('[server] messaging shutdown failed:', (e as Error).message);
     }
     console.log('[server] messaging stopped (or timed out)');
+    await codeShutdown;
 
     await new Promise<void>(resolve => {
         server.close(() => resolve());

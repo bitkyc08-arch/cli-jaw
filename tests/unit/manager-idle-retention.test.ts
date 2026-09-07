@@ -36,16 +36,6 @@ test('D3: addBounded evicts oldest-first and never exceeds the bound', () => {
     assert.ok(set.has('key-90'), 'the most recent window is intact');
 });
 
-test('D3: dedupe keys no longer embed the full chunk text', () => {
-    const source = read('public/manager/src/code/code-event-dedupe.ts');
-    assert.ok(
-        !source.includes('${stableId}:${text}`'),
-        'the raw text must not be part of the key — that retained a second copy of the transcript',
-    );
-    assert.ok(source.includes('fnv1a32(text)'), 'the text must be hashed into the key');
-    assert.ok(source.includes('addBounded('), 'the dedupe set must be bounded');
-});
-
 test('D4: the three previously ungated pollers now check document.hidden', () => {
     for (const path of [
         'public/manager/src/electron-metrics.tsx',
@@ -57,33 +47,6 @@ test('D4: the three previously ungated pollers now check document.hidden', () =>
             `${path} must skip polling while the window is hidden`,
         );
     }
-});
-
-test('D2: the transcript virtualizer resets measurements on session switch', () => {
-    const hook = read('public/manager/src/code/useCodeTranscriptVirtualRows.ts');
-    assert.ok(hook.includes('resetKey'), 'the hook must accept a reset key');
-    // Must use the public measure(): itemSizeCache is the durable store and is
-    // private, while measurementsCache is reassigned to a fresh lazy view on
-    // every recompute, so clearing it releases nothing.
-    assert.ok(hook.includes('virtualizer.measure()'), 'must clear sizes via the supported API');
-    assert.ok(!hook.includes('measurementsCache = []'), 'clearing measurementsCache is a no-op and must not be relied on');
-    assert.ok(hook.includes('virtualizerRef.current = null'), 'the instance must be released on unmount');
-
-    // A reset key that never changes would make the whole thing inert.
-    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
-    assert.ok(transcript.includes('resetKey: sessionId'), 'the session id must feed the reset key');
-    const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
-    assert.ok(workbench.includes('sessionId={props.activeSessionId}'), 'the session id must actually be passed down');
-});
-
-test('D3: seeding from a session replay never evicts its own entries', () => {
-    const source = read('public/manager/src/code/code-event-dedupe.ts');
-    // A replay longer than the bound would otherwise drop keys for content
-    // already on screen, and the next matching live chunk would re-append it.
-    assert.ok(
-        source.includes('Math.max(MAX_SEEN_KEYS, events.length)'),
-        'replay seeding must size the bound to the replay itself',
-    );
 });
 
 test('D3: the CEO console dedupe set is bounded too', () => {

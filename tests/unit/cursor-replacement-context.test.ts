@@ -169,15 +169,15 @@ test('whole constructed input bound includes wrappers/partial/sys rules and neve
     assert.throws(() => buildCursorReplacementPrompt({ ...input, sysPrompt: 'RULES!' }), { message: 'acp_runtime_prompt_unsupported' });
 });
 
-test('only native Cursor gains operational rules; print/Kiro/Grok/JWC helper outputs stay exact', () => {
+test('only native Cursor gains operational rules; print/Kiro/Grok helper outputs stay exact', () => {
     const common = { prompt: 'CURRENT', historyBlock: 'OLD', sysPrompt: 'RULES', isResume: false };
     for (const isResume of [false, true]) {
         for (const runtimeTransport of [undefined, 'print', 'native'] as const) {
-            for (const cli of ['cursor', 'grok', 'jwc', 'kiro-code', 'ai-e']) {
+            for (const cli of ['cursor', 'grok', 'kiro-code', 'ai-e']) {
                 const effectiveProvider = cli === 'ai-e' ? 'kiro' : undefined;
                 const kiro = cli === 'kiro-code' || cli === 'ai-e';
                 const nativeCursor = cli === 'cursor' && runtimeTransport === 'native';
-                const expected = (kiro && isResume) || cli === 'jwc' ? 'CURRENT'
+                const expected = (kiro && isResume) ? 'CURRENT'
                     : kiro || nativeCursor ? operational(history('CURRENT', 'OLD')) : history('CURRENT', 'OLD');
                 assert.equal(buildPromptForArgs({ ...common, cli, effectiveProvider, isResume, runtimeTransport }), expected);
             }

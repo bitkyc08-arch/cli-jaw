@@ -233,3 +233,94 @@ test('DRM-009: accept refresh failure rolls cli and migration state back togethe
     assert.equal(persisted.cli, 'claude');
     assert.equal(persisted.runtimeDefaultMigration.state, 'pending');
 });
+
+for (const version of [1, 2, 3, 4]) for (const planning of [false, true]) {
+    test(`retired runtime survives schema ${version}, planning=${planning}, save and reload`, async () => {
+        const document = {
+            ...structuredClone(config.DEFAULT_SETTINGS),
+            settingsSchemaVersion: version,
+            cli: planning ? 'pi' : 'jwc',
+            ...(planning ? { planning: { cli: 'jwc', model: 'saved-model' } } : {}),
+            workingDir: home,
+            perCli: { jwc: { model: 'saved-model', provider: 'saved-provider', credential: 'fixture-only' },
+                pi: { model: 'pi-saved', effort: 'high' } },
+            activeOverrides: { jwc: { model: 'override-model', effort: 'low' } },
+            runtimeDefaultMigration: { ...pending('jwc'), state: 'kept' },
+            multiSession: { enabled: false, maxConcurrent: 1, midRunPolicy: 'collect',
+                channels: { slack: true, telegram: false, discord: false } },
+            multiSessionDefaultMigration: { id: 'multi-session-default-v3', state: 'kept' },
+            messaging: { enabledChannels: ['slack'], homeChannel: 'slack', latestSeen: {}, lastActive: {} },
+            channel: 'slack',
+        };
+        writeSettings(document);
+        pickerCalls = 0;
+        const backups = readdirSync(home).filter(name => name.includes('.corrupt-'));
+        const loaded = config.loadSettings();
+        assert.equal(loaded.cli, 'jwc');
+        assert.equal(loaded.runtimeSelectionDiagnostic, 'retired_runtime:jwc');
+        assert.equal(loaded.runtimeDefaultMigration.fromCli, 'jwc');
+        assert.equal(loaded.runtimeDefaultMigration.state, version === 1 ? 'pending' : 'kept');
+        assert.equal(loaded.multiSession.midRunPolicy, 'collect');
+        assert.deepEqual(loaded.messaging.enabledChannels, ['slack']);
+        assert.deepEqual(loaded.perCli.jwc, document.perCli.jwc);
+        assert.deepEqual(loaded.activeOverrides.jwc, document.activeOverrides.jwc);
+        await runtime.applyRuntimeSettingsPatch({ cli: 'jwc', showReasoning: true }, {
+            restartMessaging: async () => {},
+        });
+        const persisted = JSON.parse(readFileSync(config.SETTINGS_PATH, 'utf8'));
+        assert.equal(persisted.cli, 'jwc');
+        assert.equal(persisted.showReasoning, true, 'retirement must not latch persistence off');
+        assert.equal(Object.hasOwn(persisted, 'runtimeSelectionDiagnostic'), false);
+        const reloaded = config.loadSettings();
+        assert.equal(reloaded.cli, 'jwc');
+        assert.equal(reloaded.runtimeSelectionDiagnostic, 'retired_runtime:jwc');
+        assert.deepEqual(reloaded.perCli.jwc, document.perCli.jwc);
+        assert.deepEqual(reloaded.perCli.pi, loaded.perCli.pi);
+        assert.deepEqual(readdirSync(home).filter(name => name.includes('.corrupt-')), backups);
+        assert.equal(pickerCalls, 0);
+    });
+}
+
+test('explicit supported selection clears retirement, and switching back is rejected before persistence', async () => {
+    writeSettings({ cli: 'jwc', workingDir: home, perCli: { jwc: { model: 'preserve' } } });
+    config.loadSettings();
+    await runtime.applyRuntimeSettingsPatch({ cli: 'pi' }, {
+        cliSwitchRefresh: async () => {}, restartMessaging: async () => {},
+    });
+    assert.equal(config.settings.cli, 'pi');
+    assert.equal(config.settings.runtimeSelectionDiagnostic, null);
+    assert.equal(config.settings.perCli.jwc.model, 'preserve');
+    const before = readFileSync(config.SETTINGS_PATH, 'utf8');
+    await assert.rejects(runtime.applyRuntimeSettingsPatch({ cli: 'jwc' }), { message: 'retired_runtime:jwc' });
+    assert.equal(readFileSync(config.SETTINGS_PATH, 'utf8'), before);
+    assert.equal(config.loadSettings().runtimeSelectionDiagnostic, null);
+});
+
+test('legacy planning-only metadata remains readable without executable defaults', () => {
+    writeSettings({ planning: { cli: 'jwc', model: 'old-planning-model', effort: 'high' } });
+    const loaded = config.loadSettings();
+    assert.equal(loaded.cli, 'jwc');
+    assert.equal(loaded.runtimeSelectionDiagnostic, 'retired_runtime:jwc');
+    assert.deepEqual(loaded.perCli.jwc, { model: 'old-planning-model', effort: 'high' });
+});
+
+test('CLI selector rejects retirement before already-selected and ignores retained perCli keys', async () => {
+    const { makeCommandCtx } = await import('../../src/cli/command-context.ts');
+    const { cliHandler } = await import('../../src/cli/handlers.ts');
+    writeSettings({ cli: 'jwc', perCli: { jwc: { model: 'saved' }, 'stored-only': { model: 'also-saved' } } });
+    config.loadSettings();
+    const updates: Record<string, unknown>[] = [];
+    const ctx = makeCommandCtx('web', 'en', {
+        applySettings: patch => { updates.push(patch); return { ok: true }; }, clearSession: () => {},
+    });
+    for (const args of [[], ['jwc']]) {
+        const reply = await cliHandler(args, ctx);
+        assert.equal(reply.ok, false);
+        assert.match(reply.text!, /^retired_runtime:jwc:/);
+        assert.equal(reply.text!.includes('stored-only'), false);
+    }
+    assert.equal((await cliHandler(['stored-only'], ctx)).ok, false);
+    assert.deepEqual(updates, []);
+    assert.equal((await cliHandler(['pi'], ctx)).ok, true);
+    assert.deepEqual(updates, [{ cli: 'pi' }]);
+});

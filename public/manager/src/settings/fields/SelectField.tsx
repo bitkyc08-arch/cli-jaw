@@ -12,9 +12,10 @@ type Props = {
     disabled?: boolean;
     error?: string | null;
     collapsedAfter?: number;
+    missingValueLabel?: string | undefined;
 };
 
-export function SelectField({ id, label, value, options, onChange, disabled, error, collapsedAfter }: Props) {
+export function SelectField({ id, label, value, options, onChange, disabled, error, collapsedAfter, missingValueLabel }: Props) {
     const [open, setOpen] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0);
     const [moreExpanded, setMoreExpanded] = useState(false);
@@ -33,8 +34,8 @@ export function SelectField({ id, label, value, options, onChange, disabled, err
 
     const selectedIndex = visibleOptions.findIndex((opt) => opt.value === value);
     const selected = useMemo(
-        () => options.find((opt) => opt.value === value) || options[0],
-        [options, value],
+        () => options.find((opt) => opt.value === value) || (missingValueLabel ? { value, label: missingValueLabel } : options[0]),
+        [options, value, missingValueLabel],
     );
     const labelId = `${id}-label`;
     const listId = `${id}-listbox`;

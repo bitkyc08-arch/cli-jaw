@@ -35,7 +35,7 @@ import {
     type MemoryBlock,
     type MemoryEntry,
 } from './components/memory-helpers';
-import { metaFor } from './components/agent/agent-meta';
+import { metaFor, selectableRuntimeOptions, isRetiredCliSelection } from './components/agent/agent-meta';
 
 // Re-export pure helpers for unit tests (Heartbeat pattern).
 export {
@@ -209,12 +209,12 @@ export default function Memory({ port, client, dirty, registerSave }: SettingsPa
     const retentionError = validatePositiveInt(retentionDays, 'Retention days');
 
     const perCli = settingsSnap.state.data.perCli || {};
-    const cliKeys = Object.keys(perCli);
+    const cliKeys = selectableRuntimeOptions(Object.keys(perCli));
     const cliOptions = [
         { value: '', label: '(profile default)' },
         ...cliKeys.map((c) => ({ value: c, label: metaFor(c).label || c })),
     ];
-    if (cli && !cliOptions.some((opt) => opt.value === cli)) {
+    if (cli && !isRetiredCliSelection(cli) && !cliOptions.some((opt) => opt.value === cli)) {
         cliOptions.push({ value: cli, label: `${metaFor(cli).label || cli} (legacy)` });
     }
 
@@ -274,6 +274,8 @@ export default function Memory({ port, client, dirty, registerSave }: SettingsPa
                     id="memory-cli"
                     label="Flush CLI"
                     value={cli}
+                    missingValueLabel={isRetiredCliSelection(cli) ? 'JWC (retired)' : undefined}
+                    error={isRetiredCliSelection(cli) ? 'The saved runtime is retired. Choose an available runtime.' : null}
                     options={cliOptions}
                     onChange={(next) => {
                         setCli(next);

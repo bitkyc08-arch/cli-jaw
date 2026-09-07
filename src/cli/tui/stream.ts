@@ -7,7 +7,6 @@
  * is never corrupted by a half-rendered fence/table (doc 15 §2).
  */
 import { renderMarkdown } from './markdown.js';
-import { renderMarkdownJawcode, isInitialized } from './jawcode-render.js';
 
 export interface StreamSink {
     push(chunk: string): void;
@@ -30,12 +29,7 @@ export function createStreamSink(opts: StreamSinkOpts): StreamSink {
         // gutter defaulted here so MdOpts.gutter is `string`, not `string | undefined`
         // (tsconfig exactOptionalPropertyTypes).
         if (seg.trim()) {
-            if (isInitialized()) {
-                const lines = renderMarkdownJawcode(seg, opts.width);
-                opts.write(lines.join('\n') + '\n');
-            } else {
-                opts.write(renderMarkdown(seg, { width: opts.width, gutter: opts.gutter ?? '  ' }));
-            }
+            opts.write(renderMarkdown(seg, { width: opts.width, gutter: opts.gutter ?? '  ' }));
         }
     };
     return {

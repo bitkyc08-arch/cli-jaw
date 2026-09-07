@@ -12,7 +12,7 @@ import {
     type BgtaskOverlayItem,
 } from '../../src/cli/tui/overlay.ts';
 import { formatFooter } from '../../bin/commands/tui/types.ts';
-import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
+import { renderStatusBar } from '../../src/cli/tui/presentation.ts';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
@@ -76,7 +76,7 @@ test('empty overlay keeps the no-tasks line', () => {
 });
 
 test('status-bar badge grows the jawcode attention suffix', () => {
-    const base = { model: 'm', engine: 'jwc', engineAccent: '\x1b[36m', state: 'idle', cwd: '/tmp', port: 1 };
+    const base = { model: 'm', engine: 'codex', engineAccent: '\x1b[36m', state: 'idle', cwd: '/tmp', port: 1 };
     assert.ok(strip(renderStatusBar({ ...base, bgtask: 2 })).includes('⏳2'));
     assert.ok(strip(renderStatusBar({ ...base, bgtask: 2, bgtaskAttention: true })).includes('⏳2!'));
     assert.ok(strip(renderStatusBar({ ...base, bgtask: 0, bgtaskAttention: true })).includes('⏳!'));

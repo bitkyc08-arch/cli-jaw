@@ -139,9 +139,9 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.equal(metaFor('kiro-code').models.includes('auto'), true);
     assert.equal(PRIMARY_CLIS.includes('kiro-code'), true);
     const jwcMeta = metaFor('jwc');
-    assert.equal(PRIMARY_CLIS.includes('jwc'), true);
-    assert.equal(jwcMeta.label, 'JWC');
-    assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
+    assert.equal(PRIMARY_CLIS.includes('jwc'), false);
+    assert.equal(jwcMeta.label, 'JWC (retired)');
+    assert.deepEqual(jwcMeta.models, []);
     // metaFor() falls back to the static CLI_META when runtime metadata is
     // unavailable, so the manager AI-E claude list must not drift behind the
     // backend registry (260725: claude-opus-5 was missing here).
@@ -166,12 +166,12 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     }
     assert.equal(managerKiro[0], 'auto');
     assert.equal(managerAiEKiro[0], 'auto');
-    assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
-    assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
-    assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);
+    assert.deepEqual(jwcMeta.efforts, []);
+    assert.equal(Object.hasOwn(CLI_REGISTRY, 'jwc'), false);
+    assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('agy'), true);
     assert.deepEqual(
         orderRuntimeCliOptions(['gemini', 'jwc', 'claude-e', 'agy', 'custom-cli']),
-        ['claude-e', 'jwc', 'agy', 'gemini', 'custom-cli'],
+        ['claude-e', 'agy', 'gemini', 'custom-cli'],
     );
     const runtimeHeaderSource = readFileSync(
         join(__dirname, '../../public/manager/src/settings/pages/components/agent/RuntimeHeader.tsx'),
@@ -225,7 +225,7 @@ test('Manager live CLI metadata overrides static Codex model fallback', () => {
 });
 
 test('Pi model defaults render first and use discovered models for dropdown options', () => {
-    assert.deepEqual(orderModelCliKeys(['agy', 'ai-e', 'claude', 'pi']), ['pi', 'ai-e', 'agy', 'claude']);
+    assert.deepEqual(orderModelCliKeys(['agy', 'jwc', 'ai-e', 'claude', 'pi']), ['pi', 'ai-e', 'agy', 'claude']);
     assert.deepEqual(piModelOptions({
         defaultProfileId: 'progrok',
         profiles: [{ id: 'progrok', label: 'Progrok', mode: 'basic', endpoint: 'http://127.0.0.1:18645/v1', model: 'grok-composer-2.5-fast' }],

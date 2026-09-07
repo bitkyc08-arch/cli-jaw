@@ -7,7 +7,7 @@ import { cancelSteerInputs } from '../../src/agent/steer-input-guard.ts';
 
 const calls: Array<{ name: string; args: unknown[] }> = [];
 let busy = true, capable = true;
-let outcome: 'steered' | 'fallback-queue' | 'new-run' | 'cancelled' | Error = 'steered';
+let outcome: 'steered' | 'fallback-queue' | 'new-run' | 'cancelled' | 'retired' | Error = 'steered';
 let stopBeforeReturn = false;
 let mainGate: Promise<void> | undefined, exitGate: Promise<void> | undefined;
 let mainEntered: (() => void) | undefined, exitEntered: (() => void) | undefined;
@@ -66,6 +66,15 @@ test('actual slash handler acknowledges a cancelled redirect without follow-up s
     const result = await invoke();
     assert.equal(result.ok, true); assert.equal(result.type, 'success');
     assert.match(result.text!, /cancelled/i);
+    assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
+});
+
+test('actual slash handler treats a retired producer result as failure without follow-up or kill', async () => {
+    outcome = 'retired';
+    const result = await invoke();
+    assert.equal(result.ok, false);
+    assert.equal(result.type, 'error');
+    assert.equal(result.text, 'retired_runtime:jwc');
     assert.deepEqual(calls.map(call => call.name), ['busy', 'capable', 'steer']);
 });
 

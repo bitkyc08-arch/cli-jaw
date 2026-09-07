@@ -50,16 +50,20 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
     assert.ok(orchestrateIdx > broadcastIdx, 'should orchestrate AFTER broadcast');
 });
 
-test('SF-001b: policy steer capability is JWC-busy or a codex-app in-band hook', () => {
-    const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
-    const start = src.indexOf('export function canSteerAgent');
-    const end = src.indexOf('export async function steerAgent', start);
-    const capability = src.slice(start, end);
-    assert.ok(capability.includes("run?.meta.cli === 'jwc'"));
-    assert.ok(capability.includes('jawRuntimesByScope.get(scopeKey)?.busy === true'));
-    // wp2: codex-app advertises same-turn steer by installing steerTurnInBand
-    // for exactly the duration of a steerable turn.
-    assert.ok(capability.includes('steerTurnInBand'), 'codex-app in-band steer capability');
+test('SF-001b: steering capability follows the active native hooks', async () => {
+    const { activeMainProcesses, canSteerAgent } = await import('../../src/agent/spawn.ts');
+    const scope = 'steer-capability';
+    const run = { process: null, starting: false, steering: false, ownerGeneration: 1,
+        meta: { origin: 'web', scopeId: scope, cli: 'codex-app' } };
+    try {
+        assert.equal(canSteerAgent(scope), false);
+        activeMainProcesses.set(scope, run);
+        assert.equal(canSteerAgent(scope), false);
+        activeMainProcesses.set(scope, { ...run, steerTurnInBand: async () => 'steered' as const });
+        assert.equal(canSteerAgent(scope), true);
+        activeMainProcesses.set(scope, { ...run, replaceTurn: async () => ({ kind: 'dispatched' as const }) });
+        assert.equal(canSteerAgent(scope), true);
+    } finally { activeMainProcesses.delete(scope); }
 });
 
 // ─── SF-002: steerAgent saves interrupted output via exit handler ───

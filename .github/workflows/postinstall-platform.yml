@@ -14,6 +14,10 @@ on:
       - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
+      - 'scripts/retired-runtime-package-smoke.mjs'
+      - 'scripts/check-electron-sidecar-no-jwc.cjs'
+      - 'tests/unit/retired-runtime-package.test.ts'
+      - 'tests/unit/jwc-command-contract.test.ts'
       - 'scripts/install.sh'
       - 'scripts/install-wsl.sh'
       - 'scripts/install-officecli.ps1'
@@ -78,6 +82,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - '.gitattributes'
       - '.github/workflows/postinstall-platform.yml'
@@ -87,6 +92,10 @@ on:
       - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
+      - 'scripts/retired-runtime-package-smoke.mjs'
+      - 'scripts/check-electron-sidecar-no-jwc.cjs'
+      - 'tests/unit/retired-runtime-package.test.ts'
+      - 'tests/unit/jwc-command-contract.test.ts'
       - 'scripts/install.sh'
       - 'scripts/install-wsl.sh'
       - 'scripts/install-officecli.ps1'
@@ -162,6 +171,7 @@ concurrency:
 jobs:
   linux:
     name: Linux postinstall policy
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -202,6 +212,7 @@ jobs:
 
   macos-installer-risk:
     name: macOS installer risk gate
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -223,6 +234,9 @@ jobs:
       - name: Build package
         run: npm run build
 
+      - name: Verify packed package has no retired runtime
+        run: npm run smoke:retired-runtime:package
+
       - name: Smoke packaged global install
         run: npm run test:fresh-install -- --postinstall --skip-doctor
 
@@ -239,6 +253,7 @@ jobs:
 
   windows-wsl:
     name: Windows WSL postinstall policy
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-2022
     timeout-minutes: 25
     steps:
@@ -302,6 +317,13 @@ jobs:
           cd "$(wslpath '${{ github.workspace }}')"
           npm run build
 
+      - name: Verify packed package has no retired runtime in WSL
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          cd "$(wslpath '${{ github.workspace }}')"
+          npm run smoke:retired-runtime:package
+
       - name: Smoke packaged global install in WSL
         shell: wsl-bash {0}
         run: |
@@ -320,6 +342,7 @@ jobs:
 
   windows-native:
     name: Windows native install.ps1 (beta)
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -396,7 +419,7 @@ jobs:
   platform-aggregate:
     name: platform-aggregate
     needs: [linux, macos-installer-risk, windows-wsl, windows-native]
-    if: always()
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -408,8 +431,9 @@ jobs:
           NATIVE_RESULT: ${{ needs.windows-native.result }}
         run: |
           failed=0
-          # None of the four jobs carries an if: today, so 'skipped' is
-          # unreachable; the branch exists for future conditional jobs.
+          # All four producers are expected to execute on admitted non-draft
+          # and dispatch events. Drafts suppress this aggregate too. The legacy
+          # skipped branch remains; final-tip proof requires each producer success.
           check() {
             case "$2" in
               success|skipped) echo "$1: $2" ;;

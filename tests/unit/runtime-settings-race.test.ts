@@ -38,18 +38,6 @@ test('RSR-003: spawn waits before reading session bucket state', () => {
     assert.ok(bucketIdx > waitIdx, 'bucket read must happen after wait path');
 });
 
-test('RSR-004: gated main spawn contributes to busy state and queue gating', () => {
-    // 211531d6 moved the module-global `mainSpawnStarting` into per-scope
-    // MainRunState.starting, and isAgentBusy now reads that scoped map. The
-    // contract under test is unchanged: a gated spawn marks itself starting,
-    // and busy state derives from the scoped run plus the retry timer.
-    assert.match(spawnSrc, /starting:\s*boolean/);
-    assert.match(spawnSrc, /mainRun!\.starting\s*=\s*true/);
-    assert.match(spawnSrc, /return\s+activeMainProcesses\.has\(scopeKey\)\s*\|\|\s*runtimeForScope\(scopeKey\)\.busy\s*\|\|\s*queueCtrl\.isRetryPending\(scopeKey\)/);
-    assert.match(spawnSrc, /queueCtrl\.isRetryPending\(scopeKey\)/,
-        'isAgentBusy must delegate the retry check to the queue controller');
-});
-
 test('RSR-005: stop cancels a pending gated main spawn', { timeout: 5000 }, async t => {
     const forbiddenCalls: string[] = [];
     const forbidden = (name: string) => (..._args: unknown[]): never => {

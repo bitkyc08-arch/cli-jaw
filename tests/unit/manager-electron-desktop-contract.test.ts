@@ -57,7 +57,6 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
 
 test('Electron sidecar bundle excludes JWC payload and verifies the absence contract', () => {
     const script = read('scripts/bundle-sidecar.sh');
-    const checker = read('scripts/check-electron-sidecar-no-jwc.cjs');
     const pkg = JSON.parse(read('package.json'));
 
     assert.equal(pkg.dependencies?.jawcode, undefined, 'plain npm installs must not install jawcode by default');
@@ -73,9 +72,7 @@ test('Electron sidecar bundle excludes JWC payload and verifies the absence cont
     assert.equal(script.includes('npm install --omit=dev --ignore-scripts --install-links'), false, 'sidecar bundle must not rely on linked local file dependencies');
     assert.equal(script.includes('"$SIDECAR_DIR/node_modules/jawcode/"'), false, 'sidecar bundle must not rsync jawcode directly into runtime node_modules');
     assert.ok(script.includes('scripts/check-electron-sidecar-no-jwc.cjs'), 'sidecar bundle must run the no-JWC validator after creating shims');
-    for (const token of ['jawcode package', '@jawcode-dev scope', '@oven scope', 'bun package', 'jwc shim']) {
-        assert.ok(checker.includes(token), `no-JWC validator must reject ${token}`);
-    }
+    // Actual payload rejection is covered by retired-runtime-package.test.ts.
 });
 
 test('Electron CLI installer rejects incomplete or partially installed sidecar commands', () => {

@@ -33,6 +33,13 @@ const TERMINAL_INTERRUPT_RACE_RE = /turn not active|already completed|no active 
 
 const PENDING_NOTIFICATION_LIMIT = 128;
 const PENDING_NOTIFICATION_TTL_MS = 5_000;
+const SERVER_REQUEST_TIMEOUT_MS = 120_000;
+const SERVER_REQUEST_LIMIT = 128;
+const DELEGATED_SERVER_REQUEST_METHODS = new Set([
+    'item/commandExecution/requestApproval',
+    'item/fileChange/requestApproval',
+    'item/permissions/requestApproval',
+]);
 
 const TURN_OWNED_METHODS = new Set([
     'thread/tokenUsage/updated',
@@ -147,6 +154,14 @@ export interface CodexAppClientOptions {
     workDir?: string;
     env?: NodeJS.ProcessEnv;
     unknownNotificationPolicy?: UnknownNotificationPolicy;
+    /** Opt-in approval responder. The caller validates raw native ownership and
+     *  structured grants; undefined preserves the built-in decline response. */
+    serverRequest?(
+        method: string,
+        params: Record<string, unknown>,
+        rpcId: number | string,
+        signal: AbortSignal,
+    ): Promise<Record<string, unknown> | undefined> | Record<string, unknown> | undefined;
 }
 
 export interface CodexThreadOptions {
@@ -155,6 +170,8 @@ export interface CodexThreadOptions {
     cwd: string;
     fastMode: boolean;
     instructions?: string;
+    approvalPolicy?: 'untrusted' | 'on-request' | 'never';
+    sandbox?: 'read-only' | 'workspace-write' | 'danger-full-access';
 }
 
 export interface CodexAppNotificationOwner {
@@ -269,6 +286,9 @@ export class CodexAppClient extends EventEmitter {
     private rl: ReadlineInterface | null = null;
     private cleaned = false;
     private terminal = false;
+    private readonly serverRequest: CodexAppClientOptions['serverRequest'];
+    private serverRequestsClosed = false;
+    private pendingServerRequests = new Map<number | string, () => void>();
 
     constructor(options: CodexAppClientOptions = {}) {
         super();
@@ -276,6 +296,7 @@ export class CodexAppClient extends EventEmitter {
         this.workDir = options.workDir || process.cwd();
         this.spawnEnv = options.env || process.env;
         this.unknownNotificationPolicy = options.unknownNotificationPolicy ?? 'legacy-raw';
+        this.serverRequest = options.serverRequest;
     }
 
     get alive(): boolean {
@@ -536,6 +557,7 @@ export class CodexAppClient extends EventEmitter {
     }
 
     async closeGracefully(): Promise<void> {
+        this.cancelServerRequests();
         try {
             if (!this.terminal) {
                 const ids = new Set(
@@ -558,6 +580,7 @@ export class CodexAppClient extends EventEmitter {
     }
 
     kill(): void {
+        this.cancelServerRequests();
         if (this.proc && !this.proc.killed) {
             this.proc.kill('SIGTERM');
             setTimeout(() => {
@@ -584,8 +607,8 @@ export class CodexAppClient extends EventEmitter {
             const result = await Promise.race([
                 this.request('thread/start', {
                     model: state.model,
-                    approvalPolicy: 'never',
-                    sandbox: 'danger-full-access',
+                    approvalPolicy: state.approvalPolicy ?? 'never',
+                    sandbox: state.sandbox ?? 'danger-full-access',
                     cwd: state.cwd,
                     config: this.reasoningConfig(state),
                     ...(state.instructions ? { developerInstructions: state.instructions } : {}),
@@ -616,8 +639,8 @@ export class CodexAppClient extends EventEmitter {
                 this.request('thread/resume', {
                     threadId,
                     model: state.model,
-                    approvalPolicy: 'never',
-                    sandbox: 'danger-full-access',
+                    approvalPolicy: state.approvalPolicy ?? 'never',
+                    sandbox: state.sandbox ?? 'danger-full-access',
                     cwd: state.cwd,
                     config: this.reasoningConfig(state),
                     excludeTurns: true,
@@ -707,6 +730,10 @@ export class CodexAppClient extends EventEmitter {
         state.fastMode = options.fastMode;
         if (options.instructions !== undefined) state.instructions = options.instructions;
         else delete state.instructions;
+        if (options.approvalPolicy !== undefined) state.approvalPolicy = options.approvalPolicy;
+        else delete state.approvalPolicy;
+        if (options.sandbox !== undefined) state.sandbox = options.sandbox;
+        else delete state.sandbox;
         state.threadId = null;
         state.activeTurnId = null;
         state.pendingInterrupt = false;
@@ -1375,7 +1402,7 @@ export class CodexAppClient extends EventEmitter {
 
         const id = msg['id'];
         const method = typeof msg['method'] === 'string' ? msg['method'] : null;
-        if (id != null && typeof id === 'number' && this.pending.has(id)) {
+        if (!method && id != null && typeof id === 'number' && this.pending.has(id)) {
             const handler = this.pending.get(id)!;
             this.pending.delete(id);
             const error = this.recordField(msg, 'error');
@@ -1409,7 +1436,9 @@ export class CodexAppClient extends EventEmitter {
     }
 
     private handleServerRequest(id: number | string, method: string, params: EvRec): void {
-        console.log(`[codex-app] server request: ${method} (id=${id}) — auto-declining`);
+        // A repeated in-flight RPC must not open a second decision or send a
+        // fallback that races the already admitted response.
+        if (this.pendingServerRequests.has(id)) return;
         this.emit('server_request', method, params, id);
 
         const declineResponses: Record<string, unknown> = {
@@ -1422,8 +1451,45 @@ export class CodexAppClient extends EventEmitter {
             'applyPatchApproval': { decision: 'denied' },
         };
 
-        const result = declineResponses[method] || {};
-        this.trySend({ jsonrpc: '2.0', id, result });
+        const fallback = Object.hasOwn(declineResponses, method) ? declineResponses[method] : {};
+        const handler = this.serverRequest;
+        if (!handler || !DELEGATED_SERVER_REQUEST_METHODS.has(method)
+            || this.serverRequestsClosed || this.terminal
+            || this.pendingServerRequests.size >= SERVER_REQUEST_LIMIT) {
+            this.trySend({ jsonrpc: '2.0', id, result: fallback });
+            return;
+        }
+
+        const controller = new AbortController();
+        const deadline = Date.now() + SERVER_REQUEST_TIMEOUT_MS;
+        let settled = false;
+        const finish = (result?: Record<string, unknown>, cancelled = false): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            this.pendingServerRequests.delete(id);
+            const expired = Date.now() >= deadline;
+            // Claim settlement before aborting: abort listeners may synchronously
+            // close the client or cause the delegated promise to settle.
+            if (cancelled || expired) controller.abort();
+            this.trySend({ jsonrpc: '2.0', id, result: cancelled || expired ? fallback : result ?? fallback });
+        };
+        const timer = setTimeout(() => finish(undefined, true), SERVER_REQUEST_TIMEOUT_MS);
+        timer.unref();
+        this.pendingServerRequests.set(id, () => finish(undefined, true));
+        try {
+            void Promise.resolve(handler(method, params, id, controller.signal)).then(
+                (result) => finish(result),
+                () => finish(undefined, true),
+            );
+        } catch {
+            finish(undefined, true);
+        }
+    }
+
+    private cancelServerRequests(): void {
+        this.serverRequestsClosed = true;
+        for (const cancel of this.pendingServerRequests.values()) cancel();
     }
 
     private async sendInterrupt(state: ScopeThreadState, turnId: string): Promise<void> {
@@ -1458,6 +1524,7 @@ export class CodexAppClient extends EventEmitter {
     private beginProcessDeath(reason: string): boolean {
         if (this.terminal) return false;
         this.terminal = true;
+        this.cancelServerRequests();
         this.rejectAllPending(reason);
         const error = new Error(reason);
         for (const state of this.scopes.values()) {

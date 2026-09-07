@@ -1,154 +1,89 @@
-import type { RefObject } from 'react';
-import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
-import { CodeCommandPopup } from './CodeCommandPopup';
+import { useRef, useState } from 'react';
+import type { CodeControllerModel } from './code-controller-types';
 import { CodeComposer } from './CodeComposer';
+import { ComposerFooter } from './ComposerFooter';
 import { CodePermissionQueue } from './CodePermissionQueue';
 import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
-import { ComposerFooter } from './ComposerFooter';
-import type { CodeCommand, CodeCommandPopupKind, PendingPermission, PermissionMode, PermissionOptionKind, TranscriptEntry } from './code-types';
-import type { CodeTransportState } from './useCodeEvents';
+import { codeCanResume } from './code-types';
 
-type CodeWorkbenchProps = {
-    activePopup: { kind: CodeCommandPopupKind; command: CodeCommand } | null;
-    activeSessionId: string | null;
-    availableCommands: CodeCommand[];
-    codeWorkingDir: string;
-    currentEffortOptions: string[];
-    currentModelOptions: string[];
-    disabled: boolean;
-    effort: string;
-    gitInfo: CodeGitInfo | null;
-    childRecovery: { code: string; message: string } | null;
-    transportState: CodeTransportState;
-    inputText: string;
-    messages: TranscriptEntry[];
-    model: string;
-    modelAssignments: CodeModelAssignments | null;
-    modelOptions: CodeModelOptions;
-    modelPresets: CodeModelPresetInfo | null;
-    permissionMode: PermissionMode;
-    permissions: PendingPermission[];
-    planEntries: Array<{ title: string; status: string }>;
-    error: string;
-    provider: string;
-    providerOptions: string[];
-    sending: boolean;
-    sessionTitle: string;
-    showCommands: boolean;
-    transcriptRef: RefObject<HTMLDivElement | null>;
-    usage: { contextTokens?: number; contextLimit?: number; cost?: number };
-    onClearModelAssignment: (role: CodeModelAssignment['role']) => void | Promise<void>;
-    onClosePopup: () => void;
-    onCommandSelect: (command: CodeCommand) => void;
-    onEffortChange: (value: string) => void;
-    onFooterProviderChange: (value: string) => void;
-    onInputChange: (text: string) => void;
-    onModelChange: (value: string) => void;
-    onPermissionAnswer: (permission: PendingPermission, action: PermissionOptionKind) => void;
-    onPermissionModeChange: (value: PermissionMode) => void;
-    onProviderChange: (value: string) => void;
-    onRefreshProviders: () => void;
-    onSetDefaultModel: (provider: string, model: string) => void | Promise<void>;
-    onSetModelAssignment: (
-        role: CodeModelAssignment['role'],
-        provider: string,
-        model: string,
-        thinkingLevel?: string | null,
-    ) => void | Promise<void>;
-    onShowCommandsChange: (value: boolean) => void;
-    onSubmit: () => void;
-    onUseModel: (provider: string, model: string) => void | Promise<void>;
-    onUseForNewSessions: (provider: string, model: string) => void | Promise<void>;
-    onWorkingDirChange: (path: string | null) => void;
-    onOpenLocalFile?: ((path: string) => void) | undefined;
-    workspaceFrozen: boolean;
-    onPickWorkingDir: () => Promise<string | null>;
-};
-
-export function CodeWorkbench(props: CodeWorkbenchProps) {
-    return (
-        <div className="code-canvas-main">
-            <CodeWorkspaceHeader
-                gitInfo={props.gitInfo}
-                modelOptions={props.modelOptions}
-                sessionTitle={props.sessionTitle}
-                usage={props.usage}
-                planEntries={props.planEntries}
-                workingDir={props.codeWorkingDir}
-                cwdLocked={Boolean(props.activeSessionId)}
-                onWorkingDirChange={props.onWorkingDirChange}
-                workspaceFrozen={props.workspaceFrozen}
-                onPickWorkingDir={props.onPickWorkingDir}
-            />
-            {props.childRecovery && (
-                <section className="code-child-recovery" role="status" aria-live="polite">
-                    <div>
-                        <span>JWC child recovery</span>
-                        <strong>ACP child exited: {props.childRecovery.code}</strong>
-                    </div>
-                    <p>{props.childRecovery.message}</p>
-                </section>
-            )}
-            {props.transportState !== 'connected' && (
-                <section className={`code-transport-status is-${props.transportState}`} role="status" aria-live="polite">
-                    {props.transportState === 'reconnecting' ? 'Live updates reconnecting…' : 'Live updates disconnected — retrying.'}
-                </section>
-            )}
-            <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} onOpenLocalFile={props.onOpenLocalFile} sessionId={props.activeSessionId} />
-            <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
-            <div className="code-composer-dock">
-                <div className="code-composer-surface" aria-label="Code composer controls">
-                    <CodeComposer
-                        inputText={props.inputText}
-                        sending={props.sending}
-                        showCommands={props.showCommands}
-                        availableCommands={props.availableCommands}
-                        onInputChange={props.onInputChange}
-                        onCommandSelect={props.onCommandSelect}
-                        onSubmit={props.onSubmit}
-                        onShowCommandsChange={props.onShowCommandsChange}
-                    />
-                    <ComposerFooter
-                        provider={props.provider}
-                        providerOptions={props.providerOptions}
-                        model={props.model}
-                        modelOptions={props.currentModelOptions}
-                        effort={props.effort}
-                        effortOptions={props.currentEffortOptions}
-                        permissionMode={props.permissionMode}
-                        disabled={props.disabled}
-                        onProviderChange={props.onFooterProviderChange}
-                        onModelChange={props.onModelChange}
-                        onEffortChange={props.onEffortChange}
-                        onPermissionModeChange={props.onPermissionModeChange}
-                    />
-                </div>
+type Props = { controller: CodeControllerModel; endpointKey: string; onOpenLocalFile?: ((path: string) => void) | undefined };
+export function CodeWorkbench({ controller: c, endpointKey, onOpenLocalFile }: Props) {
+    const sessionKey = `${endpointKey}:${c.selectedId ?? 'new'}`;
+    const [actionError, setActionError] = useState<{ key: string; message: string } | null>(null);
+    const [retrying, setRetrying] = useState<string | null>(null);
+    const retryGuard = useRef(new Set<string>());
+    const archived = c.session?.archivedAt != null;
+    const stopping = c.session?.status === 'stopping' || c.operation.kind === 'stopping';
+    const busy = c.busy || stopping || c.session?.status === 'starting' || c.session?.status === 'streaming';
+    const provider = c.catalog?.providers.find(p => p.id === c.selection.provider);
+    const unknownSend = c.operation.kind === 'unknown-send';
+    const canSend = !busy && !c.pending && !c.creationUnknown && !archived && c.operation.kind === 'idle' && !!provider?.available
+        && !!c.selection.cwd.trim() && !!c.selection.model.trim()
+        && (c.selectedId === null || (c.synced && c.session?.status === 'idle'));
+    const canStop = !!c.session?.turnId && c.session.capabilities.interrupt && busy && !stopping;
+    const canResume = !!c.session && codeCanResume(c.session) && c.synced && !c.pending && !unknownSend;
+    const error = c.operation.error || c.error || (actionError?.key === sessionKey ? actionError.message : null);
+    const terminal = [...c.items].reverse().find(item => item.kind === 'turn_cancelled' || item.kind === 'turn_failed' || item.kind === 'turn_completed');
+    const failedInput = terminal && terminal.kind !== 'turn_completed'
+        ? c.items.find(item => item.kind === 'user_message' && item.turnId === terminal.turnId)?.text : undefined;
+    function perform(action: () => Promise<void>) {
+        setActionError(null);
+        void action().catch(err => setActionError({ key: sessionKey, message: err instanceof Error ? err.message : String(err) }));
+    }
+    async function retry() {
+        if (!c.canRetrySameSend || retryGuard.current.has(sessionKey)) return;
+        retryGuard.current.add(sessionKey); setRetrying(sessionKey); setActionError(null);
+        try { await c.retrySameSend(); }
+        catch (err) { setActionError({ key: sessionKey, message: err instanceof Error ? err.message : String(err) }); }
+        finally { retryGuard.current.delete(sessionKey); setRetrying(current => current === sessionKey ? null : current); }
+    }
+    return <div className="code-canvas-main">
+        <CodeWorkspaceHeader key={sessionKey} controller={c} />
+        {(c.transport !== 'connected' || (c.selectedId !== null && !c.synced)) && <section className={`code-transport-status is-${c.transport}`} role="status">
+            {c.transport === 'reconnecting' ? 'Live updates reconnecting. History may be out of date.'
+                : c.transport === 'disconnected' ? 'Live updates disconnected. History may be out of date.' : 'Updating conversation…'}
+            <button type="button" onClick={() => perform(c.refresh)}>Refresh</button>
+        </section>}
+        {error && <section className="code-recovery-strip" role="alert"><p>{error}</p>
+            <button type="button" onClick={() => perform(c.refresh)}>Refresh session</button>
+            <button type="button" onClick={() => { c.clearError(); setActionError(null); }}>Dismiss</button>
+        </section>}
+        {c.creationUnknown && <section className="code-recovery-strip" aria-label="Unconfirmed session creation">
+            <strong>Session creation not confirmed</strong>
+            <p>The original session may still exist.</p>
+            <p>Your draft and choices are kept. Press Send when you are ready to create another session.</p>
+            <button type="button" onClick={c.startAnotherSession}>Start another session</button>
+        </section>}
+        {unknownSend && <section className="code-recovery-strip" aria-label="Unconfirmed send">
+            <strong>Send outcome not confirmed</strong>
+            <p>Retry uses the original request. It may submit it if the server has not already accepted it.</p>
+            <pre className="code-retry-preview" aria-label="Original prompt">{c.retryText}</pre>
+            <button type="button" disabled={!c.canRetrySameSend || retrying === sessionKey} onClick={() => void retry()}>
+                {retrying === sessionKey ? 'Retrying original send…' : 'Retry same send'}</button>
+        </section>}
+        {archived ? <section className="code-recovery-strip"><span>Archived · Read-only history</span>
+            <button type="button" disabled={!c.synced || c.pending} onClick={() => { const id = c.selectedId; if (id) perform(() => c.archive(id, false)); }}>Restore session</button>
+        </section> : c.session && (c.session.status === 'failed' || c.session.status === 'suspended') && <section className="code-recovery-strip" role="status">
+            <p>{c.session.error?.message ?? 'Native session suspended.'}</p>
+            {canResume ? <button type="button" onClick={() => perform(c.resume)}>Resume session</button>
+                : <><span>{c.session.resume.reason ?? 'Resume is not currently available.'}</span><button type="button" onClick={c.newSession}>New session</button></>}
+        </section>}
+        <CodeTranscript items={c.items} provider={c.session?.provider ?? c.selection.provider} sessionKey={sessionKey}
+            workingDir={c.session?.cwd ?? c.selection.cwd} loading={c.loading} hasOlderHistory={c.hasOlderHistory}
+            loadOlderHistory={c.loadOlderHistory} permissionCount={c.permissions.length} onOpenLocalFile={onOpenLocalFile} />
+        <CodePermissionQueue permissions={c.permissions} operations={c.permissionOperations} session={c.session} synced={c.synced} onAnswer={c.answer} />
+        <div className="code-composer-dock">
+            {failedInput !== undefined && !busy && !archived && <div className="code-input-recovery">
+                <button type="button" disabled={!!c.input || unknownSend} title={c.input ? 'Keep or clear your current draft before restoring the submitted prompt' : undefined}
+                    onClick={() => c.setInput(failedInput)}>Restore submitted prompt</button>
+                <span>Restores text for editing without sending.</span>
+            </div>}
+            <div className="code-composer-surface" aria-label="Code composer controls">
+                <CodeComposer key={`composer:${sessionKey}`} inputText={c.input} canSend={canSend} busy={busy} canStop={canStop} stopping={stopping}
+                    pending={c.pending} readOnly={archived} onInputChange={c.setInput} onSubmit={c.send} onStop={c.stop} />
+                <ComposerFooter key={`footer:${sessionKey}`} controller={c} />
             </div>
-            {props.activePopup && (
-                <CodeCommandPopup
-                    popupKind={props.activePopup.kind}
-                    command={props.activePopup.command}
-                    modelOptions={props.modelOptions}
-                    provider={props.provider}
-                    model={props.model}
-                    modelAssignments={props.modelAssignments}
-                    modelPresets={props.modelPresets}
-                    permissionMode={props.permissionMode}
-                    disabled={props.disabled}
-                    activeSessionId={props.activeSessionId}
-                    error={props.error}
-                    onClose={props.onClosePopup}
-                    onRefreshProviders={props.onRefreshProviders}
-                    onProviderChange={props.onProviderChange}
-                    onUseModel={props.onUseModel}
-                    onUseForNewSessions={props.onUseForNewSessions}
-                    onSetDefaultModel={props.onSetDefaultModel}
-                    onSetModelAssignment={props.onSetModelAssignment}
-                    onClearModelAssignment={props.onClearModelAssignment}
-                    onPermissionModeChange={props.onPermissionModeChange}
-                />
-            )}
         </div>
-    );
+    </div>;
 }

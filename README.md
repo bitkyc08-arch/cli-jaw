@@ -15,6 +15,8 @@
 
 </div>
 
+The native Code API (`/api/code`) provides isolated Codex, Claude, Cursor, and Grok sessions with durable transcripts and native resume. It uses the installed CLIs and their existing logins. See [native Code sessions](structure/runtime-integration.md#native-code-sessions).
+
 ## Install
 
 <details>
@@ -105,21 +107,13 @@ That's it. Open **http://localhost:24576** for the manager dashboard. Per-instan
 
 > **First time?** The default npm install initializes CLI-JAW and attempts native Claude setup. Other AI CLIs are optional; install them all during npm setup with `CLI_JAW_INSTALL_CLI_TOOLS=1 npm install -g cli-jaw` on macOS/Linux. On Windows, use the WSL install path below.
 
-### Optional JWC Runtime
+### Retired JWC integration
 
-JWC is optional and external-only. The default npm install and Electron desktop sidecar do not bundle `jawcode`, `@jawcode-dev`, `@oven`, `bun`, or a `jwc` payload. To use JWC, install the runtime into CLI-JAW's external prefix and opt in with the printed SDK path:
-
-```bash
-jaw jwc install
-export JWC_SDK_PATH="/absolute/path/printed/by/jaw-jwc-install/sdk.js"
-jaw jwc doctor
-```
-
-To remove the optional external JWC dependencies later:
-
-```bash
-jaw jwc clean
-```
+Jawcode SDK, ACP child, TUI bundles and installer integration have been removed.
+Use Code for native Codex, Claude, Cursor or Grok sessions. A saved `jwc` runtime
+selection remains visible as retired and cannot execute; choose an available
+runtime explicitly. Existing external installations and saved user files are
+left intact. `jaw jwc` reports retirement and performs no installation or cleanup.
 
 <details>
 <summary><b>macOS one-click</b> — don't have Node.js? This installs everything</summary>
@@ -598,7 +592,7 @@ Native quota readers follow the OpenCodex source contract: Codex window duration
 
 > Switch engines live: `/cli codex`. Switch models: `/model gpt-5.5`. Works from Web, Terminal, Telegram, Discord, or Slack.
 
-**Mid-run steering**: the default policy is `multiSession.midRunPolicy: 'steer'`. JWC and Codex App accept in-flight input; native Cursor cancels and drains the active prompt, then re-prompts in the same session with application-restored context. Other paths interrupt the current run and carry bounded partial output into a new run; this is not a guarantee of complete history retention. Prefer waiting in line? Choose `followup` or `collect` in Settings → Agent.
+**Mid-run steering**: the default policy is `multiSession.midRunPolicy: 'steer'`. Codex App accepts in-flight input; native Cursor cancels and drains the active prompt, then re-prompts in the same session with application-restored context. Other paths interrupt the current run and carry bounded partial output into a new run; this is not a guarantee of complete history retention. Prefer waiting in line? Choose `followup` or `collect` in Settings → Agent.
 
 ---
 

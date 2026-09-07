@@ -1,3 +1,4 @@
+import { isRetiredCliSelection } from '../../../src/types/cli-engine.js';
 // ── Active Channel & Fallback Order ──
 import { apiJson, api } from '../api.js';
 import { escapeHtml } from '../render.js';
@@ -79,14 +80,15 @@ export function loadActiveChannel(s: SettingsData): void {
 export function loadFallbackOrder(s: SettingsData): void {
     const container = document.getElementById('fallbackOrderList');
     if (!container) return;
-    const allClis = Object.keys(s.perCli || {});
+    const allClis = Object.keys(s.perCli || {}).filter(cli => !isRetiredCliSelection(cli));
     const active = s.fallbackOrder || [];
     const slotCount = Math.min(allClis.length - 1, 3);
 
     let html = '';
     for (let i = 0; i < slotCount; i++) {
         const current = active[i] || '';
-        const opts = allClis.map(cli =>
+        const retiredOption = isRetiredCliSelection(current) ? '<option value="jwc" disabled selected>JWC (retired)</option>' : '';
+        const opts = retiredOption + allClis.map(cli =>
             `<option value="${escapeHtml(cli)}" ${cli === current ? 'selected' : ''}>${escapeHtml(getCliMeta(cli)?.label || providerLabel(cli))}</option>`
         ).join('');
         html += `
