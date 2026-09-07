@@ -14,19 +14,26 @@ class FakePiSession {
     abortCount = 0;
     killCount = 0;
     closeCount = 0;
+    poisoned = false;
+    closeGate: Promise<void> | null = null;
 
     constructor(sessionId: string | null, abortEffective: boolean) {
         this.sessionId = sessionId;
         this.abortEffective = abortEffective;
     }
 
-    get alive(): boolean { return !this.child.killed && this.child.exitCode === null; }
+    get alive(): boolean { return !this.poisoned && !this.child.killed && this.child.exitCode === null; }
     async sendPrompt(message: string): Promise<{ text: string; stderr: string }> {
+        if (!this.alive) throw new Error('fixture Pi readiness failed');
         this.sessionId ||= `session-${fakeSessions.length}`;
         return { text: message, stderr: '' };
     }
     async abort(): Promise<void> { this.abortCount += 1; }
-    close(): void { this.closeCount += 1; this.die(); }
+    close(): Promise<void> | void {
+        this.closeCount += 1;
+        if (this.closeGate) return this.closeGate.then(() => { this.die(); });
+        this.die();
+    }
     kill(): void { this.killCount += 1; this.die(); }
     die(): void {
         if (this.child.exitCode !== null) return;
@@ -40,6 +47,10 @@ const fakeSessions: FakePiSession[] = [];
 let nextAbortEffective = true;
 let nextAbortReject = false;
 let lastSpawnOptions: Record<string, unknown> | null = null;
+test.afterEach(() => {
+    nextAbortEffective = true; nextAbortReject = false;
+    for (const session of fakeSessions) session.die();
+});
 
 mock.module('../../src/agent/codex-app-client.js', {
     namedExports: {
@@ -81,6 +92,7 @@ function options(overrides: Record<string, unknown> = {}) {
             profiles: [{ id: 'progrok' }],
         },
         ...(overrides['storedSessionId'] === undefined ? {} : { storedSessionId: overrides['storedSessionId'] }),
+        ...(overrides['instructions'] === undefined ? {} : { instructions: String(overrides['instructions']) }),
     };
 }
 
@@ -152,4 +164,71 @@ test('Pi pool cancellation falls back to kill when an effective abort rejects', 
     assert.equal(session.killCount, 1);
     lease.release();
     nextAbortReject = false;
+});
+
+for (const instructions of [undefined, 'captured instructions']) {
+    test(`Pi lease forwards live capability through both getters, instructions=${Boolean(instructions)}`, async () => {
+        nextAbortEffective = false;
+        const lease = await acquirePiRuntime(options({ instructions }));
+        const session = fakeSessions.at(-1)!;
+        try {
+            assert.equal(lease.session.abortEffective, false); assert.equal(lease.runtime.supportsInterrupt, false);
+            session.abortEffective = true;
+            assert.equal(lease.session.abortEffective, true, 'instruction wrapper must not freeze false');
+            assert.equal(lease.runtime.supportsInterrupt, true, 'runtime wrapper must not freeze false');
+            await lease.cancel(); assert.equal(session.abortCount, 1); assert.equal(session.killCount, 0);
+            session.abortEffective = false;
+            assert.equal(lease.session.abortEffective, false); assert.equal(lease.runtime.supportsInterrupt, false);
+            await lease.cancel(); assert.equal(session.abortCount, 1); assert.equal(session.killCount, 1);
+        } finally { lease.release(); session.die(); }
+    });
+
+    test(`Pi pre-ready cancellation never borrows future abort support, instructions=${Boolean(instructions)}`, async () => {
+        nextAbortEffective = false;
+        const lease = await acquirePiRuntime(options({ instructions })); const session = fakeSessions.at(-1)!;
+        await lease.cancel(); session.abortEffective = true;
+        assert.equal(session.abortCount, 0); assert.equal(session.killCount, 1); assert.equal(lease.runtime.alive, false);
+        lease.release();
+    });
+
+    test(`Pi close forwards an owned Promise and rejection, instructions=${Boolean(instructions)}`, async () => {
+        const lease = await acquirePiRuntime(options({ instructions })); const session = fakeSessions.at(-1)!;
+        const close = Promise.withResolvers<void>(); session.closeGate = close.promise;
+        const result = lease.session.close(); let completed = false;
+        const observed = Promise.resolve(result).then(() => { completed = true; });
+        const rejected = assert.rejects(observed, /fixture UNCERTIFIED/);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(completed, false); assert.equal(session.closeCount, 1);
+        close.reject(new Error('fixture UNCERTIFIED')); await rejected;
+        session.die(); lease.release();
+    });
+}
+
+test('Pi poisoned-but-not-exited session is removed on release and cannot be borrowed again', async () => {
+    const scopeKey = `poison-${sequence++}`, opts = options({ scopeKey, instructions: 'wrapped' });
+    const first = await acquirePiRuntime(opts); const old = fakeSessions.at(-1)!;
+    old.poisoned = true; old.abortEffective = false;
+    assert.equal(old.child.exitCode, null, 'no physical exit callback is needed to observe poison');
+    assert.equal(first.runtime.alive, false);
+    await assert.rejects(first.session.sendPrompt('forbidden'), /readiness failed/);
+    first.release();
+    const second = await acquirePiRuntime(opts);
+    assert.equal(second.reused, false); assert.notEqual(second.session.child, old.child);
+    await assert.rejects(first.session.sendPrompt('late retry'), /readiness failed/);
+    second.release();
+});
+
+test('Pi scope replacement observes rejected asynchronous close without claiming a global drain', async t => {
+    const scopeKey = `async-close-${sequence++}`;
+    const first = await acquirePiRuntime(options({ scopeKey })); const old = fakeSessions.at(-1)!;
+    const close = Promise.withResolvers<void>(); old.closeGate = close.promise;
+    const warnings: string[] = []; t.mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args.join(' ')); });
+    first.release();
+    const second = await acquirePiRuntime(options({ scopeKey, model: 'replacement' }));
+    assert.equal(old.closeCount, 1); assert.notEqual(second.session.child, old.child);
+    assert.equal(warnings.length, 0, 'a held close is not a rejection yet');
+    close.reject(new Error('fixture UNCERTIFIED close'));
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(warnings.filter(line => line.includes('fixture UNCERTIFIED close')).length, 1);
+    assert.equal(second.runtime.alive, true); second.release(); old.die();
 });

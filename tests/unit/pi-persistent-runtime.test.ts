@@ -1,6 +1,8 @@
 import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { ChildProcess } from 'node:child_process';
+import { StringDecoder } from 'node:string_decoder';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -66,10 +68,29 @@ await chmod(fakePi, 0o755);
 
 const previousBin = process.env['PI_CODING_AGENT_BIN'];
 process.env['PI_CODING_AGENT_BIN'] = fakePi;
+const sessions = new Set<PiRpcSession>();
+const children = new Map<ChildProcess, Promise<void>>();
+let cleanupSafe = true;
+function trackChild(child: ChildProcess): void {
+    children.set(child, new Promise(resolve => child.once('close', () => resolve())));
+}
+async function bounded<T>(work: Promise<T>, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout>;
+    try { return await Promise.race([work, new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`fixture ${label} deadline`)), 5000);
+    })]); } finally { clearTimeout(timer!); }
+}
+test.afterEach(async () => {
+    try {
+        for (const session of sessions) { session.kill(); await bounded(Promise.resolve(session.close()), 'session close'); }
+        for (const closed of children.values()) await bounded(closed, 'physical close');
+    } catch (error) { cleanupSafe = false; throw error; }
+    finally { sessions.clear(); children.clear(); }
+});
 test.after(async () => {
     if (previousBin === undefined) delete process.env['PI_CODING_AGENT_BIN'];
     else process.env['PI_CODING_AGENT_BIN'] = previousBin;
-    await rm(fakeRoot, { recursive: true, force: true });
+    if (cleanupSafe) await rm(fakeRoot, { recursive: true, force: true });
 });
 
 function commandId(): string {
@@ -95,11 +116,12 @@ function validCapability(overrides: Record<string, unknown> = {}): Record<string
 }
 
 function spawnSession() {
-    return spawnPersistentPiRpc(DEFAULT_PI_PROFILE, DEFAULT_PI_SETTINGS, {
+    const session = spawnPersistentPiRpc(DEFAULT_PI_PROFILE, DEFAULT_PI_SETTINGS, {
         model: DEFAULT_PI_PROFILE.model,
         cwd: fakeRoot,
         root: join(fakeRoot, 'runtime'),
     });
+    sessions.add(session); trackChild(session.child); return session;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -110,6 +132,43 @@ function asRecord(value: unknown): Record<string, unknown> {
 function control(session: PiRpcSession, type: 'test_release_abort' | 'test_complete_prompt'): void {
     assert.ok(session.child.stdin);
     session.child.stdin.write(JSON.stringify({ type }) + '\n');
+}
+
+// Observe the real response stream without installing a semantic/raw observer on
+// the prompt: observer-absent ownership cases must remain observer-absent.
+function promptAdmission(session: PiRpcSession): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const decoder = new StringDecoder('utf8'); let pending = '';
+        const stdin = session.child.stdin!; const originalWrite = stdin.write;
+        let expectedId: number | undefined;
+        const observeWrite: typeof stdin.write = (...args: Parameters<typeof stdin.write>) => {
+            try {
+                const row = JSON.parse(String(args[0]));
+                if (row.type === 'prompt' && typeof row.id === 'number') expectedId = row.id;
+            } catch { /* not a complete fixture command */ }
+            return Reflect.apply(originalWrite, stdin, args) as boolean;
+        };
+        stdin.write = observeWrite;
+        const cleanup = () => {
+            clearTimeout(timer); session.child.stdout?.off('data', receive); session.child.off('close', closed);
+            if (stdin.write === observeWrite) stdin.write = originalWrite;
+        };
+        const closed = () => { cleanup(); reject(new Error('fixture closed before prompt admission')); };
+        const receive = (chunk: Buffer) => {
+            pending += decoder.write(chunk);
+            if (pending.length > 65536) { cleanup(); reject(new Error('fixture admission overflow')); return; }
+            const lines = pending.split('\n'); pending = lines.pop() ?? '';
+            for (const line of lines) {
+                let row: Record<string, unknown>; try { row = JSON.parse(line); } catch { continue; }
+                if (expectedId !== undefined && row['type'] === 'response' && row['command'] === 'prompt'
+                    && row['success'] === true && row['id'] === expectedId) {
+                    cleanup(); resolve(); return;
+                }
+            }
+        };
+        const timer = setTimeout(() => { cleanup(); reject(new Error('fixture prompt admission deadline')); }, 5000);
+        session.child.stdout?.on('data', receive); session.child.once('close', closed);
+    });
 }
 
 test('persistent Pi RPC isolates each prompt promise and per-turn callback', async () => {
@@ -132,8 +191,10 @@ test('persistent Pi RPC isolates each prompt promise and per-turn callback', asy
 
 test('persistent Pi RPC rejects overlapping prompts', async () => {
     const session = spawnSession();
+    const admitted = promptAdmission(session);
     const active = session.sendPrompt('LONG');
     await assert.rejects(session.sendPrompt('SECOND'), /prompt already active/);
+    await admitted;
     session.kill();
     await assert.rejects(active, /session exited/);
 });
@@ -144,9 +205,11 @@ test('abort requires correlated acceptance and terminal completion', async () =>
     const session = spawnSession();
     let acknowledge!: () => void;
     const acknowledged = new Promise<void>(resolve => { acknowledge = resolve; });
+    const admitted = promptAdmission(session);
     const active = session.sendPrompt('LONG', { onRawRecord: raw => {
         if (asRecord(raw)['command'] === 'abort') acknowledge();
     } });
+    await admitted;
     const aborting = session.abort();
     let settled = false;
     void aborting.then(() => { settled = true; }, () => {});
@@ -167,7 +230,9 @@ test('abort requires correlated acceptance and terminal completion', async () =>
 test('abort rejection propagates so the pool caller can fall back to kill', async () => {
     process.env['PI_FAKE_ABORT_MODE'] = 'reject';
     const session = spawnSession();
+    const admitted = promptAdmission(session);
     const active = session.sendPrompt('LONG');
+    await admitted;
     await assert.rejects(session.abort(), /abort denied/);
     session.kill();
     await assert.rejects(active, /session exited/);
@@ -177,21 +242,29 @@ test('abort rejection propagates so the pool caller can fall back to kill', asyn
 test('abort ignores an uncorrelated success response', async () => {
     process.env['PI_FAKE_ABORT_MODE'] = 'wrong-id';
     const session = spawnSession();
+    const admitted = promptAdmission(session);
     const active = session.sendPrompt('LONG');
+    void active.catch(() => {}); // Own rejection even if an earlier assertion fails during shutdown.
+    await admitted;
     const aborting = session.abort();
     let settled = false;
     void aborting.then(() => { settled = true; }, () => {});
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal(settled, false);
+    const stopped = Promise.all([
+        assert.rejects(aborting, /session exited/),
+        assert.rejects(active, /session exited/),
+    ]);
     session.kill();
-    await assert.rejects(aborting, /session exited/);
-    await assert.rejects(active, /session exited/);
+    await stopped;
 });
 
 test('abort accepts a correlated success with an explicit non-running state', async () => {
     process.env['PI_FAKE_ABORT_MODE'] = 'non-running';
     const session = spawnSession();
+    const admitted = promptAdmission(session);
     const active = session.sendPrompt('LONG');
+    await admitted;
     await session.abort();
     await active;
     session.kill();
@@ -209,6 +282,7 @@ for (const fixture of [
     test(`abortEffective is false for ${fixture.name} capability evidence`, async () => {
         await fixture.prepare();
         const session = spawnSession();
+        await bounded(session.sendPrompt('CAPABILITY'), 'capability decision');
         assert.equal(session.abortEffective, false);
         session.kill();
     });
@@ -217,8 +291,20 @@ for (const fixture of [
 test('abortEffective is true only for fresh matching capability evidence', async () => {
     await writeCapability(validCapability());
     const session = spawnSession();
+    await bounded(session.sendPrompt('CAPABILITY'), 'capability decision');
     assert.equal(session.abortEffective, true);
     session.kill();
+});
+
+test('pre-admission abort cancels only the reserved prompt without an RPC abort or invented final', async () => {
+    const session = spawnSession(); const records: Array<Record<string, unknown>> = [];
+    const pending = session.sendPrompt('FIRST', { onRawRecord: raw => { records.push(asRecord(raw)); } });
+    await bounded(session.abort(), 'pre-admission abort');
+    const result = await bounded(pending, 'cancelled reservation');
+    assert.deepEqual(result.runtimeOutcome, { status: 'stopped', finalText: null, partialText: '' });
+    assert.equal(records.filter(row => row['command'] === 'prompt' || row['command'] === 'abort').length, 0);
+    assert.equal(session.alive, true, 'local cancellation need not poison a still-valid capability gate');
+    assert.equal((await bounded(session.sendPrompt('SECOND'), 'next admitted prompt')).text, 'reply:SECOND');
 });
 
 test('raw records precede accepted events and stay with their prompt even when the observer throws', async t => {
@@ -271,11 +357,13 @@ for (const scenario of [
         const session = spawnSession();
         const firstRaw: Array<Record<string, unknown>> = [];
         const newerRaw: Array<Record<string, unknown>> = [];
+        const admitted = promptAdmission(session);
         const first = session.sendPrompt('LONG', scenario.observeOld ? { onRawRecord: raw => {
             const record = asRecord(raw);
             firstRaw.push(record);
             if (scenario.newerPrompt && record['command'] === 'abort') throw new Error('abort observer failure');
         } } : {});
+        await admitted;
         const aborting = session.abort();
         let abortSettled = false;
         void aborting.then(() => { abortSettled = true; }, () => {});
@@ -285,8 +373,10 @@ for (const scenario of [
             await first;
             assert.equal(abortSettled, false, 'terminal alone cannot settle the abort waiter');
             if (scenario.newerPrompt) {
+                const nextAdmitted = promptAdmission(session);
                 newer = session.sendPrompt('LONG', { onRawRecord: raw => { newerRaw.push(asRecord(raw)); } });
                 void newer.then(() => { newerSettled = true; }, () => {});
+                await nextAdmitted;
             }
             control(session, 'test_release_abort');
             await aborting;
@@ -317,13 +407,17 @@ test('new active prompt without raw observer cannot fall back to the previous ab
     process.env['PI_FAKE_ABORT_MODE'] = 'terminal-first';
     const session = spawnSession();
     const oldRecords: Array<Record<string, unknown>> = [];
+    const admitted = promptAdmission(session);
     const first = session.sendPrompt('LONG', { onRawRecord: raw => { oldRecords.push(asRecord(raw)); } });
+    await admitted;
     const aborting = session.abort();
     let newer: ReturnType<PiRpcSession['sendPrompt']> | undefined;
     try {
         await first;
         const beforeNewPrompt = oldRecords.length;
+        const nextAdmitted = promptAdmission(session);
         newer = session.sendPrompt('LONG'); // Deliberately no raw observer.
+        await nextAdmitted;
         // The fake processes stdin in order: new prompt response, then old ACK.
         control(session, 'test_release_abort');
         await aborting;
@@ -354,6 +448,7 @@ for (const throws of [false, true]) {
             },
             onEvent: event => { order.push('event:' + event.kind); },
         });
+        trackChild(child);
         try {
             const result = await done;
             assert.equal(result.code, 0);
@@ -380,6 +475,7 @@ for (const oneShot of [false, true]) {
                     prompt: 'SAFE', model: DEFAULT_PI_PROFILE.model, cwd: fakeRoot,
                     root: join(fakeRoot, 'malformed-one-shot'),
                 });
+                trackChild(run.child);
                 cleanup = () => { run.child.kill(); };
                 assert.equal((await run.done).text, 'reply:SAFE');
             } else {
