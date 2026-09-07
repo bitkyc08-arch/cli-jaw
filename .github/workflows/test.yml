@@ -11,6 +11,7 @@ on:
       - preview
       - main
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   # Manual runs also start the advisory coverage job. publish.yml and the
   # release scripts only accept `--event push` runs, so a dispatch never
   # certifies a release.
@@ -23,10 +24,12 @@ concurrency:
 jobs:
   # This workflow carries no `paths-ignore` on purpose. A required status check
   # that is never produced for docs-only pull requests leaves them stuck on
-  # "Expected — Waiting for status" forever, so the workflow always starts and
-  # the cost is controlled by skipping the expensive job below instead.
+  # "Expected — Waiting for status" forever. Draft PRs produce skipped job
+  # records; admitted events run changes and the aggregate, with expensive
+  # producers skipped only when the change is confirmed docs-only.
   changes:
     name: changes
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -150,7 +153,7 @@ jobs:
   test:
     name: test ${{ matrix.shard }}/4
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     # A quarter of a suite that took 345s serially. A shard that needs longer
     # than this is wedged, not slow.
@@ -216,7 +219,7 @@ jobs:
   integration:
     name: integration
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -299,7 +302,7 @@ jobs:
   gates:
     name: gates
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -354,7 +357,7 @@ jobs:
   coverage:
     name: coverage (advisory)
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
@@ -409,7 +412,7 @@ jobs:
           path: coverage.txt
           if-no-files-found: warn
 
-  # Fast Windows unit lane on every code PR (#384). Before this, Windows tests
+  # Fast Windows unit lane on every non-draft code PR (#384). Before this, Windows tests
   # ran only in postinstall-platform.yml behind a literal paths: allowlist, so
   # a PR touching Windows behavior in unlisted files merged with zero Windows
   # CI. The file list lives in scripts/ci/windows-unit-manifest.txt and is
@@ -420,7 +423,7 @@ jobs:
   windows-unit:
     name: windows-unit
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -474,17 +477,17 @@ jobs:
   # silently detaches the ruleset, so the name is pinned explicitly instead of
   # being inherited from the job id.
   #
-  # It runs on every event this workflow accepts — including docs-only pull
-  # requests, where the producers are legitimately skipped — so a required
-  # check always has a run to wait for. The decision table lives in
+  # It runs on every admitted non-draft event, including docs-only pull requests
+  # where the producers are legitimately skipped. Draft PRs skip this job too;
+  # that skipped record is not passing test evidence. The decision table lives in
   # scripts/ci/aggregate-check.sh so tests/unit/ci-aggregate-rules.test.ts can
   # drive it; the checkout below is unconditional for that reason.
   ci-aggregate:
     name: ci-aggregate
     needs: [changes, test, integration, gates, windows-unit]
-    # `always()` rather than the default success() semantics: the point of this
-    # job is to report on upstream failures, so it must still run after one.
-    if: always()
+    # `always()` reports upstream failures on admitted events; the draft guard
+    # also suppresses this aggregate when all producer jobs are skipped on a draft.
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
