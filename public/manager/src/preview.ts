@@ -101,9 +101,11 @@ export function buildPreviewState(
         && originPreview.url
         && !prefersLegacyPreviewTransport();
     if (useOriginPort) {
+        const previewUrl = new URL(normalizePreviewUrlForCurrentHost(originPreview.url));
+        previewUrl.pathname = `${previewUrl.pathname.replace(/\/?$/, '/')}0`;
         return {
             canPreview: true,
-            src: appendPreviewTheme(normalizePreviewUrlForCurrentHost(originPreview.url), theme),
+            src: appendPreviewTheme(previewUrl.toString(), theme),
             reason: null,
             transport: 'origin-port',
             warning: 'origin proxy ready',
@@ -112,7 +114,7 @@ export function buildPreviewState(
     const basePath = proxy.basePath || '/i';
     return {
         canPreview: true,
-        src: appendPreviewTheme(`${basePath}/${instance.port}/`, theme),
+        src: appendPreviewTheme(`${basePath}/${instance.port}/0`, theme),
         reason: null,
         transport: 'legacy-path',
         warning: 'legacy proxy fallback',
