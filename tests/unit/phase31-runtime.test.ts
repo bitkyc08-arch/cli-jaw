@@ -1,5 +1,5 @@
 import { readSource } from './source-normalize.js';
-// Phase 3.1 runtime safeguards: startup migration + workingDir artifact regeneration
+// Phase 3.1 runtime safeguards: workingDir artifact regeneration
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
-const serverSrc = readSource(join(projectRoot, 'server.ts'), 'utf8');
 const runtimeSettingsSrc = readSource(join(projectRoot, 'src/core/runtime-settings.ts'), 'utf8');
 const builderSrc = readSource(join(projectRoot, 'src/prompt/builder.ts'), 'utf8');
 
@@ -19,12 +18,8 @@ function section(src: string, startMarker: string, endMarker: string) {
     return src.slice(start, end);
 }
 
-test('P31-001: startup migrates permissions safe -> auto', () => {
-    assert.match(
-        serverSrc,
-        /if\s*\(\s*settings\.permissions\s*===\s*['"]safe['"]\s*\)\s*{[\s\S]*settings\.permissions\s*=\s*['"]auto['"][\s\S]*saveSettings\(settings\)/,
-    );
-});
+// Startup policy preservation is exercised against the actual bootstrap source
+// in server-permission-startup.test.ts, including repeated starts.
 
 // The literal used to be `settings.workingDir`; it now reads from the snapshot
 // taken before the merge, which is the same guarantee expressed more precisely.

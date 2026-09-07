@@ -223,13 +223,6 @@ try {
     console.warn('[jaw:toolchain]', (e as Error).message);
 }
 
-// Phase 3.1: safe → auto 강제 마이그레이션 (기존 사용자 대응)
-if (settings["permissions"] === 'safe') {
-    settings["permissions"] = 'auto';
-    saveSettings(settings);
-    console.log('[jaw:migrate] permissions: safe → auto');
-}
-
 initPromptFiles();
 regenerateB();
 

@@ -14,6 +14,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 ## Current Runtime Notes
 
+The Classic permission selector saves explicit Auto/Safe choices. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.
+
 - Classic history restoration uses bounded targeted replay and preserves recorded
   scope; unrelated live runs continue. Exact saved answers come from the run+chat
   MESSAGE lookup, not redacted journal finals. Resolved-session loading and captured
