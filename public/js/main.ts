@@ -178,6 +178,19 @@ document.querySelector('.tab-bar')?.addEventListener('click', (e) => {
     const names = ['agents', 'skills'];
     if (names[idx]) switchTab(names[idx], btn);
 });
+// Roving tab order: ArrowLeft/ArrowRight move between the right-panel tabs (WAI-ARIA tabs pattern).
+document.querySelector('.tab-bar')?.addEventListener('keydown', (e) => {
+    const event = e as KeyboardEvent;
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const current = (event.target as HTMLElement)?.closest('.tab-btn') as HTMLElement | null;
+    if (!current) return;
+    const tabs = [...(current.parentElement?.children || [])].filter(c => c.classList.contains('tab-btn')) as HTMLElement[];
+    const next = tabs[(tabs.indexOf(current) + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    next.click();
+});
 
 document.getElementById('btnSettings')?.addEventListener('click', () => toggleSettingsPage());
 
