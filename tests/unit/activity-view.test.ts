@@ -86,7 +86,8 @@ test('tool fields and latest action render literal XSS text without HTML or mark
     assert.equal(rows(view.element)[0].querySelector('pre')?.textContent, [attack, attack, attack].join('\n'));
 });
 
-test('explicit disclosure and focused keyed tool survive replacement, growth and turn end', async () => {
+for (const ending of ['done', 'error'] as const) {
+test(`explicit disclosure and focused keyed tool survive replacement, growth and turn end (${ending}; A08)`, async () => {
     const { model, choices, view, group } = mount();
     tool(model, 'tool-0', 'old');
     view.render(model);
@@ -98,7 +99,7 @@ test('explicit disclosure and focused keyed tool survive replacement, growth and
     tool(model, 'tool-0', 'new', 'done');
     for (let i = 1; i <= 80; i++) tool(model, `tool-${i}`);
     view.render(model);
-    send(model, { kind: 'turn-end', status: 'done', finalText: 'Answer' });
+    send(model, { kind: 'turn-end', status: ending, finalText: 'Answer', ...(ending === 'error' ? { error: 'Later failure' } : {}) });
     view.render(model);
     assert.equal(rows(view.element)[0], row);
     assert.equal(row.querySelector('pre')?.textContent, 'new');
@@ -110,6 +111,144 @@ test('explicit disclosure and focused keyed tool survive replacement, growth and
     assert.equal(rows(view.element).length, 40);
     assert.match(group.firstElementChild!.textContent!, /read tool-80/);
     assert.match(group.firstElementChild!.textContent!, /81 retained previews/);
+});
+}
+
+test('A01: bounded terminal error is literal text outside collapsed Activity, never a final', () => {
+    const { model, view, group, answer, host } = mount();
+    const error = '<img src=x onerror="alert(1)"><script>alert(2)</script> **failed** ' + '경로'.repeat(400);
+    send(model, { kind: 'turn-end', status: 'error', error, finalText: 'FINAL_SENTINEL' });
+    view.render(model);
+    const notice = view.element.querySelector<HTMLElement>('.activity-error')!;
+    assert.equal(group.open, false);
+    assert.equal(notice.hidden, false);
+    assert.equal(notice.closest('details'), null);
+    assert.equal(notice.textContent, error.slice(0, 500));
+    assert.equal(notice.textContent.length, 500);
+    assert.equal(view.element.querySelector('img, script, strong, .activity-final'), null);
+    assert.doesNotMatch(view.element.textContent!, /FINAL_SENTINEL/);
+    assert.equal(host.querySelectorAll('.msg-content').length, 1);
+    assert.equal(host.querySelector('.msg-content'), answer);
+    assert.equal(answer.textContent, 'Canonical answer');
+});
+
+test('A02: stopped, successful and absent errors hide the notice; stopped override clears a prior error', () => {
+    for (const status of ['stopped', 'done', 'error'] as const) {
+        const { model, view } = mount();
+        send(model, { kind: 'turn-end', status, finalText: null, ...(status === 'error' ? {} : { error: 'Not a failure' }) });
+        view.render(model);
+        const notice = view.element.querySelector<HTMLElement>('.activity-error')!;
+        assert.equal(notice.hidden, true);
+        assert.equal(notice.textContent, '');
+    }
+    const { model, view } = mount();
+    send(model, { kind: 'turn-end', status: 'error', finalText: null, error: 'Failure summary' });
+    view.render(model);
+    assert.equal(view.element.querySelector<HTMLElement>('.activity-error')!.hidden, false);
+    assert.equal(view.element.querySelector('.activity-error')!.textContent, 'Failure summary');
+    view.render(model, { status: 'stopped', degraded: true });
+    assert.equal(view.element.querySelector<HTMLElement>('.activity-error')!.hidden, true);
+    assert.equal(view.element.querySelector('.activity-error')!.textContent, '');
+    assert.doesNotMatch(view.element.textContent!, /Failure summary/);
+    assert.equal(view.element.querySelector('.activity-status')!.textContent, 'Stopped');
+});
+
+test('A03: page clicks focus the enabled clicked button or the opposite button at either boundary', t => {
+    const { model, view, group } = mount();
+    for (let i = 0; i < 81; i++) tool(model, `tool-${i}`);
+    view.render(model);
+    group.open = true;
+    const previous = button(view.element, 'Earlier activity'), next = button(view.element, 'Later activity');
+    const focusPrevious = t.mock.method(previous, 'focus'), focusNext = t.mock.method(next, 'focus');
+    // No pre-focus: pointer clicks need the production focus handoff too.
+    previous.click();
+    assert.equal(previous.disabled, false);
+    assert.equal(document.activeElement, previous);
+    assert.deepEqual(focusPrevious.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+    previous.click();
+    assert.equal(previous.disabled, true);
+    assert.equal(document.activeElement, next);
+    assert.deepEqual(focusNext.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+    next.click();
+    assert.equal(next.disabled, false);
+    assert.equal(document.activeElement, next);
+    assert.deepEqual(focusNext.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+    next.click();
+    assert.equal(next.disabled, true);
+    assert.equal(document.activeElement, previous);
+    assert.deepEqual(focusPrevious.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+});
+
+test('A04: page click focuses summary when updated entries leave no enabled page control', t => {
+    const { model, view, group } = mount();
+    for (let i = 0; i < 41; i++) tool(model, `tool-${i}`);
+    view.render(model);
+    group.open = true;
+    const previous = button(view.element, 'Earlier activity'), next = button(view.element, 'Later activity');
+    const summary = group.querySelector('summary')!;
+    previous.focus();
+    model.entries.clear();
+    const focusSummary = t.mock.method(summary, 'focus');
+    previous.click();
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, true);
+    assert.equal(document.activeElement, summary);
+    assert.deepEqual(focusSummary.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+});
+
+test('A05: focused tool eviction restores summary focus and retains explicit disclosure choices', t => {
+    const { model, view, group, choices } = mount();
+    tool(model, 'tool-0'); view.render(model);
+    group.open = true;
+    const row = rows(view.element)[0], summary = group.querySelector('summary')!;
+    row.open = true;
+    row.querySelector('summary')!.focus();
+    const focusSummary = t.mock.method(summary, 'focus');
+    for (let i = 1; i <= 130; i++) tool(model, `tool-${i}`);
+    view.render(model);
+    assert.equal(model.entries.has('tool-0'), false);
+    assert.equal(row.isConnected, false);
+    assert.equal(document.activeElement, summary);
+    assert.deepEqual(focusSummary.mock.calls.at(-1)!.arguments, [{ preventScroll: true }]);
+    assert.equal(group.open, true);
+    assert.equal(choices.items.get('tool-0'), true);
+});
+
+test('A06: external page selection removes the focused last-page row and focuses summary', () => {
+    const { model, view, group, choices } = mount();
+    for (let i = 0; i < 81; i++) tool(model, `tool-${i}`);
+    view.render(model); group.open = true;
+    const row = rows(view.element)[0];
+    assert.equal(row.dataset.activityItemId, 'tool-80');
+    row.querySelector('summary')!.focus();
+    choices.page = 0; view.render(model);
+    assert.equal(row.isConnected, false);
+    assert.equal(rows(view.element)[0].dataset.activityItemId, 'tool-0');
+    assert.equal(document.activeElement, group.querySelector('summary'));
+});
+
+test('A07: streaming, eviction and error preserve external focus and unchanged status text node', t => {
+    const { model, view, group } = mount();
+    tool(model, 'tool-0', 'old'); view.render(model);
+    const external = document.createElement('button');
+    external.textContent = 'Outside Activity'; document.body.append(external);
+    const status = view.element.querySelector('.activity-status')!, statusText = status.firstChild;
+    assert.ok(statusText);
+    const focusSummary = t.mock.method(group.querySelector('summary')!, 'focus');
+    external.focus();
+    tool(model, 'tool-0', 'new'); view.render(model);
+    assert.equal(status.firstChild, statusText);
+    assert.equal(document.activeElement, external);
+    for (let i = 1; i <= 130; i++) tool(model, `tool-${i}`);
+    view.render(model);
+    assert.equal(model.entries.has('tool-0'), false);
+    assert.equal(status.firstChild, statusText);
+    assert.equal(document.activeElement, external);
+    assert.equal(focusSummary.mock.callCount(), 0);
+    send(model, { kind: 'turn-end', status: 'error', error: 'Read failed', finalText: null });
+    view.render(model);
+    assert.equal(document.activeElement, external);
+    assert.equal(focusSummary.mock.callCount(), 0);
 });
 
 test('explicit close and open choices persist across paging and DOM recycling', async () => {
