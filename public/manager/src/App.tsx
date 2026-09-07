@@ -248,8 +248,9 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         return window.confirm('Discard unsaved Settings changes?');
     }
 
-    function handlePreview(instance: DashboardInstance): void {
+    function handlePreview(instance: DashboardInstance, openDefaultSession = false): void {
         if (!canLeaveDirtySettings()) return;
+        if (openDefaultSession) { setPreviewEnabled(true); setAutoUnloadNotice(false); setPreviewRefreshKey(key => key + 1); }
         setSettingsDirty(false); activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port);
         view.setActiveDetailTab('preview'); view.setActivityDockCollapsed(true); view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port, selectedTab: 'preview', activityDockCollapsed: true });
@@ -475,8 +476,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             busyPorts={messageActivity.busyPorts} showLatestActivityTitles={view.showLatestActivityTitles}
             showInlineLabelEditor={view.showInlineLabelEditor} showSidebarRuntimeLine={view.showSidebarRuntimeLine}
             showSelectedRowActions={view.showSelectedRowActions} profiles={profiles} getLabel={instanceLabel}
-            onRouteToSettings={(port) => { /* 260806 D3: Active-row re-click → Settings */ view.setActiveDetailTab('settings'); void saveUi({ selectedPort: port, selectedTab: 'settings' }); }}
-            formatUptime={formatUptime} onSelect={handleSelectInstance} onPreview={handlePreview}
+            formatUptime={formatUptime} onSelect={handleSelectInstance} onPreview={(instance) => handlePreview(instance, true)}
             onMarkActivitySeen={activityUnread.markPortSeen} onInstanceLabelSave={labelEditor.saveInstanceLabel}
             onLifecycle={(action, instance) => void handleLifecycle(action, instance)} />
     );
