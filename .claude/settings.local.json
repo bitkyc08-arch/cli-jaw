@@ -1,8 +1,0 @@
-{
-  "enabledMcpjsonServers": [
-    "context7",
-    "tavily-remote-mcp",
-    "semantic-code-mcp",
-    "markdown-rag"
-  ]
-}

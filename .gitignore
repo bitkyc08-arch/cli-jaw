@@ -16,7 +16,9 @@ native/**/target/
 out/
 _INBOX/
 *.tgz
-.claude/worktrees/
+# Local agent settings and compiled-server convenience symlink
+/.claude/
+/server.js
 
 # build-local: entire directory (large native binaries)
 build-local/
