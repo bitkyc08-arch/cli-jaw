@@ -248,6 +248,17 @@ export async function runBurst(args: string[]): Promise<number> {
     const sockets = new Set<import('node:net').Socket>(), upstream = new Set<http.ClientRequest>();
     let requests: ReturnType<typeof probeRequestTracker<BrowserRequest>> | undefined;
     const requestFailures: unknown[] = [];
+    let diagnosticCycle: BurstCycle | null = null;
+    const disposalWindows: Array<{ cycle: BurstCycle | null; openedAt: number; closedAt: number | null }> = [];
+    let browserReadDiagnostics: unknown = null;
+    const requestStarts = new WeakMap<BrowserRequest, { at: number; cycle: BurstCycle | null }>();
+    const beginDisposal = () => {
+        const window = { cycle: diagnosticCycle && { ...diagnosticCycle }, openedAt: performance.now(), closedAt: null as number | null };
+        disposalWindows.push(window); requests?.beginDisposal(); return window;
+    };
+    const endDisposal = (window: typeof disposalWindows[number]) => {
+        requests?.endDisposal(); window.closedAt = performance.now();
+    };
     const fail = (message: string) => { if (unexpected.length < 64) unexpected.push(message.slice(0, 500)); };
     const ensureLive = () => {
         abort.signal.throwIfAborted();
@@ -422,12 +433,17 @@ export async function runBurst(args: string[]): Promise<number> {
         page.on('crash', () => { fail('renderer crashed'); abort.abort(Error('renderer crashed')); });
         page.on('console', message => { if (message.type() === 'error') fail('console:' + message.text()); });
         requests = probeRequestTracker<BrowserRequest>(uiOrigin);
-        page.on('request', request => requests!.started(request));
+        page.on('request', request => {
+            requestStarts.set(request, { at: performance.now(), cycle: diagnosticCycle && { ...diagnosticCycle } });
+            requests!.started(request);
+        });
         page.on('requestfinished', request => requests!.finished(request));
         page.on('requestfailed', request => {
             const error = request.failure()?.errorText;
             const classification = requests!.failed(request, error);
-            if (requestFailures.length < 64) requestFailures.push({ url: request.url().slice(0, 200), error, ...classification });
+            if (requestFailures.length < 64) requestFailures.push({ url: request.url().slice(0, 200), error, ...classification,
+                failedAt: performance.now(), cycle: diagnosticCycle && { ...diagnosticCycle },
+                started: requestStarts.get(request), readId: request.headers()['x-wp29-read-id'] ?? null });
             if (!classification.expected) fail('request:' + request.url().slice(0, 200) + ':' + error);
         });
         await page.goto(uiOrigin + '/burst-fixture', { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -442,6 +458,7 @@ export async function runBurst(args: string[]): Promise<number> {
         await assert.rejects(control('/__probe/prepare', { cycle: { phase: 'unknown', index: 1 } }), /HTTP400/);
         assert.equal((await control<BurstMetrics>('/__probe/metrics')).committed, beforeInvalid.committed);
         const runCycle = async (cycle: BurstCycle): Promise<void> => {
+            diagnosticCycle = { ...cycle };
             const started = Date.now();
             const binding = await control<BurstBinding>('/__probe/prepare', { cycle });
             assert.equal(binding.protocol, PROTOCOL); assert.deepEqual(binding.cycle, cycle);
@@ -495,9 +512,9 @@ export async function runBurst(args: string[]): Promise<number> {
                 await page!.screenshot({ path: path.join(output, 'preflight-latest.png') });
                 await assert.rejects(control(`/api/traces/${binding.runId}/events/${metrics.firstBulkTraceSeq}?session=wrong-session`), /HTTP404/);
             }
-            requests!.beginDisposal();
+            const disposalWindow = beginDisposal();
             const disposal = await bounded(page!.evaluate(() => window.__wp29Probe.disposeCycle()), 5000, 'browser disposal')
-                .finally(() => requests!.endDisposal());
+                .finally(() => endDisposal(disposalWindow));
             assert.equal(disposal.activeEventSources, 0); assert.equal(disposal.rootConnected, false); assert.equal(disposal.handlerCount, 0);
             assert.deepEqual(disposal.errors, []);
             assert.equal(disposal.retiredPending, cycle.phase === 'preflight' && cycle.index === 2);
@@ -523,11 +540,17 @@ export async function runBurst(args: string[]): Promise<number> {
     } catch (error) { fatal = error instanceof Error ? error.message : String(error); }
     finally {
         clearTimeout(watchdog); closing = true;
-        requests?.beginDisposal();
+        const teardownWindow = beginDisposal();
         const cleanupErrors: string[] = [];
         const clean = async (name: string, action: () => Promise<unknown>) => { try { await bounded(action(), 5000, name); } catch (error) { cleanupErrors.push(`${name}:${String(error)}`.slice(0, 500)); } };
         if (page && !page.isClosed()) await clean('page disposal', async () => { await page!.evaluate(() => window.__wp29Probe?.disposeCycle()); });
+        if (page && !page.isClosed()) await clean('read diagnostics', async () => {
+            const before = performance.now();
+            const browser = await page!.evaluate(() => window.__wp29Probe?.readDiagnostics());
+            browserReadDiagnostics = { nodeBefore: before, nodeAfter: performance.now(), browser };
+        });
         if (context) await clean('context close', () => context!.close());
+        endDisposal(teardownWindow);
         if (chrome?.alive && browserCdp) await clean('Browser.close', () => browserCdp!.send('Browser.close').catch(error => {
             if (chrome!.alive) throw error;
         }));
@@ -572,6 +595,7 @@ export async function runBurst(args: string[]): Promise<number> {
         write('samples.json', { initial, measured, final, rendererIdentity, rendererStable });
         write('preflight.json', preflight); write('cycles.json', cycles);
         write('request-failures.json', requestFailures);
+        write('request-diagnostics.json', { nodeTimeOrigin: performance.timeOrigin, disposalWindows, browserReadDiagnostics });
         const summary = { functional: fatal || unexpected.length ? 'FAIL' : 'PASS', fatal, unexpected,
             nodeRss: nodeMemory, rendererRss: rendererMemory, rendererScope: 'dedicated browser renderer RSS sum, not inferred page RSS',
             cleanup: certified ? 'CERTIFIED' : 'UNCERTIFIED', sourcesStable, output,

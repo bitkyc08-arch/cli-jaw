@@ -53,6 +53,7 @@ declare global {
             snapshot(): BurstBrowserSnapshot;
             disposeCycle(): Promise<BurstDisposal>;
             takeBulkCapture(): { receivedCount: number; html: string };
+            readDiagnostics(): { timeOrigin: number; now: number; reads: ProbeReadDiagnostic[]; disposals: ProbeDisposalDiagnostic[] };
         };
     }
 }
@@ -125,6 +126,14 @@ let lastSnapshot: BurstBrowserSnapshot | null = null;
 let disposing: Promise<BurstDisposal> | null = null;
 let localeReady: Promise<void> | null = null;
 let bulkCapture: { receivedCount: number; html: string } | null = null;
+interface ProbeReadDiagnostic {
+    id: string; path: string; cycle: BurstCycle; startedAt: number; endedAt: number | null;
+    doneAt: number | null; timeoutAt: number | null; cycleAbortAt: number | null;
+    requireFactAt: number | null; error: string | null;
+}
+interface ProbeDisposalDiagnostic { cycle: BurstCycle; enteredAt: number; abortAt: number | null }
+const readDiagnostics: ProbeReadDiagnostic[] = [], disposalDiagnostics: ProbeDisposalDiagnostic[] = [];
+let readSerial = 0;
 const pageErrors: string[] = [];
 function errorText(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 180);
@@ -160,13 +169,19 @@ function subscribe(topic: string, event: string | null, callback: (data: Record<
 
 // Per-request byte/time bounds; response payloads never enter retained telemetry.
 async function readJson(cycle: CycleState, path: string, limit: number): Promise<unknown> {
+    const diagnostic: ProbeReadDiagnostic = { id: String(++readSerial), path, cycle: { ...cycle.binding.cycle },
+        startedAt: performance.now(), endedAt: null, doneAt: null, timeoutAt: null, cycleAbortAt: null,
+        requireFactAt: null, error: null };
+    if (readDiagnostics.length === 128) readDiagnostics.shift();
+    readDiagnostics.push(diagnostic);
     const controller = new AbortController();
-    const abort = () => controller.abort();
+    const abort = () => { diagnostic.cycleAbortAt = performance.now(); controller.abort(); };
     cycle.abort.signal.addEventListener('abort', abort, { once: true });
     if (cycle.abort.signal.aborted) abort();
-    const timer = window.setTimeout(abort, 5000);
+    const timer = window.setTimeout(() => { diagnostic.timeoutAt = performance.now(); controller.abort(); }, 5000);
     try {
-        const response = await fetch(path, { signal: controller.signal, credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        const response = await fetch(path, { signal: controller.signal, credentials: 'same-origin',
+            headers: { Accept: 'application/json', 'x-wp29-read-id': diagnostic.id } });
         if (!response.ok || !response.headers.get('content-type')?.includes('json') || !response.body) {
             await response.body?.cancel(); throw new Error(`read_status_${response.status}`);
         }
@@ -177,8 +192,9 @@ async function readJson(cycle: CycleState, path: string, limit: number): Promise
         try {
             for (;;) {
                 const part = await reader.read();
-                if (part.done) { completed = true; break; }
+                if (part.done) { completed = true; diagnostic.doneAt = performance.now(); break; }
                 bytes += part.value.byteLength;
+                if (bytes > limit) diagnostic.requireFactAt = performance.now();
                 requireFact(bytes <= limit, 'read_size_limit');
                 text += decoder.decode(part.value, { stream: true });
             }
@@ -188,7 +204,10 @@ async function readJson(cycle: CycleState, path: string, limit: number): Promise
             if (!completed) await reader.cancel().catch(() => {});
             reader.releaseLock();
         }
+    } catch (error) {
+        diagnostic.error = errorText(error); throw error;
     } finally {
+        diagnostic.endedAt = performance.now();
         clearTimeout(timer); cycle.abort.signal.removeEventListener('abort', abort);
     }
 }
@@ -513,6 +532,9 @@ async function dispose(): Promise<BurstDisposal> {
     if (!cycle) return { activeEventSources, rootConnected: false, handlerCount: 0,
         retiredPending: !!retiredUnsubscribe, errors: activeEventSources ? ['disposal_source_still_active'] : [] };
     const disposalErrors: string[] = [];
+    const diagnostic: ProbeDisposalDiagnostic = { cycle: { ...cycle.binding.cycle }, enteredAt: performance.now(), abortAt: null };
+    if (disposalDiagnostics.length === 64) disposalDiagnostics.shift();
+    disposalDiagnostics.push(diagnostic);
     cycle.retired = true; cycle.ready = false;
     bulkCapture = null;
     if (cycle.binding.cycle.phase === 'preflight' && cycle.binding.cycle.index === 2 && cycle.unsubscribe) {
@@ -520,7 +542,7 @@ async function dispose(): Promise<BurstDisposal> {
         retiredUnsubscribe = cycle.unsubscribe; // One scalar-only retired callback for preflight3.
     } else cycle.unsubscribe?.();
     cycle.unsubscribe = null;
-    closeEventChannel(); cycle.abort.abort();
+    closeEventChannel(); diagnostic.abortAt = performance.now(); cycle.abort.abort();
     for (const timer of cycle.timers) clearTimeout(timer); cycle.timers.clear();
     for (const id of cycle.animationFrames) cancelAnimationFrame(id); cycle.animationFrames.clear();
     await cycle.rawPending;
@@ -577,7 +599,11 @@ configureLiveActivityHost({
             .finally(() => { cycle.rawPending = null; });
     },
 });
-window.__wp29Probe = Object.freeze({ prepare, snapshot, disposeCycle, takeBulkCapture() {
+window.__wp29Probe = Object.freeze({ prepare, snapshot, disposeCycle,
+readDiagnostics() { return { timeOrigin: performance.timeOrigin, now: performance.now(),
+    reads: readDiagnostics.map(row => ({ ...row, cycle: { ...row.cycle } })),
+    disposals: disposalDiagnostics.map(row => ({ ...row, cycle: { ...row.cycle } })) }; },
+takeBulkCapture() {
     requireFact(bulkCapture, 'bulk_capture_unavailable');
     const capture = bulkCapture; bulkCapture = null; return capture;
 } });
