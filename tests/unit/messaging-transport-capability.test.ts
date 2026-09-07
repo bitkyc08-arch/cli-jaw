@@ -57,7 +57,7 @@ test('manager transport chips parse health.channels', () => {
 });
 
 test('shared settings channel pages expose live transport capability', () => {
-    assert.match(read('public/index.html'), /class="settings-frame" src="dist\/settings\/index.html"/);
+    assert.match(read('public/index.html'), /id="settingsPage" class="settings-page"[\s\S]*?src="dist\/settings\/index.html"/);
     for (const channel of ['telegram', 'discord', 'slack']) {
         const page = read(`public/manager/src/settings/pages/Channels${channel[0]!.toUpperCase()}${channel.slice(1)}.tsx`);
         assert.match(page, new RegExp(`<TransportStatusChips[^>]*channel="${channel}"`));
