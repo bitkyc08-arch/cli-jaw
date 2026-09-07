@@ -12,7 +12,7 @@ const identity = { version: 1 as const, sessionId: 'chat-a', scope: 'local:chat-
 function send(model: ActivityState, body: RuntimeEventBody): void {
     assert.equal(applyActivityEvent(model, { ...identity, ...body, seq: model.seq + 1 }), true);
 }
-function tool(model: ActivityState, id: string, output = '결과', status: RuntimeItemStatus = 'running'): void {
+function tool(model: ActivityState, id: string, output = '결과', status: RuntimeItemStatus = 'done'): void {
     send(model, { kind: 'tool', itemId: id, name: `read ${id}`, output, status });
 }
 function mount(inspect?: (state: ActivityState) => void) {
@@ -387,7 +387,7 @@ test('status distinguishes terminal outcomes without rewriting unfinished tools;
     assert.match(classified.detail,/RAW_STACK_SENTINEL/);
     for (const [status, label] of [['done', 'Complete'], ['stopped', 'Stopped'], ['error', 'Failed']] as const) {
         const { model, view } = mount();
-        tool(model, 'unfinished');
+        tool(model, 'unfinished', '결과', 'running');
         send(model, { kind: 'turn-end', status, finalText: null, error: classified.message });
         view.render(model);
         assert.match(view.element.querySelector('.activity-status')!.textContent!, new RegExp(`^${label}`));
@@ -470,4 +470,69 @@ test('empty stopped/error turns never claim partial output was retained', () => 
         assert.equal(rows(view.element).length, 0);
         assert.equal(view.element.querySelector('.activity-final'), null);
     }
+});
+
+test('running auto-open is not an explicit choice; manual close survives replace and recycle', async () => {
+    const { model, view, choices, host } = mount();
+    tool(model, 'a', 'first', 'running'); view.render(model);
+    const row = rows(view.element)[0]!; assert.equal(row.open, true); assert.equal(choices.items.size, 0); assert.equal(choices.page, null);
+    await toggle(row, false); assert.equal(choices.items.get('a'), false);
+    tool(model, 'a', 'next', 'running'); view.render(model);
+    assert.equal(rows(view.element)[0], row); assert.equal(row.open, false);
+    view.dispose(); const restored = createActivityView(host, choices); restored.render(model);
+    assert.equal(rows(restored.element)[0]!.open, false); restored.dispose();
+});
+test('unselected running closes on done; explicit open stays and pins its page', async () => {
+    const { model, view, choices } = mount();
+    tool(model, 'a', '', 'running'); view.render(model);
+    tool(model, 'a', 'done', 'done'); view.render(model);
+    assert.equal(rows(view.element)[0]!.open, false); assert.equal(choices.page, null);
+    await toggle(rows(view.element)[0]!, true);
+    tool(model, 'b'); view.render(model); assert.equal(rows(view.element)[0]!.open, true); assert.equal(choices.items.get('a'), true); assert.equal(choices.page, 0);
+});
+test('standalone grows into a keyed group without losing summary focus; group toggles independently', () => {
+    const { model, view, group } = mount(); tool(model, 'a'); view.render(model); group.open = true;
+    const row = rows(view.element)[0]!, head = row.querySelector('summary')!; head.focus();
+    tool(model, 'b'); view.render(model);
+    assert.equal(rows(view.element)[0], row); assert.equal(document.activeElement, head);
+    const button = view.element.querySelector<HTMLButtonElement>('.activity-group-summary')!;
+    assert.equal(button.querySelector('.activity-row-label')!.textContent, 'Read 2 files');
+    button.click(); assert.equal(button.getAttribute('aria-expanded'), 'false');
+    assert.equal(view.element.querySelector<HTMLElement>('.activity-group-body')!.hidden, true);
+    tool(model, 'b', 'updated'); view.render(model); assert.equal(button.getAttribute('aria-expanded'), 'false');
+    button.click(); model.entries.delete('b'); view.render(model); assert.equal(rows(view.element)[0], row); assert.equal(view.element.querySelector('.activity-group'), null);
+});
+test('R-05 renders Read, Edited and Worked on and updates the same group after name changes', () => {
+    const { model, view } = mount();
+    const label = () => view.element.querySelector('.activity-group-summary .activity-row-label')!.textContent;
+    const put = (itemId: string, name: string) => send(model, { kind: 'tool', itemId, name, status: 'done' });
+    put('a', 'cat'); view.render(model);
+    const first = rows(view.element)[0]!;
+    assert.equal(first.querySelector('.activity-row-label')!.textContent, 'Read cat');
+    put('b', 'view'); view.render(model);
+    const group = view.element.querySelector('.activity-group');
+    assert.equal(label(), 'Read 2 files');
+    put('b', 'patch'); view.render(model);
+    assert.equal(label(), 'Worked on 2 files');
+    assert.equal(rows(view.element)[1]!.querySelector('.activity-row-label')!.textContent, 'Edited patch');
+    put('a', 'apply_patch'); view.render(model);
+    assert.equal(label(), 'Edited 2 files');
+    assert.equal(rows(view.element)[0], first);
+    assert.equal(view.element.querySelector('.activity-group'), group);
+    model.entries.delete('b'); view.render(model);
+    assert.equal(view.element.querySelector('.activity-group'), null);
+    assert.equal(first.querySelector('.activity-row-label')!.textContent, 'Edited apply_patch');
+    view.dispose();
+});
+test('reasoning/message split groups, use icons and retain literal bounded preview', () => {
+    const { model, view } = mount(); tool(model, 'a'); tool(model, 'b');
+    send(model, { kind: 'reasoning', itemId: 'r', text: 'Plan', operation: 'replace' }); tool(model, 'c');
+    send(model, { kind: 'message', itemId: 'm', text: '<script>literal</script>', phase: 'commentary', operation: 'replace' });
+    tool(model, 'd', 'x'.repeat(3500)); view.render(model);
+    assert.equal(view.element.querySelectorAll('.activity-group').length, 1);
+    assert.equal(view.element.querySelectorAll('.activity-row-reasoning').length, 1); assert.equal(view.element.querySelectorAll('.activity-row-message').length, 1);
+    assert.equal(view.element.querySelector('script'), null); assert.equal(view.element.querySelectorAll('.activity-row-icon svg').length, 7);
+    const pre = rows(view.element).at(-1)!.querySelector('pre')!;
+    assert.equal(pre.textContent, 'x'.repeat(3000) + '\n[Preview limited; some text is omitted]');
+    assert.equal(pre.tabIndex, 0); assert.equal(view.element.querySelector<HTMLElement>('.activity-omitted')!.hidden, false);
 });

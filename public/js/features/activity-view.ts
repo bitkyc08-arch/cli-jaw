@@ -1,6 +1,6 @@
-import {
-    activityEntryLabel, activityEntryText, activityStatus, type ActivityState,
-} from '../../../src/shared/activity-state.js';
+import { activityEntryText, activityStatus, type ActivityState } from '../../../src/shared/activity-state.js';
+import { groupActivityEntries } from '../../../src/shared/activity-kind.js';
+import { createActivityRow, updateActivityRow, createActivityRows } from './activity-rows.js';
 import type { RuntimeItemStatus } from '../../../src/shared/runtime-contract.js';
 import { hydrateIcons } from '../icons.js';
 
@@ -16,11 +16,12 @@ const PREVIEW_CHARS = 3000;
 
 export const createActivityChoices = (): ActivityChoices => ({ open: false, items: new Map(), page: null });
 
-export function rememberActivityChoice(choices: ActivityChoices, id: string, open: boolean): boolean {
-    // Closed is the default; saturation never evicts an existing explicit choice.
-    if (!open) { choices.items.delete(id); return true; }
+export function rememberActivityChoice(choices: ActivityChoices, id: string, open: boolean, running = false): boolean {
+    // Closed is the default for finished items; a running item remembers an explicit close.
+    // Saturation never evicts an existing explicit choice.
+    if (!open && !running) { choices.items.delete(id); return true; }
     if (!choices.items.has(id) && choices.items.size >= MAX_CHOICES) return false;
-    choices.items.set(id, true);
+    choices.items.set(id, open);
     return true;
 }
 
@@ -107,22 +108,25 @@ export function createActivityView(
     let disposed = false;
     let choicesFull = false;
     const nodes = new Map<string, HTMLDetailsElement>();
+    const rowLayout = createActivityRows(doc, list);
+    const renderedOpen = new WeakMap<HTMLDetailsElement, boolean>();
 
     function updateChoiceNotice(): void {
         choiceNotice.hidden = !choicesFull;
         text(choiceNotice, choicesFull
-            ? '128 details are remembered open. Close one before opening another; existing choices are preserved.' : '');
+            ? '128 detail choices are remembered. Close a completed open item to free a choice; existing choices are preserved.' : '');
     }
     function saveItem(id: string, node: HTMLDetailsElement): void {
-        if (disposed || nodes.get(id) !== node || node.open === (choices.items.get(id) === true)) return;
-        if (!rememberActivityChoice(choices, id, node.open)) {
-            node.open = false;
+        if (disposed || nodes.get(id) !== node || node.open === renderedOpen.get(node)) return;
+        const running = node.dataset['status'] === 'running';
+        if (!rememberActivityChoice(choices, id, node.open, running)) {
+            node.open = renderedOpen.get(node) ?? false;
             choicesFull = true;
         } else {
             choicesFull = false;
             if (node.open && choices.page === null) choices.page = displayedPage;
         }
-        updateChoiceNotice();
+        renderedOpen.set(node, node.open); updateChoiceNotice();
     }
     function saveChoices(): void {
         // Native toggle is queued. Capture synchronous open changes before recycle/end.
@@ -188,6 +192,7 @@ export function createActivityView(
         const visible = entries.slice(displayedPage * PAGE_SIZE, (displayedPage + 1) * PAGE_SIZE);
         const wanted = new Set(visible.map(entry => entry.itemId));
         const focused = doc.activeElement;
+        const focusedInside = focused !== null && list.contains(focused);
         let focusedRowRemoved = false;
         for (const [id, node] of nodes) {
             if (!wanted.has(id)) {
@@ -197,24 +202,26 @@ export function createActivityView(
                 nodes.delete(id);
             }
         }
-        for (const [index, entry] of visible.entries()) {
+        rowLayout.render(groupActivityEntries(visible), entry => {
             let node = nodes.get(entry.itemId);
             if (!node) {
-                node = element('details', 'activity-item');
-                node.dataset['activityItemId'] = entry.itemId;
-                node.append(element('summary', 'activity-item-summary'), element('pre', 'activity-item-text'));
-                node.open = choices.items.get(entry.itemId) === true;
+                node = createActivityRow(doc, entry.itemId);
                 const itemNode = node;
                 node.ontoggle = () => saveItem(entry.itemId, itemNode);
                 nodes.set(entry.itemId, node);
             }
-            text(node.querySelector('summary')!, activityEntryLabel(entry));
-            const full = activityEntryText(entry);
-            text(node.querySelector('pre')!, full.length > PREVIEW_CHARS
-                ? `${full.slice(0, PREVIEW_CHARS)}\n[Preview limited; some text is omitted]` : full);
-            // Leave existing nodes in place so streamed replacements preserve focus.
-            if (list.children[index] !== node) list.insertBefore(node, list.children[index] ?? null);
-        }
+            updateActivityRow(node, entry, PREVIEW_CHARS);
+            const open = choices.items.get(entry.itemId) ?? (entry.kind === 'tool' && entry.status === 'running');
+            renderedOpen.set(node, open);
+            if (node.open !== open) node.open = open;
+            return node;
+        });
+        const hiddenGroup = focused?.closest<HTMLElement>('.activity-group-body[hidden]');
+        if (focusedInside && hiddenGroup) {
+            (hiddenGroup.previousElementSibling as HTMLButtonElement).focus({ preventScroll: true });
+        } else if (focusedInside && focused?.isConnected && doc.activeElement !== focused) {
+            (focused as HTMLElement).focus({ preventScroll: true });
+        } else if (focusedInside && !focused?.isConnected) focusedRowRemoved = true;
         empty.hidden = entries.length !== 0;
         previous.disabled = displayedPage === 0;
         next.disabled = displayedPage >= last;
@@ -232,6 +239,7 @@ export function createActivityView(
         previous.onclick = next.onclick = null;
         if (historyButton) historyButton.onclick = null;
         for (const node of nodes.values()) node.ontoggle = null;
+        rowLayout.dispose();
         nodes.clear();
         current = null;
         root.remove();
