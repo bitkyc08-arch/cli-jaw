@@ -134,7 +134,8 @@ import {
     type KiroStreamEvent,
 } from './kiro-runtime.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
-import { normalizePiSettings, spawnPiRpc } from './pi-runtime.js';
+import { normalizePiSettings, spawnPiRpc, type PiExecutionCleanupReceipt } from './pi-runtime.js';
+import * as piExecutionControls from './pi-runtime.js';
 import { piFailureOutcome } from './runtime/pi-turn.js';
 import { getEmployeeMcpServers } from './mcp-passthrough.js';
 
@@ -150,6 +151,15 @@ const DUP_REGISTRATION_KILL_REASON = 'dup-registration';
 /** Grace before escalating that kill to SIGKILL, matching the sibling kill paths. */
 const DUP_REGISTRATION_KILL_GRACE_MS = 2_000;
 
+function cancelOwnedPiProcess(child: ChildProcess, reason?: string): boolean {
+    const cancel = piExecutionControls.cancelPiExecution;
+    if (typeof cancel !== 'function') return false;
+    const live = !hasChildExited(child);
+    if (!cancel(child)) return false;
+    if (live && child.pid && reason) killReasons.set(child.pid, reason);
+    return true;
+}
+
 function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
     // Defensive: the concrete spawn site should already own this child, and
     // ownProcess is memoized, so this returns that existing owner rather than
@@ -162,7 +172,9 @@ function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
         // Treating it as exited would drop that survivor from the map without
         // even scheduling the escalation below — the exact invisible process
         // this branch exists to prevent.
-        if (hasChildExited(prev)) {
+        if (cancelOwnedPiProcess(prev, DUP_REGISTRATION_KILL_REASON)) {
+            // Its captured pair owns cleanup; never start a second tree timer.
+        } else if (hasChildExited(prev)) {
             activeProcesses.delete(agentLabel);
         } else {
             // Dropping a live child from the map makes it invisible to
@@ -421,6 +433,7 @@ export function killAgentById(agentId: string): boolean {
     const proc = activeProcesses.get(agentId);
     if (!proc) return false;
     try {
+        if (cancelOwnedPiProcess(proc, 'user')) return true;
         if (proc.pid) {
             killProcessTree(proc.pid, 'SIGTERM');
         } else {
@@ -740,6 +753,7 @@ export function killAllAgents(reason = 'user') {
     for (const [id, proc] of activeProcesses) {
         console.log(`[jaw:killAll] killing ${id}, reason=${reason}`);
         if (proc.pid) killReasons.set(proc.pid, reason);
+        if (cancelOwnedPiProcess(proc, reason)) { killed++; continue; }
         // Same owner contract as killActiveAgent: tree walk now, escalation
         // after the grace, guarded by real exit state rather than `killed`.
         ownProcess(proc, {
@@ -1697,6 +1711,23 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Employees must NOT see the Boss's instruction files.
     let spawnCwd = settings["workingDir"];
     let claudeEmployeeTmpDir: string | undefined;
+    let piEmployeeTmp: { path: string; dev: bigint; ino: bigint } | undefined;
+    const cleanupPiEmployee = () => {
+        if (!piEmployeeTmp) return;
+        const owned = piEmployeeTmp;
+        try {
+            const stat = fs.lstatSync(owned.path, { bigint: true });
+            if (!stat.isDirectory() || stat.isSymbolicLink() || stat.dev !== owned.dev || stat.ino !== owned.ino
+                || fs.realpathSync(owned.path) !== owned.path) {
+                console.warn('[jaw:pi] retaining employee cwd: directory ownership changed', owned.path); return;
+            }
+            fs.rmSync(owned.path, { recursive: true });
+            piEmployeeTmp = undefined;
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+            console.warn('[jaw:pi] retaining employee cwd: cleanup failed', owned.path);
+        }
+    };
 
     if (opts.agentId && (customSysPrompt || sysPrompt)) {
         const empPrompt = customSysPrompt || sysPrompt;
@@ -1704,11 +1735,21 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ? `${opts.workspaceContext}\n\n${empPrompt}`
             : empPrompt;
         const nativeClaude = runtimeTransport === 'native' && cli === 'claude';
-        const tmpDir = nativeClaude
-            ? fs.mkdtempSync(join(os.tmpdir(), `jaw-emp-${agentLabel.slice(0, 80).replace(/[^\w.-]/g, '_')}-`))
+        const tmpDir = nativeClaude || cli === 'pi'
+            ? fs.mkdtempSync(join(cli === 'pi' ? fs.realpathSync(os.tmpdir()) : os.tmpdir(),
+                `jaw-emp-${agentLabel.slice(0, 80).replace(/[^\w.-]/g, '_')}-`))
             : join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
         fs.mkdirSync(tmpDir, { recursive: true });
         if (nativeClaude) claudeEmployeeTmpDir = tmpDir;
+        if (cli === 'pi') {
+            const created = fs.lstatSync(tmpDir, { bigint: true });
+            if (!created.isDirectory() || created.isSymbolicLink()) throw new Error('Pi employee cwd ownership unavailable');
+            const canonical = fs.realpathSync(tmpDir);
+            const stat = fs.lstatSync(canonical, { bigint: true });
+            if (canonical !== tmpDir || !stat.isDirectory() || stat.isSymbolicLink()
+                || stat.dev !== created.dev || stat.ino !== created.ino) throw new Error('Pi employee cwd ownership unavailable');
+            piEmployeeTmp = { path: canonical, dev: stat.dev, ino: stat.ino };
+        }
 
         for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
             fs.writeFileSync(join(tmpDir, name), empPromptWithWorkspace);
@@ -1722,7 +1763,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             // Non-fatal: the absolute Project root in Workspace Context remains authoritative.
         }
 
-        spawnCwd = tmpDir;
+        spawnCwd = cli === 'pi' ? piEmployeeTmp!.path : tmpDir;
         console.log(`[jaw:${agentLabel}] Employee isolated → ${tmpDir}`);
     }
 
@@ -2575,7 +2616,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             if (event.kind === 'session') ctx.sessionId = event.sessionId;
         };
         type PiTurnResult = { text: string; stderr: string; code: number; sessionId?: string | null; runtimeOutcome?: RuntimeTurnOutcome };
-        const runPiTurn = (child: ChildProcess, done: Promise<PiTurnResult>, lease: PiLease | null): void => {
+        const runPiTurn = (child: ChildProcess, done: Promise<PiTurnResult>, lease: PiLease | null,
+            directCleanup: Promise<PiExecutionCleanupReceipt> | null): void => {
             let leaseCancel: Promise<void> | null = null;
             let cleanupDone = false, queueRequested = false;
             let selectedResult: SpawnPromiseResult | undefined;
@@ -2591,6 +2633,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             const requestCancel = (): Promise<void> => {
                 if (cleanupDone) return Promise.resolve();
                 if (!lease) {
+                    if (cancelOwnedPiProcess(child)) return Promise.resolve();
                     if (child.pid) {
                         const pid = child.pid;
                         killProcessTree(pid, 'SIGTERM');
@@ -2643,7 +2686,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     if (mainRun?.cancelTurn === cancelHook) delete mainRun.cancelTurn;
                     consumeKillReason(child.pid);
                     if (lease) lease.release();
-                    else cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                    else {
+                        let receipt: PiExecutionCleanupReceipt | undefined;
+                        try { receipt = await directCleanup ?? undefined; }
+                        catch { /* Missing/rejected evidence never authorizes deletion. */ }
+                        if (receipt?.cwdDisposition === 'removable') cleanupPiEmployee();
+                        else console.warn('[jaw:pi] retaining employee cwd: physical cleanup unconfirmed', spawnCwd);
+                    }
                 }
             };
             done.then(async (result) => {
@@ -2752,11 +2801,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             } catch (error) {
                 activity.close({ kind: 'turn-end', status: 'error', finalText: null, error: 'Pi process creation failed' });
                 finalizeTraceRun(traceRunId, 'error', 'Pi process creation failed');
-                cleanupEmployeeTmpDir(spawnCwd, settings["workingDir"], agentLabel);
+                cleanupPiEmployee();
                 throw error;
             }
-            const { child, done } = execution;
-            runPiTurn(child, done, null);
+            const { child, done, cleanup } = execution;
+            runPiTurn(child, done, null, cleanup ?? null);
             return { child, promise: resultPromise };
         }
 
@@ -2802,7 +2851,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 done = lease.session.sendPrompt(piPrompt, { effort, onEvent: onPiEvent, onRawRecord: onPiRawRecord })
                     .then((result): PiTurnResult => ({ ...result, code: 0, sessionId: lease.session.sessionId }));
             } catch (error) { done = Promise.reject(error); }
-            runPiTurn(lease.session.child, done, lease);
+            runPiTurn(lease.session.child, done, lease, null);
         }).catch((err: Error) => {
             mainRun!.starting = false;
             console.error(`[jaw:pi:pool] acquire failed: ${err.message}`);

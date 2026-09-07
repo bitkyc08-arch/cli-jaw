@@ -2,7 +2,9 @@ import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import childProcess, { type ChildProcess } from 'node:child_process';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PiRpcSession } from '../../src/agent/pi-runtime.ts';
@@ -11,12 +13,32 @@ const root = mkdtempSync(join(tmpdir(),'pi-spawn-finality-'));
 const binary = join(root,'pi.mjs');
 writeFileSync(binary, `#!/usr/bin/env node
 import readline from 'node:readline';
-if(process.argv.includes('--version')) {console.log('0.83.0');process.exit(0);}
+import fs from 'node:fs';
+const note = type => {if(process.env.PI_SPAWN_VERSION_LEDGER) fs.appendFileSync(process.env.PI_SPAWN_VERSION_LEDGER, type+'\\n');};
+if(process.argv.includes('--version')) {
+ if(process.env.PI_SPAWN_HOLD_VERSION==='1') {
+  process.on('SIGTERM',()=>note('version-stop'));
+  note('version-start');
+  const deadline=Date.now()+4000;
+  while(!fs.existsSync(process.env.PI_SPAWN_VERSION_RELEASE)) {
+   if(Date.now()>deadline){note('version-expired');process.exit(97);}
+   await new Promise(resolve=>setTimeout(resolve,10));
+  }
+ }
+ note('version-finish');console.log('0.83.0');process.exit(0);
+}
+if(process.env.PI_SPAWN_IGNORE_RPC_TERM==='1') {
+ process.on('SIGTERM',()=>note('rpc-term-ignored'));
+ setInterval(()=>{},1000); // Also survive EOF: Stop must reach the paired owner's escalation.
+ setTimeout(()=>{note('rpc-expired');process.exit(97);},8000);
+}
+note('rpc-ready');
 const send = row => console.log(JSON.stringify(row));
 for await(const line of readline.createInterface({input:process.stdin})) {
  const r = JSON.parse(line);
  if(r.type==='get_state') send({id:r.id,type:'response',command:r.type,success:true,data:{sessionId:'private-session'}});
  if(r.type==='prompt') {
+  note('prompt');
   send({type:'agent_start'});
   send({type:'message_update',assistantMessageEvent:{type:'text_delta',delta:'PROVISIONAL /goal done'}});
   if(process.env.PI_SPAWN_HOLD==='1') continue;
@@ -33,11 +55,31 @@ const config = await import('../../src/core/config.ts');
 test.mock.module('../../src/core/config.js',{namedExports:{...config,detectCli:() => ({available:true,path:null})}});
 const pi = await import('../../src/agent/pi-runtime.ts');
 const sessions: PiRpcSession[] = [];
+const physicalChildren = new Map<ChildProcess, { closed: boolean; done: Promise<void> }>();
+let cleanupSafe = true;
+function trackChild(child: ChildProcess): void {
+    if(physicalChildren.has(child)) return;
+    const state={closed:false,done:Promise.resolve()};
+    state.done=new Promise(resolve=>child.once('close',()=>{state.closed=true;resolve();}));
+    physicalChildren.set(child,state);
+}
+async function bounded<T>(promise:Promise<T>,label:string):Promise<T>{
+    let timer:ReturnType<typeof setTimeout>;
+    try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error(`fixture ${label} deadline`)),7000);})]);}
+    finally{clearTimeout(timer!);}
+}
+async function until(predicate:()=>boolean,label:string):Promise<void>{
+    const deadline=Date.now()+5000;
+    while(!predicate()){
+        if(Date.now()>=deadline)throw Error(`fixture ${label} deadline`);
+        await new Promise(resolve=>setTimeout(resolve,10));
+    }
+}
 const directDirectories: string[] = [];
 let onText: (() => void) | undefined;
 test.mock.module('../../src/agent/pi-runtime.js',{namedExports:{...pi,
     spawnPiRpc:(...args: Parameters<typeof pi.spawnPiRpc>) => {
-        directDirectories.push(args[2].cwd); return pi.spawnPiRpc(...args);
+        directDirectories.push(args[2].cwd); const execution=pi.spawnPiRpc(...args);trackChild(execution.child);return execution;
     },
     spawnPersistentPiRpc:(...args: Parameters<typeof pi.spawnPersistentPiRpc>) => {
         const session = pi.spawnPersistentPiRpc(...args);
@@ -45,7 +87,7 @@ test.mock.module('../../src/agent/pi-runtime.js',{namedExports:{...pi,
         session.sendPrompt = (message,opts) => send(message,{...opts,onEvent:event => {
             opts?.onEvent?.(event); if(event.kind==='text') onText?.();
         }});
-        sessions.push(session); return session;
+        sessions.push(session);trackChild(session.child);return session;
     },
 }});
 const trace = await import('../../src/trace/store.ts');
@@ -66,7 +108,7 @@ test.mock.module('../../src/trace/activity-journal.js',{namedExports:{...journal
     },
 }});
 const { createChatSession, setActiveChatSession } = await import('../../src/core/chat-sessions.ts');
-const {spawnAgent,killActiveAgent,waitForExitSettled,activeMainProcesses} = await import('../../src/agent/spawn.ts');
+const {spawnAgent,killActiveAgent,killAgentById,waitForExitSettled,activeMainProcesses} = await import('../../src/agent/spawn.ts');
 const {db,getMaxMessageId,getSteerSalvageAfter} = await import('../../src/core/db.ts');
 const {subscribe} = await import('../../src/core/event-bus.ts');
 const {clearGoalTimers} = await import('../../src/agent/lifecycle-handler.ts');
@@ -74,6 +116,8 @@ const {poolStats} = await import('../../src/agent/runtime-pool.ts');
 let serial = 0;
 test.beforeEach(context => {
     failRawTrace=false;failActivityJournal=false;rawFailures=0;journalFailures=0;directDirectories.length=0;onText=undefined;delete process.env.PI_SPAWN_HOLD;
+    delete process.env.PI_SPAWN_HOLD_VERSION;delete process.env.PI_SPAWN_VERSION_LEDGER;delete process.env.PI_SPAWN_VERSION_RELEASE;
+    delete process.env.PI_SPAWN_IGNORE_RPC_TERM;
     config.settings.workingDir = root;mkdirSync(join(root,'prompts'),{recursive:true});
     mkdirSync(join(config.JAW_HOME,'prompts'),{recursive:true});
     config.settings.fallbackOrder=[];config.settings.activeOverrides={};
@@ -86,15 +130,22 @@ test.beforeEach(context => {
 });
 test.afterEach(async () => {
     onText=undefined;clearGoalTimers();
-    for(const session of sessions.splice(0)) {
-        if(session.child.exitCode!==null || session.child.signalCode!==null) continue;
-        const closed=once(session.child,'close');session.kill();await closed;
-    }
+    try {
+        for(const session of sessions.splice(0)) {session.kill();await bounded(Promise.resolve(session.close()),'session cleanup');}
+        for(const [child,state] of physicalChildren) {
+            if(!state.closed&&child.exitCode===null&&child.signalCode===null)child.kill('SIGTERM');
+            await bounded(state.done,'physical close');
+        }
+    } catch(error){cleanupSafe=false;throw error;}
+    finally{physicalChildren.clear();}
     assert.equal(poolStats().busy,0);
 });
 test.after(() => {
     if(previousBin===undefined) delete process.env.PI_CODING_AGENT_BIN;else process.env.PI_CODING_AGENT_BIN=previousBin;
-    delete process.env.PI_SPAWN_HOLD;rmSync(root,{recursive:true,force:true});
+    delete process.env.PI_SPAWN_HOLD;delete process.env.PI_SPAWN_HOLD_VERSION;
+    delete process.env.PI_SPAWN_VERSION_LEDGER;delete process.env.PI_SPAWN_VERSION_RELEASE;
+    delete process.env.PI_SPAWN_IGNORE_RPC_TERM;
+    if(cleanupSafe)rmSync(root,{recursive:true,force:true});
 });
 function options() {
     const id=++serial;
@@ -221,4 +272,93 @@ test('real employee direct Pi uses typed final and cleans its owned temporary di
     assert.equal(directDirectories.length,1);
     assert.notEqual(directDirectories[0],root);
     assert.equal(existsSync(directDirectories[0]!),false);
+});
+
+for(const {employee,ignoreTerm} of [{employee:false,ignoreTerm:false},{employee:true,ignoreTerm:false},{employee:true,ignoreTerm:true}])
+test(`real ${employee?'employee':'main'} Pi Stop waits for held version close without dispatch${ignoreTerm?' through worker API with TERM-ignoring RPC':''}`,{timeout:15_000},async t=>{
+    const ledger=join(root,`version-${++serial}.jsonl`),release=join(root,`release-${serial}`);
+    process.env.PI_SPAWN_HOLD_VERSION='1';process.env.PI_SPAWN_VERSION_LEDGER=ledger;process.env.PI_SPAWN_VERSION_RELEASE=release;
+    if(ignoreTerm)process.env.PI_SPAWN_IGNORE_RPC_TERM='1';
+    const originalSpawn=childProcess.spawn;const companions:ChildProcess[]=[];
+    const signals:Array<{child:ChildProcess;signal:NodeJS.Signals|number|undefined;retired:boolean}>=[];
+    const retainedSignals=new Map<ChildProcess,(signal:NodeJS.Signals)=>boolean>();
+    const scheduled:number[]=[];const setTimer=globalThis.setTimeout;
+    t.mock.method(globalThis,'setTimeout',(...args:Parameters<typeof setTimeout>)=>{
+        scheduled.push(Number(args[1]));return Reflect.apply(setTimer,globalThis,args) as ReturnType<typeof setTimeout>;
+    });
+    t.mock.method(childProcess,'spawn',(...args:Parameters<typeof childProcess.spawn>)=>{
+        const child=Reflect.apply(originalSpawn,childProcess,args) as ChildProcess;
+        trackChild(child);
+        let retired=false;const retire=()=>{retired=true;};
+        child.once('exit',retire);child.once('error',retire);child.once('close',retire);
+        const originalKill=child.kill.bind(child);
+        const send=(signal:NodeJS.Signals|number='SIGTERM')=>{
+            const revoked=retired||child.exitCode!==null||child.signalCode!==null;
+            signals.push({child,signal,retired:revoked});
+            return revoked?false:originalKill(signal);
+        };
+        retainedSignals.set(child,send);
+        // Production must capture this retained method before installing its public kill port.
+        t.mock.method(child,'kill',send);
+        if(Array.isArray(args[1])&&args[1].includes('--version'))companions.push(child);
+        return child;
+    });
+    syncBuiltinESMExports();
+    const rows=()=>existsSync(ledger)?readFileSync(ledger,'utf8').trim().split('\n'):[];
+    const opts=options();
+    const run=spawnAgent('held pre-prompt version',{...opts,...(employee?{agentId:'pi-version-worker',sysPrompt:'worker instructions'}:{})});
+    let completed=false;void run.promise.then(()=>{completed=true;},()=>{completed=true;});
+    try {
+        assert.equal(Boolean(run.child),employee,'worker retains its actual synchronous RPC handle');
+        await until(()=>rows().includes('version-start')&&rows().includes('rpc-ready')
+            &&(employee||Boolean(activeMainProcesses.get(opts.scopeKey)?.cancelTurn)),'held version and owner');
+        assert.equal(rows().includes('version-expired'),false);
+        assert.equal(rows().includes('prompt'),false,'no prompt before capability close');
+        assert.equal(companions.length,1);assert.equal(physicalChildren.get(companions[0]!)?.closed,false);
+        const clocksBefore=scheduled.filter(delay=>delay===2000).length;
+        const stoppedAt=performance.now();
+        if(employee){
+            assert.ok(run.child);assert.equal(run.child.exitCode,null);assert.equal(run.child.signalCode,null);
+            if(ignoreTerm)assert.equal(killAgentById('pi-version-worker'),true,'actual worker API must consume the Pi cancellation port');
+            else run.child.kill('SIGTERM');
+        }
+        else assert.equal(killActiveAgent(opts.scopeKey,'user'),true);
+        if(ignoreTerm){
+            assert.equal(scheduled.filter(delay=>delay===2000).length-clocksBefore,1,'Stop immediately starts one shared cleanup clock');
+            assert.ok(signals.some(row=>row.child===run.child&&row.signal==='SIGTERM'));
+            assert.ok(signals.some(row=>row.child===companions[0]&&row.signal==='SIGTERM'),'version receives Stop without waiting for RPC exit');
+            await until(()=>rows().includes('rpc-term-ignored'),'RPC ignored real TERM');
+        }
+        await until(()=>rows().includes('version-stop'),'companion cancellation on RPC termination');
+        assert.equal(completed,false,'logical completion must wait for bounded companion cleanup');
+        if(employee)assert.equal(existsSync(directDirectories[0]!),true,'worker cwd retained before physical close');
+        if(!ignoreTerm)writeFileSync(release,'release');
+        const result=await bounded(run.promise,'Stop settlement');
+        for(const companion of companions)await bounded(physicalChildren.get(companion)!.done,'version close');
+        if(ignoreTerm){
+            assert.ok(performance.now()-stoppedAt<3000,'paired cleanup must not wait for the 15s version deadline or legacy worker escalation');
+            assert.equal(scheduled.filter(delay=>delay===2000).length-clocksBefore,1,'events do not restart the cleanup budget');
+            for(const child of [run.child!,companions[0]!]){
+                assert.ok(signals.some(row=>row.child===child&&row.signal==='SIGKILL'),'both TERM-ignoring paired children escalate');
+                assert.equal(physicalChildren.get(child)?.closed,true);
+            }
+            assert.equal(rows().includes('version-expired'),false);assert.equal(rows().includes('rpc-expired'),false);
+        }
+        assert.ok(signals.every(row=>!row.retired),'no retained handle is signalled after exit/error/close');
+        assert.equal(rows().includes('prompt'),false);
+        assert.deepEqual(result.runtimeOutcome,{status:'stopped',finalText:null,partialText:''});
+        assert.equal(result.text,'');assert.notEqual(result.code,0);
+        assert.deepEqual(db.prepare('SELECT content FROM messages WHERE session_id=? AND role=?').all(opts.chatSessionId,'assistant'),[]);
+        if(employee)assert.equal(existsSync(directDirectories[0]!),false,'certified owned worker cwd cleaned');
+        else assert.equal(activeMainProcesses.has(opts.scopeKey),false);
+    } finally {
+        writeFileSync(release,'release');
+        try {
+            for(const [child,send] of retainedSignals)if(child.exitCode===null&&child.signalCode===null)send('SIGKILL');
+            if(!employee&&activeMainProcesses.has(opts.scopeKey))killActiveAgent(opts.scopeKey,'user');
+            for(const session of sessions){session.kill();await bounded(Promise.resolve(session.close()),'fixture session close');}
+            await bounded(run.promise,'fixture final settlement');
+            for(const state of physicalChildren.values())await bounded(state.done,'fixture physical close');
+        } finally {t.mock.restoreAll();syncBuiltinESMExports();}
+    }
 });
