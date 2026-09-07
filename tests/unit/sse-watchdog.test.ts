@@ -1,4 +1,4 @@
-// ── SSE staleness watchdog contracts (devlog 260613 doc 40) ──
+// ── SSE staleness watchdog contracts ──
 // EventSource only reconnects on onerror; a silently dead socket never fires
 // it. Server pings became data events; the client force-reconnects when pings
 // stop — but only on ping-capable servers (old servers ping via comments).

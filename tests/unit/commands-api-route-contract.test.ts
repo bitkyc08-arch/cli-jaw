@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// /api/commands lives in routes/command.ts since the Phase 2 extraction (devlog 260609, 20).
+// /api/commands lives in routes/command.ts since the Phase 2 extraction.
 const serverSource = readFileSync(new URL('../../src/routes/command.ts', import.meta.url), 'utf8');
 
 test('commands API route uses policy-backed visibility', () => {

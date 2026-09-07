@@ -32,7 +32,7 @@ type InstanceGroupsProps = {
     showSidebarRuntimeLine?: boolean;
     showSelectedRowActions?: boolean;
     density?: 'compact' | 'comfortable' | 'rail';
-    /** Session disclosure for the Active row (devlog 260806 D2). */
+    /** Session disclosure for the Active row. */
     activeSessionCount?: number;
     activeSessionsOpen?: boolean;
     onToggleActiveSessions?: (port: number) => void;

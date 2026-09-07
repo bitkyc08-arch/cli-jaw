@@ -349,8 +349,7 @@ import { appendBoundedFullText } from './events/fulltext-bound.js';
  *  accumulator and broadcasts agent_output tagged with the owning trace run
  *  id plus the cumulative text length (`textLen`). The web UI uses the pair
  *  as a replay-dedup cursor — SSE reconnect replays re-deliver chunks the
- *  client already rendered (devlog 260612 manager_stream_hidden_state_audit
- *  06-08). */
+ *  client already rendered. */
 function broadcastAgentOutput(
     ctx: SpawnContext,
     agentLabel: string,
@@ -657,7 +656,7 @@ function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
 /**
  * jwc turns run in-process (no ChildProcess), so the SIGTERM/SIGKILL paths
  * below never touch them — abort the resident runtime session explicitly or
- * /api/stop is a no-op while jwc streams (devlog 260703 tui_steer_esc_rca).
+ * /api/stop is a no-op while jwc streams.
  */
 function abortInProcessRuntimeOnStop(scopeKey: string, reason: string): boolean {
     if (reason !== 'api' && reason !== 'user' && reason !== 'steer' && reason !== 'interrupt') return false;
@@ -1051,7 +1050,7 @@ function buildHistoryBlock(currentPrompt: string, workingDir: string | null | un
         if (!row) continue;
         if (row.cli === 'goal_boundary') break;
         // Goal-continuation boundary rows are chat-timeline markers only
-        // (devlog 260705_web_live_update_boundary) — the actual continuation
+        // the actual continuation
         // prompt is injected at spawn, so replaying the marker is noise.
         if (row.cli === 'goal_continuation') continue;
         const role = String(row.role || '');
@@ -1339,7 +1338,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (!opts.internal && !opts._isFallback && !opts.agentId) regenerateB();
 
     const liveScope = scopeKey;
-    // Employee must not pollute boss's liveRun (see devlog 260423_employee_liverun_contamination)
+    // Employee must not pollute boss's liveRun
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
     // INVARIANT: 모든 외부 호출은 gateway.ts의 scoped busy admission을 거침.

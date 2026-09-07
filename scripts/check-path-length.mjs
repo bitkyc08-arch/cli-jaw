@@ -10,12 +10,10 @@
 // CI runs on Linux and cannot see this condition at all, which is why it reached
 // users twice (#422 then #430). A length check is the cheapest thing that can.
 //
-// The limit is NOT the failure threshold. MAX_PATH is 260, and the #430 paths
-// were 223 with a 37-char `...\cli-jaw\devlog\` prefix — exactly on the line, so
-// whether a clone worked depended on WHERE the user put it. Capping at the
-// observed failure point would just move the cliff. 150 leaves room for a
-// 74-char prefix like C:/Users/name/Documents/Projects/workspace/cli-jaw/devlog/ —
-// the location that broke the 200 cap in practice (#432).
+// The limit is NOT the failure threshold. MAX_PATH is 260, so the clone's
+// absolute directory prefix must fit as well as the tracked relative path.
+// A 150-char cap leaves room for nested checkout and public submodule roots;
+// a 74-char prefix still stays below MAX_PATH with that cap.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -24,11 +22,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = process.env.PATH_LENGTH_ROOT || fileURLToPath(new URL('..', import.meta.url));
 
-/** Max tracked-path length, relative to each repo root. See the header for why 200. */
+/** Max tracked-path length, relative to each repo root. See the header for why 150. */
 export const MAX_TRACKED_PATH_LENGTH = 150;
 
 /** The main repo plus every submodule that ships in a `--recursive` clone. */
-const SCAN_ROOTS = ['.', 'devlog', 'skills_ref', 'officecli'];
+const SCAN_ROOTS = ['.', 'skills_ref', 'officecli'];
 
 /**
  * Tracked paths for one root.

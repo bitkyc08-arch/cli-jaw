@@ -5,8 +5,6 @@
  * Linux". Every rule takes its inputs as parameters so the whole matrix is
  * testable on one CI OS.
  *
- * Design rationale and primary sources:
- * devlog/_plan/260805_windows_native_detection/001_platform_signal_research.md
  */
 import fs from 'node:fs';
 import os from 'node:os';

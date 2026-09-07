@@ -14,7 +14,7 @@ const __dirname = dirname(__filename);
 loadLocales(join(__dirname, '../../public/locales'));
 
 const ctxSrc = fs.readFileSync(join(__dirname, '../../src/cli/command-context.ts'), 'utf8');
-// web ctx factory lives in cli/web-command-ctx.ts since the Phase 2 extraction (devlog 260609, 20).
+// web ctx factory lives in cli/web-command-ctx.ts since the Phase 2 extraction.
 const serverSrc = fs.readFileSync(join(__dirname, '../../src/cli/web-command-ctx.ts'), 'utf8');
 const botSrc = fs.readFileSync(join(__dirname, '../../src/telegram/bot.ts'), 'utf8');
 const skillCmdSrc = fs.readFileSync(join(__dirname, '../../bin/commands/skill.ts'), 'utf8');
@@ -180,8 +180,8 @@ test('CC-011: clearSession delegates to dependency callback', async () => {
 
 // ─── Phase 00: telegram settings allowlist expansion ───
 
-// The CLI and model belong to the whole instance and the instance web owns them
-// (devlog 074). These two used to assert the opposite: that a remote channel could
+// The CLI and model belong to the whole instance and the instance web owns them.
+// These two used to assert the opposite: that a remote channel could
 // change them. Letting a Slack channel pick the model moved it for every other
 // session too, which is the drift this reverses.
 

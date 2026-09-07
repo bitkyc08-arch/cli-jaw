@@ -112,7 +112,7 @@ test('removing an item waiting on its lane releases scoped queue busy state', as
 });
 
 test('snapshot endpoint includes queued details for reload recovery (X-01)', () => {
-    // devlog 260609, 50: the WS connect-time queue_update push was removed —
+    // the WS connect-time queue_update push was removed —
     // reload recovery flows through /api/orchestrate/snapshot, which the
     // frontend fetches in handleChannelUp on every (re)connect.
     const orcSrc = readFileSync(join(__dirname, '../../src/routes/orchestrate.ts'), 'utf8');

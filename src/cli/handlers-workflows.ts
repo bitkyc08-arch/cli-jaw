@@ -334,7 +334,7 @@ export async function goalWorkflowHandler(args: string[], ctx: CliCommandContext
                     '2. For EACH requirement, provide authoritative evidence: file path, command output, test result, or runtime behavior.\n' +
                     '3. Mark each as PROVEN / UNPROVEN / CONTRADICTED. Any non-PROVEN item means work remains.\n' +
                     '4. Dev skill compliance: §3 verification gate, §5 safety rules, §7.2 static analysis.\n' +
-                    '5. Documentation evidence: devlog entry, implementation paths, fresh verification output.\n' +
+                    '5. Documentation evidence: project-approved working log entry, implementation paths, fresh verification output.\n' +
                     '6. Dispatch an independent reviewer (CLI sub-agent or jaw employee) to challenge whether viable work remains.\n\n' +
                     'If you find productive work and log a checkpoint, the pending pause gate is cleared.\n' +
                     'If no viable path remains and the reviewer confirms PASS, call `cli-jaw goal pause --agent --audit "<evidence>"` again; the second audited call pauses the goal.'

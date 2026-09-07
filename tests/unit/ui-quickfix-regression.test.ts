@@ -1,5 +1,5 @@
 // Regression tests for ui_quickfix: quota label overlap + Agent name input visibility
-// Ref: devlog/_plan/ui_quickfix/plan.md
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -38,7 +38,7 @@ test('AB-002: CORS + Host middlewares use predicate (not Set.has)', () => {
 });
 
 test('AB-003: worker server.ts serves no WebSocket — HTTP middleware owns host/origin checks (X-01)', () => {
-    // devlog 260609, 50: the WS server (and its verifyClient) was removed.
+    // the WS server (and its verifyClient) was removed.
     // SSE rides plain HTTP, so the AB-002 middleware guards cover it.
     assert.equal(serverSrc.includes('WebSocketServer'), false, 'X-01: no WebSocketServer in server.ts');
     assert.equal(serverSrc.includes('verifyClient:'), false, 'X-01: WS verifyClient must be gone');

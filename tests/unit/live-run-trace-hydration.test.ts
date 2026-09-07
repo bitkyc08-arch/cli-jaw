@@ -73,7 +73,7 @@ test('snapshot hydration preserves RAM-only isEmployee mirror entries', async ()
     clearLiveRun(SCOPE);
 });
 
-// Intentionally replaces the old equal-count => RAM-label-wins expectation (devlog 030/031).
+// Intentionally replaces the old equal-count => RAM-label-wins expectation.
 // Equal row counts do not prove freshness: updateTraceToolRow changes the existing SQL row.
 // This strengthens the behavioral oracle: assert durable terminal status, updated detail,
 // and an explicit detail clear through the snapshot route, while the row count stays one.

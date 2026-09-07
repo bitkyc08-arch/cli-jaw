@@ -1,4 +1,4 @@
-// One way to call the dashboard, shared by the commands that do (devlog 034).
+// One way to call the dashboard, shared by the commands that do.
 //
 // Two copies of this existed, identical down to the truncation of the error body, and
 // each carried its own hardcoded base path. A caller now says which surface it wants and

@@ -609,6 +609,10 @@ bash structure/check-doc-drift.sh
 
 ## 参与贡献
 
+公开代码和产品文档保存在本仓库。私有计划和历史记录只保存在独立的同级克隆 [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal) 中；请通过 [issue](https://github.com/lidge-jun/cli-jaw/issues) 申请访问权限。禁止在本仓库内创建私有记录，包括 `devlog`、`_plan`、`_fin` 或 `.jwc` 别名，也不得在公开文档或源码中引用私有记录路径。此边界优先于通用技能默认值；`docs/` 和 `structure/` 仅用于公开产品文档。
+
+上传前请完成[本地 pre-push 设置和检查](CONTRIBUTING.md#local-private-path-check)。CI 是上传后的补充检查，无法阻止首次泄露。
+
 1. 从 `dev` Fork 并创建分支
 2. `npm run build && npm run build:frontend && npm test`
 3. release-sensitive 修改还要运行 `npm run gate:all` 和 touched surface focused checks

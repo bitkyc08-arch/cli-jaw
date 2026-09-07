@@ -1,7 +1,7 @@
 // Slack sender-identity resolution: name precedence, cache behavior, sanitization,
 // and the degradation contract. Pure functions plus an injected fetch — this file
 // never touches the DB, so it does not contend for the shared SQLite handle.
-// Design: devlog 260811_slack_sender_identity_roster/010.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

@@ -1,5 +1,5 @@
 // ─── Chat sessions API ────────────────────────────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.5).
+// Extracted from server.ts in Phase 2.
 
 import type { RequestHandler, Router } from 'express';
 import { ok } from '../http/response.js';

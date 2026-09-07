@@ -1,5 +1,5 @@
 /**
- * Footer-safe streaming sink (Phase 1, devlog 260529_tui_parity, doc 06).
+ * Footer-safe streaming sink.
  * Buffers assistant deltas and renders+commits only *complete* markdown blocks
  * (a blank line outside a fenced code block, or a just-closed fence). The
  * in-progress block is held until its boundary completes; end() flushes the rest.

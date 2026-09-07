@@ -35,7 +35,7 @@ export interface ProcessBlockState {
     collapsed: boolean;
     /** When true, a long block renders ALL steps instead of the head/tail window —
      *  set by the "show N hidden steps" expander so a live long turn stays fully
-     *  reachable (devlog 260620 Phase 4). Persists across new live steps. */
+     *  reachable. Persists across new live steps. */
     expandedSteps?: boolean;
     /** Authoritative run-start (server startedAt) for the elapsed timer — steps carry
      *  client-arrival startTime, which resets to ~0 on live updates (WP3 zero-seconds
@@ -338,7 +338,7 @@ function renderStep(step: ProcessStep): string {
 
 function renderOmittedStepSummary(count: number): string {
     // Clickable: reveals the elided middle (data is in pb.steps). Default-collapsed for
-    // DOM/memory safety; expanding is an explicit opt-in (devlog 260620 Phase 4).
+    // DOM/memory safety; expanding is an explicit opt-in.
     return `<button type="button" class="process-step process-step-omitted" data-expand-steps data-omitted-count="${count}">
         <span class="process-step-snippet">Show ${count} hidden tool step${count === 1 ? '' : 's'}</span>
     </button>`;
@@ -579,7 +579,7 @@ export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
     return state;
 }
 
-// Incremental append support for the elided regime (devlog 260705_frontend_perf H2).
+// Incremental append support for the elided regime.
 // Past PROCESS_BLOCK_MAX_RENDERED_STEPS the tail window shifts on EVERY append, so a
 // full renderSteps() per event was O(steps^2) over a long run. Instead: append the new
 // tail step, evict the one step that exits the tail window (kept if running/error, the

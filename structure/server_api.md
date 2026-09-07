@@ -145,7 +145,7 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | `GET` | `/api/auth/token` | same-origin/CLI용 Bearer token bootstrap |
 | `POST` | `/api/command` | slash command 실행 |
 | `GET` | `/api/commands` | 인터페이스별 command palette 데이터 |
-| `POST` | `/api/message` | 일반 프롬프트 제출. Optional `target: RemoteTarget` when Dashboard hub forwards a forum topic message (`origin:'telegram'`). Shape validated by `isValidHubTarget` + `validateTarget`. Optional `external: true` — manager/preview relay 등 외부 주입 표시; `new_message` broadcast에 실려 web UI가 유저 말풍선을 라이브 렌더 (devlog 260705). |
+| `POST` | `/api/message` | 일반 프롬프트 제출. Optional `target: RemoteTarget` when Dashboard hub forwards a forum topic message (`origin:'telegram'`). Shape validated by `isValidHubTarget` + `validateTarget`. Optional `external: true` — manager/preview relay 등 외부 주입 표시; `new_message` broadcast에 실려 web UI가 유저 말풍선을 라이브 렌더. |
 | `POST` | `/api/elicitation/callback` | Telegram Hub inline-keyboard `elic:*` callback relay. Hub bot forwards the tap to the mapped worker; worker completes `handleElicitationCallback()` and re-submits the combined answer via `submitMessage()` when all answers are collected. |
 | `POST` | `/api/stop` | 현재 실행 중 agent 모두 종료 |
 | `POST` | `/api/clear` | UI-only clear broadcast, DB 메시지는 유지 |

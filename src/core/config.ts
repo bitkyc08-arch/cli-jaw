@@ -66,7 +66,7 @@ export const SKILLS_REF_DIR = join(JAW_HOME, 'skills_ref');
 export const DEFAULT_PORT = '3457';
 export const CDP_PORT_OFFSET = 5783;  // 9240 - 3457
 
-// Option D rollout (devlog 260620 Phase 3): when set, /api/messages rebuilds a
+// Option D rollout: when set, /api/messages rebuilds a
 // finished message's tool cards from trace_events (durable, uncapped) instead of the
 // messages.tool_log blob. Default OFF — flip per-surface after parity is verified.
 export const HYDRATE_TOOL_CARDS_FROM_TRACE =
@@ -352,7 +352,7 @@ function createDefaultSettings() {
             midRunPolicy: 'steer' as const,
             channels: { telegram: false, discord: false, slack: true },
         },
-        // Opt-in Markdown vault (devlog 040). Default OFF and nothing is created on
+        // Opt-in Markdown vault. Default OFF and nothing is created on
         // disk until it is explicitly enabled, so a user who never turns it on sees no
         // new directory and no change in behaviour.
         wiki: {

@@ -8,16 +8,15 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const devScaffoldingPath = join(root, 'skills_ref/jaw-dev-scaffolding/SKILL.md');
 const devPath = join(root, 'skills_ref/jaw-dev/SKILL.md');
 const devPabcdPath = join(root, 'skills_ref/jaw-dev-pabcd/SKILL.md');
-const devlogAgentsPath = join(root, 'devlog/AGENTS.md');
 
-const requiredDocs = [devScaffoldingPath, devPath, devPabcdPath, devlogAgentsPath];
+const requiredDocs = [devScaffoldingPath, devPath, devPabcdPath];
 const hasRequiredDocs = requiredDocs.every((path) => fs.existsSync(path));
 
 function read(path: string): string {
     return fs.readFileSync(path, 'utf8');
 }
 
-test('DLC-001: dev-scaffolding documents decade-range lexicographic phase filenames', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
+test('DLC-001: dev-scaffolding documents decade-range lexicographic phase filenames', { skip: !hasRequiredDocs && 'public skills_ref submodule not checked out' }, () => {
     const skill = read(devScaffoldingPath);
 
     assert.match(skill, /decade-range/i);
@@ -30,7 +29,7 @@ test('DLC-001: dev-scaffolding documents decade-range lexicographic phase filena
     assert.match(skill, /scan siblings and choose the next unused prefix/);
 });
 
-test('DLC-002: common dev and PABCD skills propagate the devlog naming contract', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
+test('DLC-002: common dev and PABCD skills propagate the phase naming contract', { skip: !hasRequiredDocs && 'public skills_ref submodule not checked out' }, () => {
     const dev = read(devPath);
     const devPabcd = read(devPabcdPath);
 
@@ -41,13 +40,4 @@ test('DLC-002: common dev and PABCD skills propagate the devlog naming contract'
     assert.match(devPabcd, /decade/i);
     assert.match(devPabcd, /00.*09.*[Rr]esearch/);
     assert.match(devPabcd, /PLAN\.md/);
-});
-
-test('DLC-003: devlog local AGENTS file enforces decade-range phase document naming', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
-    const devlogAgents = read(devlogAgentsPath);
-
-    assert.match(devlogAgents, /## Phase Document Naming.*decade/);
-    assert.match(devlogAgents, /00_.*plan\.md/);
-    assert.match(devlogAgents, /bare semantic filenames/);
-    assert.match(devlogAgents, /pick the next unused prefix/);
 });

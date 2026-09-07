@@ -170,16 +170,12 @@
 <ul>
 <li>현재 저장소 구조의 간결한 트리</li>
 <li>감지된 저장소 규칙: 문서, 계획, 아키텍처 노트, 진실 소스(source-of-truth) 로그, 네이밍, 테스트</li>
-<li>기존 <code>structure/</code>, <code>devlog/</code>, <code>docs/</code>, <code>plans/</code> 또는 동등한 로그를 읽었는지 여부와 재사용 계획</li>
-<li><code>structure/</code> 또는 <code>devlog/</code> 생성 제안 여부</li>
+<li>기존 아키텍처 문서와 저장소별 기록 경계를 읽었는지 여부와 준수 계획</li>
+<li>새 공개 제품 문서가 필요한지 여부</li>
 </ul>
 
-<h4>Devlog 명명 규칙</h4>
-<p>PABCD 작업에서 <code>devlog/</code> 계획 산출물을 생성하거나 업데이트하는 경우, 계획에 정확한 번호가 매겨진 Jawdev 파일명을 나열해야 합니다:</p>
-<pre><code>00_overview.md
-01_phase1_&lt;slug&gt;.md
-02_phase2_&lt;slug&gt;.md</code></pre>
-<p><code>PLAN.md</code>, <code>DIFF_PLAN.md</code>, <code>PHASES.md</code>, <code>RCA.md</code>, <code>plan.md</code> 같은 단순 파일명은 새로운 devlog 단계 파일로 <strong>허용되지 않습니다</strong>.</p>
+<h4>계획 기록 위치</h4>
+<p>계획을 만들기 전에 대상 저장소의 기록 위치와 명명 규칙을 따릅니다. cli-jaw 기여 시 비공개 계획·감사·증거·이력은 별도 sibling 저장소에만 보관합니다. 이 체크아웃 안에는 devlog, _plan, _fin, .jwc 별칭을 포함해 어느 깊이에서도 private 기록을 만들지 않습니다. 이 경계는 일반 스킬 기본값보다 우선하며 docs/와 structure/는 공개 제품 문서용입니다. 공개 문서·소스에 비공개 기록 경로를 넣지 않습니다. 자세한 내용은 <a href="https://github.com/lidge-jun/cli-jaw/blob/dev/CONTRIBUTING.md">CONTRIBUTING.md</a>를 참고하세요.</p>
 
 <h4>게이트 질문</h4>
 <p>계획을 제시하기 전에 계획 수립자가 질문합니다:</p>
@@ -198,10 +194,10 @@
 <li>함수 시그니처가 실제 코드와 일치하는지</li>
 <li>통합 위험이 없는지</li>
 <li>기존 진실 소스(source-of-truth) 문서/로그가 있을 때 읽었는지</li>
-<li>사용자 승인 없이 새로운 <code>structure/</code>, <code>devlog/</code>, 문서, AGENTS 파일이 도입되지 않았는지</li>
+<li>새 문서가 허용된 작업 범위와 저장소별 기록 경계를 지키는지</li>
 <li>새 JS/TS 파일이 TypeScript 우선 규칙을 따르는지 (계획에서 JS가 필요한 이유를 명시하지 않는 한)</li>
 <li>새 TypeScript가 strict 호환이거나 제한 사항이 명시되었는지</li>
-<li>새 devlog 단계 문서가 번호가 매겨진 Jawdev 파일명 규칙을 따르는지</li>
+<li>계획 기록이 해당 저장소의 명명 규칙을 따르는지</li>
 </ul>
 <p>워커가 감사 결과를 JSON으로 출력합니다. 결과가 검토됩니다:</p>
 <ul>
@@ -219,7 +215,7 @@
 <li><strong>NEEDS_FIX</strong> &rarr; 보스가 문제를 수정하고 재검증</li>
 <li><strong>DONE</strong> &rarr; 결과를 사용자에게 보고</li>
 </ul>
-<p>P 단계에서 승인되었거나 명시적으로 요청되지 않는 한 <code>structure/</code> 또는 <code>devlog/</code>를 생성하지 않습니다.</p>
+<p>허용된 작업 범위와 대상 저장소의 기록 경계 안에서만 문서를 만듭니다.</p>
 <p>사용자가 승인하면 <code>cli-jaw orchestrate C</code>로 전환합니다.</p>
 </div>
 

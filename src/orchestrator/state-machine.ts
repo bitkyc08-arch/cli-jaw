@@ -421,7 +421,7 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
 - **INTERVIEW-CLASSIFY-01**: before suggesting P, settle the loop archetype — does a
   verifier define *done* (spec-satisfaction), or only *better* (open-ended optimization:
   scores, win rates, benchmarks)? Record it as a known fact. Also settle the **unit
-  residence** (UNIT-RESIDENCE-01): which implementation unit (\`devlog/_plan/YYMMDD_slug/\`)
+  residence** (UNIT-RESIDENCE-01): which implementation unit (at the explicit worklog or project-approved planning location)
   this work belongs to, existing or new. Optimization work must plan instrumentation +
   an explore-and-select scheme in P — never a bare repair loop.
 - **INTERVIEW-TEACH-01**: teach the decision space, don't only narrow it — a user cannot
@@ -464,18 +464,18 @@ Steps:
 2. Write the complete plan internally:
    - Diff-level precision: exact file paths (NEW/MODIFY/DELETE), before/after diffs for MODIFY, complete content for NEW.
    - Loop-spec header (C2+): Loop archetype (from Interview) · Trigger · Goal · Non-goals · Verifier (the command/gate and what it measures, not only pass/fail) · Stop condition · Memory artifact · Expected terminal states (DONE|NOOP|BLOCKED|NEEDS_HUMAN|BUDGET_EXHAUSTED) · Escalation. For open-ended optimization add the divergence plan (descriptor axes, candidate/archetype assignments, deterministic selection rule, telemetry schema); if the verifier only reports win/lose or a bare score, instrumentation is B's first work item — before any candidate.
-   - Save to a devlog plan file using decade numbering (see dev-pabcd skill, LEXICO-SPLIT-01).
+   - Save to the explicit worklog or project-approved planning location; keep private records external when project policy requires it and never invent an in-repository log directory. Use decade numbering (see dev-pabcd skill, LEXICO-SPLIT-01).
    - For a loop / multi-pass task: pre-plan the FULL work-phase slice map and WRITE all per-phase decade docs (10_phase1, 20_phase2, ...) to diff-level up front (DIFFLEVEL-ROADMAP-01) — scaffolding empty stubs is not pre-planning. The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
 3. Present to the user in chat:
    - Part 1: Easy, non-developer explanation of what will change and why (≤5 sentences).
    - A Mermaid/SVG diagram showing the file change map.
-   - The devlog plan file path.
+   - The approved plan file path.
 4. Final confirmation: "혼자 결정하면 안 되는 비즈니스 로직이 있나요?" and "이 방향이 맞습니까?"
 
 ⛔ STOP. WAIT for user approval before advancing.
 ⛔ When approved, advance WITH an evidence attestation (the forward gate requires it):
 \`\`\`bash
-cli-jaw orchestrate A --attest '{"from":"P","to":"A","did":"<one sentence: the concrete plan you wrote — files/surfaces + the devlog path>"}'
+cli-jaw orchestrate A --attest '{"from":"P","to":"A","did":"<one sentence: the concrete plan you wrote — files/surfaces + the approved plan path>"}'
 \`\`\`
 
 You will receive user feedback with a [PLANNING MODE] prefix. Revise until approved.
@@ -609,7 +609,7 @@ a produced-but-unread screenshot is not observation), FIX and re-observe if brok
 One clean observation is enough. Static parse passing does not satisfy this — well-formed
 is not correct. Defaults: 1280×720 viewport; drive stateful artifacts until first
 interactive state change. C2-C3: record observation in the attestation \`did\`;
-C4: also persist the screenshot to the devlog.
+C4: also persist the screenshot to the project-approved evidence location.
 
 **Stage 1.75: SoT Sync (DEFAULT, SOT-SYNC-01)**
 If \`structure/\`, \`architecture.md\`, or INDEX/context docs exist in the repo, patch
@@ -672,7 +672,7 @@ Then perform two reflections:
 **PESSIMIST** ("Is the direction still right?" — LOOP-PESSIMIST-01, loop/multi-pass work):
 - What did NOT improve this cycle, and which hypothesis died?
 - One sentence: what evidence would show the current direction is wrong? The next P must quote this.
-- D → IDLE → P is a context/bias-flush boundary: the next cycle resumes from disk artifacts (worklog, devlog, death log), not transcript momentum. Report the honest terminal state — a budget/time stop is BUDGET_EXHAUSTED with best-so-far evidence, never "완료".
+- D → IDLE → P is a context/bias-flush boundary: the next cycle resumes from disk artifacts (worklog, approved plan, death log), not transcript momentum. Report the honest terminal state — a budget/time stop is BUDGET_EXHAUSTED with best-so-far evidence, never "완료".
 
 Present findings to user. Then:
 - If significant issues: "Seed를 개선하려면: \`cli-jaw orchestrate I\`"

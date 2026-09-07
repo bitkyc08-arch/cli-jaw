@@ -2,7 +2,7 @@
 //
 // These exist to make a refactor safe, not to describe intent. They lock in what
 // identity.ts does TODAY so that extracting its cache/suppression/coalescing
-// machinery into a shared primitive (devlog 260812_slack_conversation_context/012)
+// machinery into a shared primitive
 // cannot silently change behavior. An independent audit enumerated the gaps that
 // the 43 tests in slack-identity.test.ts leave open; each test below closes one.
 //

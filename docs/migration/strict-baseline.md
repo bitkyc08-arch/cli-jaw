@@ -1,6 +1,6 @@
 # strict-migration baseline
 
-> Frozen 2026-05-05 from `devlog/_plan/strict-migration/00-diagnostic.md` (post-WIP HEAD `3e4f218`).
+> Frozen 2026-05-05 at post-WIP HEAD `3e4f218`.
 > Lowered 2026-05-05 at P20 on HEAD `5990f3f9667ee995eee73ea54725fbfaf4923da7`.
 > Raised 2026-08-12 to 100 for `7432145e` (fix: isolate environment-managed Slack settings):
 > `clearPersistedSlackConnectionForEnvironment` takes the same `Record<string, any>`

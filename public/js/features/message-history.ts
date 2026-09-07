@@ -192,7 +192,7 @@ function historySignature(scope: string, msgs: MessageItem[]): string {
     return `${scope}|${msgs.length}|${last ? JSON.stringify(last) : ''}`;
 }
 
-// devlog 260609 83: preview instance-switch remounts can fire the boot
+// preview instance-switch remounts can fire the boot
 // channel-up reload and the onLoad visibility-ping reload concurrently.
 // Without single-flight they both clear+bootstrap the virtual scroll and the
 // newest rows can stay lazy-pending. Concurrent callers join the same load.

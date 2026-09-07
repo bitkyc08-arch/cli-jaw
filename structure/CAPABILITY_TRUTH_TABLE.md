@@ -73,7 +73,6 @@ capability.
 
 - agbrowse truth table: `agbrowse/structure/CAPABILITY_TRUTH_TABLE.md`
 - External CDP deferral: [../docs/EXTERNAL_CDP.md](../docs/EXTERNAL_CDP.md)
-- Phase 22 plan: [../devlog/_fin/260505_browser_runtime_phase22/22_agbrowse_parity_closeout.md](../devlog/_fin/260505_browser_runtime_phase22/22_agbrowse_parity_closeout.md)
 
 ## Messaging ChannelAdapter Matrix
 

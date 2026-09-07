@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { join, resolve, relative, sep } from 'node:path';
+import { resolve, relative, sep } from 'node:path';
 
 const REPO_PATH_PREFIXES = [
     'src/',
@@ -110,8 +110,6 @@ export function buildWorkspaceContextBlock(input: WorkspaceContextInput): string
         ? `Project root: ${JSON.stringify(roots[0])}`
         : roots.map((r, i) => `Project root ${i + 1}: ${JSON.stringify(r)}`).join('\n');
 
-    const primaryRoot = roots[0]!;
-    const devlogRoot = join(primaryRoot, 'devlog');
     const hints = buildResolvedPathHints(input.task, roots);
     const now = input.now || new Date();
 
@@ -121,7 +119,6 @@ export function buildWorkspaceContextBlock(input: WorkspaceContextInput): string
         `Current time: ${formatLocalTimestamp(now)}`,
         `Timezone: ${runtimeTimezone()}`,
         `UTC time: ${now.toISOString()}`,
-        `Devlog root: ${JSON.stringify(devlogRoot)}`,
         `Worklog path: ${input.worklogPath || '(none)'}`,
         'Employee runtime cwd: isolated temporary directory, not the project root',
         '',
@@ -129,6 +126,8 @@ export function buildWorkspaceContextBlock(input: WorkspaceContextInput): string
         '- Treat Project root as the source of truth.',
         '- Resolve all relative repository paths against Project root.',
         '- Use absolute paths when reading or editing files.',
+        '- Use the explicit Worklog path for execution records; follow project policy for any other planning or evidence location.',
+        '- Do not invent a log directory under Project root. If project policy requires external private records, keep them outside the public repository.',
         '- Do not infer repository paths from process.cwd(), ~/.cli-jaw, or the employee temp directory.',
         '- If a requested path is missing under Project root, stop and report it instead of guessing.',
         hints ? `\n${hints}` : '',

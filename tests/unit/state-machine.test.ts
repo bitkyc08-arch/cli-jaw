@@ -123,7 +123,7 @@ describe('PABCD state-machine', () => {
         const saved = getCtx('default');
         assert.deepEqual(saved!.interview, ctx.interview);
     });
-    // --- Loop / multi-pass work-phase prompt contract (devlog 260624_goal_work_phase_pabcd_loop, Slice 6) ---
+    // --- Loop / multi-pass work-phase prompt contract ---
     test('26. I prompt has Loop / Multi-Pass section recognizing loop/루프 + Phase 0', () => {
         const i = getStatePrompt('I');
         assert.ok(i.includes('Loop / Multi-Pass Tasks'), 'I prompt missing Loop / Multi-Pass section');

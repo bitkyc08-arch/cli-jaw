@@ -136,7 +136,7 @@ test('WRS-005: virtual scroll restore hooks use guarded bottom reconciliation af
 });
 
 test('WRS-006: reconnect snapshot reapplies bottom anchor without stale near-bottom gate', { skip: !hasWs && 'public/js/ws source not found' }, () => {
-    // Phase 3 (devlog 260609, 30/31): hydration lives in handleChannelUp,
+    // Phase 3: hydration lives in handleChannelUp,
     // shared by the SSE channel and the legacy WS fallback.
     const wsSrc = readFileSync(wsPath, 'utf8');
     const openIdx = wsSrc.indexOf('function handleChannelUp');
@@ -321,7 +321,7 @@ test('WRS-010: browser/preview restore reloads messages before snapshot hydratio
 });
 
 test('WRS-011: concurrent restore and channel-up share one history load', { skip: !hasWs && 'public/js/ws source not found' }, () => {
-    // devlog 260609 83: preview instance-switch remounts boot the iframe while
+    // preview instance-switch remounts boot the iframe while
     // the onLoad visibility ping fires — without a single-flight guard the two
     // loadMessages() calls race and can double-bootstrap the virtual scroll,
     // leaving the newest rows lazy-pending (invisible until a click/restore).

@@ -52,7 +52,7 @@ export function countUnreadActivityEventsByPort(
     seenByPort: Record<number, string> = {},
     suppressedPort: number | null = null,
 ): Record<number, number> {
-    // Per-port semantics (devlog 260501): each port's badge is gated only by
+    // Per-port semantics: each port's badge is gated only by
     // its own seenByPort timestamp. The legacy global ceiling (`seenAt` /
     // `effectiveSeenAt`) is intentionally ignored here so viewing the iframe
     // of one port never suppresses badges on other ports. The legacy global

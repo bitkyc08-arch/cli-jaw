@@ -1,4 +1,4 @@
-// Shared rendering for the search commands (devlog 034).
+// Shared rendering for the search commands.
 //
 // Two shapes, deliberately kept apart. The dashboard commands search across instances, so
 // they carry a hit count, an instance label and warnings; the local ones search one place

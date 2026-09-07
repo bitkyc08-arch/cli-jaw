@@ -2,8 +2,7 @@
 // One AgentSession per (cwd, chatSession) main slot, reused across turns; no child
 // process, no NDJSON parse stack. Errors are isolated per turn — a thrown turn
 // disposes+recreates the session so the server survives (M2 done ①).
-//
-// Design SoT: jawcode devlog 110.3 / 120.1 (session injection 안 A) / 130.2.
+
 // Engine surface comes from `jawcode/sdk` (single import boundary, 160+ contract):
 //   createAgentSession({ cwd, agentDir, hasUI:false, sessionManager })
 //     → { session: AgentSession, eventBus }
@@ -92,7 +91,7 @@ export class JawRuntime {
      *  streamed text/tools accumulate into the right scope for persistence. */
     #liveScope: string | undefined;
     /** Wall-clock start of the turn in flight — rides on agent_tool broadcasts as
-     *  the authoritative elapsed-timer origin (WP4b, devlog 260703 doc 13). */
+     *  the authoritative elapsed-timer origin. */
     #runStartedAt: number | undefined;
 
     /** Bind the live-run scope of the next turn (set by the spawn branch). */

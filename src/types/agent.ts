@@ -98,8 +98,8 @@ export interface SpawnContext {
   traceRunId?: string;
   traceAudience?: 'public' | 'internal';
   /** stepRef → trace pointer, populated at stamp time, so completion handlers can
-   *  converge the durable tool row even after the RAM cap evicted the entry
-   *  (WP4, devlog 260703 doc 12). */
+   *  converge the durable tool row even after the RAM cap evicted the entry.
+   * */
   toolTraceIndex?: Map<string, TracePointer>;
   // Phase 3: model/metadata storage
   model?: string;

@@ -1,7 +1,7 @@
 // #326 Windows OpenSSH/ConPTY regression gate.
 // Runs on a Windows host (ssh localhost) or from any host against a Windows
 // sshd via JAW_WINDOWS_SSH_HOST. Attribution evidence:
-// devlog/_plan/260812_remaining_issues_round/326_evidence.md
+
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { spawn } from 'node:child_process';

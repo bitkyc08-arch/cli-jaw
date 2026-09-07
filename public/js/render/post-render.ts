@@ -21,7 +21,7 @@ export function schedulePostRender(): void {
         postRenderRAF = requestAnimationFrame(() => {
             postRenderRAF = null;
             const msgContainer = document.getElementById('chatMessages');
-            // Cheap guards (devlog 260705_frontend_perf M1): these three walk
+            // Cheap guards: these three walk
             // the whole container; skip when no candidate nodes exist. The
             // hydrate* calls below stay unconditional — each is already a
             // scoped selector scan and their call shape is a renderer contract.

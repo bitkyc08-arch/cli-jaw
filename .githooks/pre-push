@@ -1,0 +1,4 @@
+#!/bin/sh
+# Install explicitly: git config --worktree core.hooksPath .githooks
+set -eu
+node scripts/check-private-boundary.mjs --pre-push "$2"

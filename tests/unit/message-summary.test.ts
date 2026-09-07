@@ -15,8 +15,7 @@ test('dashboard activity title removes upload and user-message prefixes', () => 
 });
 
 test('dashboard activity title removes image and video upload prefixes', () => {
-    // 회귀 근거: 이미지/동영상 변형을 모르면 업로드 절대경로가 그대로 제목이 된다
-    // (devlog 260806_slack_multifile_ingest/010 D-5).
+    // 회귀 근거: 이미지/동영상 변형을 모르면 업로드 절대경로가 그대로 제목이 된다.
     assert.equal(
         cleanDashboardActivityTitle([
             '[사용자가 이미지를 보냈습니다: /Users/jun/.cli-jaw/uploads/x_Screenshot.png]',

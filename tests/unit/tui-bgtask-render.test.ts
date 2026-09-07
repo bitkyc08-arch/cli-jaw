@@ -1,4 +1,4 @@
-// ─── jawcode-style bgtask rendering (devlog 260703 tui_steer_esc_rca doc 40) ──
+// ─── jawcode-style bgtask rendering ──
 // Overlay rows mirror jawcode's background footer panel: `{icon} {kind} {label}
 // · {hint}` with the unicode glyph set (✔ ✘ ⏹ ⚠ ⟳), attention-first sort,
 // formatDuration tiers, and a `!` attention suffix on the status-bar badge that

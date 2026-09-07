@@ -1,4 +1,4 @@
-// ─── Opt-in wiki vault configuration (devlog 040 §3) ──
+// ─── Opt-in wiki vault configuration ──
 // The vault is off by default and lives entirely in settings.json under three keys.
 // There is no separate wiki.json: the existing settings path already owns the 0600
 // write and chmod boundary, and a second config file would be a second thing to keep

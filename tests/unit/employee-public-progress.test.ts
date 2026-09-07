@@ -1,4 +1,4 @@
-// ── Public employee progress contracts (devlog 260613 docs 02/03/20 P2-i) ──
+// ── Public employee progress contracts ──
 // Employee runs broadcast internal-audience only; the web UI used to paint
 // employee work exclusively via interaction-triggered snapshot hydration
 // ("no render until click"). The parent-mirror tool append now also publishes

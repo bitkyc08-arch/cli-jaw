@@ -1,4 +1,4 @@
-// ─── Wiki control routes (devlog 040 §7) ──────────────
+// ─── Wiki control routes ──────────────
 // Status is readable, enabling scaffolds. Both sit behind the same auth boundary as
 // every other mutating core route: this one writes directories to a path the caller
 // chooses, so it cannot be less protected than a settings change.

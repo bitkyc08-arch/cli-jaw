@@ -1,5 +1,5 @@
 // The CLI and model belong to the instance, not to a session, and the instance web
-// owns them (devlog 074). These tests drive the paths that could quietly move that
+// owns them. These tests drive the paths that could quietly move that
 // shared choice from somewhere else.
 import '../setup/isolated-home.ts';
 import test from 'node:test';

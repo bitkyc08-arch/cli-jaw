@@ -168,7 +168,7 @@ test('goal continuation prompt requires documentation implementation verificatio
         const res = buildGoalContinuation();
         assert.equal(res.shouldContinue, true);
         assert.match(res.prompt ?? '', /documentation \+ implementation \+ verification evidence bundle/);
-        assert.match(res.prompt ?? '', /Documentation evidence = devlog\/structure\/update path/);
+        assert.match(res.prompt ?? '', /Documentation evidence = project-approved worklog or documentation path/);
         assert.match(res.prompt ?? '', /implementation evidence = changed source\/test paths or explicit no-code rationale/);
         assert.match(res.prompt ?? '', /verification evidence = fresh command\/test output/);
         assert.match(res.prompt ?? '', /Do not advance a PABCD-phase within the current cycle unless its documentation \+ implementation \+ verification evidence is present/);

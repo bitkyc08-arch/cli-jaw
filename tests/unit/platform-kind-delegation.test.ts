@@ -12,7 +12,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
  *
  * src/lib/tui/terminal.ts is deliberately excluded: it is a vendored bundle
  * outside the root tsconfig whose `$env` is a function, not an env object.
- * See devlog/_plan/260805_windows_native_detection/020_detector_refactor.md.
+ *
  */
 const DELEGATING_SITES = [
     'src/core/browser-open.ts',

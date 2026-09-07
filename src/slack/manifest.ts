@@ -1,13 +1,11 @@
 // ─── Canonical Slack app manifest ────────────────────
 // Single source of truth for "create the Slack app cli-jaw expects".
-// The operator runbook (devlog 260802_slack_channel/051) shows the output of
-// this file; tests/unit/slack-manifest.test.ts pins the shape so the two can
-// never drift apart silently.
+// tests/unit/slack-manifest.test.ts pins the generated manifest shape.
 //
 // Why not OAuth one-click: Slack cannot deliver this app's credentials
 // through a browser click. App-level tokens (xapp-) are UI-only by design,
 // and the PKCE localhost flow GA'd 2026-03-30 explicitly bans bot scopes on
-// desktop redirects. Full analysis: devlog 260803_slack_oauth_setup/000.
+// desktop redirects.
 
 import { stringify } from 'yaml';
 

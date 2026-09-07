@@ -1,4 +1,4 @@
-// ── Option D boss-message hydration from trace_events (devlog 260620 Phase 3) ──
+// ── Option D boss-message hydration from trace_events ──
 // Verifies listToolEntriesForMessage: a finished assistant message's tool cards are
 // reconstructed from the durable, uncapped trace_events (joined by message_id) instead
 // of the lossy messages.tool_log blob. Boss runs are message-linked today

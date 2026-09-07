@@ -1,7 +1,7 @@
 // Slack roster: channel membership and workspace directory, with the bounded
 // cache -> users.list join -> small top-up strategy that replaces a naive
 // users.info-per-member fan-out. Injected fetch, no DB access.
-// Design: devlog 260811_slack_sender_identity_roster/030.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

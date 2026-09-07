@@ -1,4 +1,4 @@
-// ── SSE replay idempotency contracts (devlog 260612 manager_stream_hidden_state_audit 06-08) ──
+// ── SSE replay idempotency contracts ──
 // Root cause being guarded: SSE reconnect replays (event-channel ?lastEventId=
 // → routes/events replaySince) were applied by the web dispatcher as if live.
 // A replayed agent_done from a FINISHED turn ran finalizeAgent() mid-turn —

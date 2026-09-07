@@ -3,7 +3,7 @@
 // The load-bearing assertions are the ones about the channel id and thread ts —
 // those are the reply address (issue #315) and must survive every input — and
 // the trust note, which must survive every data volume.
-// Contract: devlog/260812_slack_conversation_context/021_wp2_contract.md.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

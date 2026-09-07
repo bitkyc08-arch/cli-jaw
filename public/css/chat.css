@@ -448,7 +448,7 @@
 }
 
 /* Goal-continuation boundary: keeps .msg-user boundary semantics but renders
-   as a slim centered marker instead of a full user bubble (devlog 260705). */
+   as a slim centered marker instead of a full user bubble. */
 .msg-goal-boundary {
     background: transparent;
     border: 1px dashed color-mix(in oklch, var(--accent) 35%, var(--border));

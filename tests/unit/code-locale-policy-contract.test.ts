@@ -4,9 +4,9 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Slice 218: Code mode runtime-label locale policy.
-// Policy (devlog 208/218): runtime Code labels stay English; the compact header
+// Policy: runtime Code labels stay English; the compact header
 // shows workspace state by component shape (picker button / plain chip), not by
-// explanatory prose. Korean lives only in user-facing reports and devlog.
+// explanatory prose. Korean lives only in user-facing reports and working logs.
 
 const root = join(import.meta.dirname, '..', '..');
 const codeDir = join(root, 'public/manager/src/code');

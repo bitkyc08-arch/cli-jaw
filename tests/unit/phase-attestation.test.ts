@@ -272,9 +272,9 @@ test('ATT-AUDIT-006: a bare "pass" is explicit enough to silence the advisory', 
 test('ATT-AUDIT-007: planUnit and workPhaseId survive parsing', () => {
   const att = parsePhaseAttestationObject({
     from: 'P', to: 'A', did: 'wrote the diff-level plan',
-    planUnit: 'devlog/_plan/260902_slug', workPhaseId: 'wp3',
+    planUnit: '/execution-records/plan-unit', workPhaseId: 'wp3',
   })!;
-  assert.equal(att.planUnit, 'devlog/_plan/260902_slug');
+  assert.equal(att.planUnit, '/execution-records/plan-unit');
   assert.equal(att.workPhaseId, 'wp3');
   assert.equal(checkAttestationGate('P', 'A', att).advisory, undefined);
 });

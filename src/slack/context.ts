@@ -12,8 +12,7 @@
 // SubmitMeta -> QueueItem -> collect/pipeline meta -> SpawnOpts), and a miss in
 // any one of them silently drops the value. The prefix is the path
 // buildMediaPromptMany and buildSenderPrompt already established, and it
-// survives the queued path. Design: devlog/260812_slack_conversation_context/
-// 021_wp2_contract.md.
+// survives the queued path.
 
 import { redactChannelSecrets } from '../messaging/redact.js';
 import type { SlackIdentity } from './identity.js';

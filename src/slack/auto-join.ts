@@ -11,7 +11,7 @@
 // message.channels envelopes that are then discarded. That is deliberate — an
 // agent replying to every message in 200 channels is not a feature.
 //
-// Design + audit history: devlog/_plan/260821_260821-slack-channel-reach/010.
+
 
 import { log } from '../core/logger.js';
 import { redactChannelSecrets } from '../messaging/redact.js';

@@ -1,4 +1,4 @@
-// ─── Wiki search provider (devlog 040 §9) ─────────────
+// ─── Wiki search provider ─────────────
 // Reads the opt-in vault through the shared note search. Only search is reused: the
 // link graph and vault index stay with the manager, because this provider needs neither.
 

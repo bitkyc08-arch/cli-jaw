@@ -56,7 +56,7 @@ const listEventsStmt = db.prepare(`
 const countEventsStmt = db.prepare('SELECT COUNT(*) AS count FROM trace_events WHERE run_id = ?');
 const getEventStmt = db.prepare('SELECT * FROM trace_events WHERE run_id = ? AND seq = ?');
 const maxSeqStmt = db.prepare('SELECT MAX(seq) AS seq FROM trace_events WHERE run_id = ?');
-// Option D hydration (devlog 260620 Phase 3): a finished message's tool cards rebuilt
+// Option D hydration: a finished message's tool cards rebuilt
 // from the durable, uncapped trace_events instead of the lossy messages.tool_log blob.
 const listRunsForMessageStmt = db.prepare(
     'SELECT id, audience, started_at FROM trace_runs WHERE message_id = ? ORDER BY started_at ASC, id ASC');
@@ -64,7 +64,7 @@ const listToolEventsForRunStmt = db.prepare(`
     SELECT seq, event_type, raw_json, raw_path, bytes, retention_status
     FROM trace_events WHERE run_id = ? AND source = 'tool' ORDER BY seq ASC LIMIT ?
 `);
-// WP4 (devlog 260703 doc 12): live-run hydration reads the NEWEST tool rows and the
+// WP4: live-run hydration reads the NEWEST tool rows and the
 // snapshot gate counts them; update-in-place converges a row to the tool's final state.
 const listToolEventsDescStmt = db.prepare(`
     SELECT seq, raw_json, raw_path, bytes, retention_status
@@ -293,7 +293,7 @@ export function listTraceEvents(runId: string, offset = 0, limit = 80): { total:
     const totalRow = countEventsStmt.get(runId) as { count?: number } | undefined;
     return { total: Number(totalRow?.count || 0), events: listEventsStmt.all(runId, safeLimit, safeOffset) as TraceEventRow[] };
 }
-// ── Option D hydration (Phase 3, devlog 260620) ──────────────────────
+// ── Option D hydration ──────────────────────
 // Reconstruct a finished assistant message's tool cards from trace_events.
 // stampTraceTool stored the full ToolEntry as the event raw (source='tool'),
 // so each row round-trips back to a card — durable and uncapped, unlike the
@@ -318,7 +318,7 @@ function traceToolEventToEntry(ev: { raw_json: string | null; raw_path: string |
 }
 
 // Public hydration excludes internal (worker) runs; those fold in via parent_run_id
-// once Phase 2's cross-process linkage write lands (devlog 260620 doc 20/30).
+// once Phase 2's cross-process linkage write lands.
 export function listToolEntriesForMessage(
     messageId: number,
     opts: { audience?: TraceAudience; limit?: number } = {},

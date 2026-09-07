@@ -1,7 +1,7 @@
 /**
  * Markdown → ANSI renderer (token-based, via the already-present `marked`).
  * Gutter-indented, theme-tokened, CJK/emoji-width aware. Phase 1 of TUI
- * modernization (devlog 260529_tui_parity, doc 06/13). Code blocks are
+ * modernization. Code blocks are
  * syntax-highlighted through highlight.ts.
  */
 import { marked, type Token, type Tokens } from 'marked';

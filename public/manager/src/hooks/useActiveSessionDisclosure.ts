@@ -13,7 +13,7 @@ const EMPTY_SESSIONS_SNAPSHOT: SessionsSnapshot = {
     count: 0,
 };
 
-// Session disclosure state for the Active navigator row (devlog 260806 D2):
+// Session disclosure state for the Active navigator row:
 // count fetched once per selected instance to decide chevron visibility; the
 // list itself is fetched lazily by InstanceSessionList only while open.
 // Extracted from App.tsx to honor the 500-line dashboard budget; the WP4

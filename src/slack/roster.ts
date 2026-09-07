@@ -3,7 +3,7 @@
 // the question an agent could not answer before. conversations.members returns
 // bare user ids, so the names come from the identity cache and a bounded
 // users.list join rather than one users.info call per member.
-// Design + rate-limit facts: devlog 260811_slack_sender_identity_roster/030.
+
 
 import { slackApi, describeSlackError, type SlackFetch } from './api.js';
 import { redactChannelSecrets } from '../messaging/redact.js';

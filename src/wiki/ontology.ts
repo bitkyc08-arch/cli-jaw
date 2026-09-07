@@ -1,4 +1,4 @@
-// Ontology normalization for the opt-in wiki (devlog 040 §5, 041-A).
+// Ontology normalization for the opt-in wiki.
 //
 // The vault is plain Markdown that must stay usable without cli-jaw, so a note whose
 // frontmatter does not describe a known entity is still a perfectly good note. Nothing

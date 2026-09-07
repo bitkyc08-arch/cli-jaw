@@ -173,8 +173,7 @@ const agentPhaseState: Record<string, { phase: string; phaseLabel: string }> = {
 // a FINISHED turn would mid-turn-finalize the in-flight live block (freezing
 // a partial copy as a VS item) and replayed agent_output chunks re-appended
 // text the block already showed. Guards below scope the agent stream to the
-// trace run that owns it (devlog 260612 manager_stream_hidden_state_audit
-// 06_rca + 08_patch).
+// trace run that owns it.
 const FINALIZED_RUN_MEMORY = 8;
 // 64: with public employee tool mirrors (260613 20 P2-i) every employee run
 // contributes a traceRunId — 16 could evict the BOSS run's cursor mid-run and
@@ -548,7 +547,7 @@ export function syncOrchestrateSnapshot(reason = 'manual', options: { hydrateRun
     return refreshRuntimeSnapshot(options);
 }
 
-// devlog 260609 75/82: these restore reasons can represent a hidden/navigated
+// these restore reasons can represent a hidden/navigated
 // document that missed history-changing events — durable history must reload
 // before snapshot hydration. focus/resume stay snapshot-only (reload churn).
 function shouldReloadMessagesForRestore(reason: string): boolean {
@@ -593,7 +592,7 @@ function requestBrowserRestoreSync(reason: string): void {
     syncAfterBrowserRestore(reason);
 }
 
-// devlog 260609 78/82: the settings_change payload always carries projectDirs,
+// the settings_change payload always carries projectDirs,
 // so scope sensitivity must be read from changedKeys. workingDir keys the
 // message-history scope (origin+pathname::workingDir); projectDirs rides the
 // same path for forward-compat and resolves to a signature-skip no-op today.
@@ -1022,7 +1021,7 @@ function applyOrcState(orcState: string, title?: string) {
     }
 }
 
-// ── SSE transport (Phase 3 — devlog 260609, 30 §5) ──
+// ── SSE transport ──
 // event-channel delivers data-only payloads {…data, topic, event}; the adapter
 // aliases event → type so the dispatcher below stays byte-identical to the
 // original WS switch (30 §3 D-1). Since X-01, current servers publish public
@@ -1042,7 +1041,7 @@ export function connect(): void {
         wireEventChannel();
     }
     // Silent-close any active fallback socket so SSE retry never double-transports
-    // (devlog 260609, 31 — audit rules 1/3).
+    //.
     closeLegacyWebSocket();
     connectEventChannel(getLang());
 }
@@ -1074,7 +1073,7 @@ function handleChannelUp(transport: 'sse' | 'ws'): void {
         await syncOrchestrateSnapshot('reconnect', { hydrateRun: true })
             .catch(() => { /* snapshot not critical — UI recovers on next event */ })
             .finally(() => m.reconcileChatBottomAfterRestore('reconnect'));
-        // X-01 (devlog 260609, 50): the server no longer pushes memory_status
+        // X-01: the server no longer pushes memory_status
         // on connect — hydrate the sidebar badge from REST instead.
         import('./features/memory.js')
             .then(mem => mem.refreshMemorySidebar())
@@ -1130,7 +1129,7 @@ function handleChannelDown(): void {
     }, CHANNEL_DOWN_TOAST_GRACE_MS);
 }
 
-// ── Legacy WebSocket fallback (devlog 260609, 31) ──
+// ── Legacy WebSocket fallback ──
 // Old servers (pre-Phase 1) have no /api/events. When SSE has never connected
 // and the stream errors, fall back to the legacy WS wire — its {type, ...data}
 // payload is exactly what handleServerEvent expects, so handlers are shared.
@@ -1230,7 +1229,7 @@ function handleServerEvent(msg: WsMessage): void {
             handleActivityGap({ ...pair, runId: gap['runId'] });
         return;
     }
-    // Hot-path first (devlog 260705_frontend_perf M5): agent_tool/agent_output
+    // Hot-path first: agent_tool/agent_output
     // arrive many times per second during streaming — they head the chain so
     // each event pays 1-2 string compares instead of walking cold branches.
     // Textual order agent_tool < agent_output < agent_retry is a test contract

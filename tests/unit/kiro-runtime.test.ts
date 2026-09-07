@@ -305,7 +305,7 @@ test('isKiroStaleSessionOutput detects no-saved-sessions and not-found phrases',
     assert.deepEqual(carry, { id: 'abc-123', source: 'resume-carry' });
 });
 
-// devlog 110 §2h — Kiro learns its fresh session id by diffing a store shared across a
+// Kiro learns its fresh session id by diffing a store shared across a
 // working directory. With two sessions running at once, two conversations appear and the
 // diff cannot say which is which. Picking the most recently touched one hands one session
 // the other's conversation, and nothing downstream can detect that.

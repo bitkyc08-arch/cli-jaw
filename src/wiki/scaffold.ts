@@ -1,4 +1,4 @@
-// ─── Idempotent vault scaffold (devlog 040 §4) ────────
+// ─── Idempotent vault scaffold ────────
 // Runs only when the vault is being enabled. Directories are created recursively and
 // seed files are written with the exclusive flag, so an existing Markdown file is never
 // overwritten — a user who points the vault at a directory they already keep notes in

@@ -1,5 +1,5 @@
 // ─── System info routes (health/session/runtime/token) ─
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.2).
+// Extracted from server.ts in Phase 2.
 // jawAuthToken is a runtime secret generated at server start — it cannot be
 // re-derived here, so it arrives as a factory dep.
 
@@ -97,7 +97,7 @@ export function registerSystemRoutes(app: Router, deps: { jawAuthToken: string }
 
     app.get('/api/session', (_, res) => ok(res, getSession(), getSession() as Record<string, unknown> | undefined));
 
-    // Memory composition probe (devlog 260613 docs 07/50 5c): splits the JS
+    // Memory composition probe: splits the JS
     // heap from native/mmap so RSS investigations can tell "V8 objects" apart
     // from "sqlite-mapped pages + native addons" without a debugger attach.
     app.get('/api/debug/mem', (_req, res) => {

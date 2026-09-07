@@ -48,6 +48,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check private repository boundary
+        run: node scripts/check-private-boundary.mjs
+
       - name: Checkout public skill fixtures
         run: git submodule update --init --depth 1 skills_ref
 
@@ -309,7 +312,7 @@ jobs:
           }
           const forbidden = pack.files
             .map(file => file.path)
-            .filter(path => /(^|\/)(devlog|skills_ref|officecli|node_modules)(\/|$)|\.node$/.test(path));
+            .filter(path => /(^|\/)(devlog([._-][^/]*)?|cli-jaw-internal|\.jwc|_plan|_fin|skills_ref|officecli|node_modules)(\/|$)|\.node$/i.test(path));
           if (forbidden.length) {
             console.error(`forbidden files in npm pack:\n${forbidden.join('\n')}`);
             process.exit(1);

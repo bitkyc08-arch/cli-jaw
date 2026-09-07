@@ -19,7 +19,7 @@ function routeBlock(source: string, route: string): string {
 }
 
 test('latest message endpoint returns dashboard summary without full history polling', () => {
-    // /api/messages/* lives in routes/messages.ts since the Phase 2 extraction (devlog 260609, 20).
+    // /api/messages/* lives in routes/messages.ts since the Phase 2 extraction.
     const server = read('src/routes/messages.ts');
     const db = read('src/core/db.ts');
     const hook = read('public/manager/src/hooks/useInstanceMessageEvents.ts');

@@ -63,7 +63,7 @@ test('UP-006: buildMediaPromptMany falls back to single-file prompt for one path
 test('UP-007: buildMediaPromptMany includes all file paths for multi-file input', () => {
     const prompt = buildMediaPromptMany(['/tmp/a.pdf', '/tmp/b.pdf'], 'compare');
     assert.match(prompt, /파일 2개/);
-    // 각 항목에 종류 라벨이 붙는다 (devlog 260806_slack_multifile_ingest/010 D-7).
+    // 각 항목에 종류 라벨이 붙는다.
     assert.match(prompt, /1\. \[파일\] \/tmp\/a\.pdf/);
     assert.match(prompt, /2\. \[파일\] \/tmp\/b\.pdf/);
     assert.match(prompt, /사용자 메시지: compare/);

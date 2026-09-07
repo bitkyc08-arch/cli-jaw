@@ -1951,7 +1951,7 @@ test('claude reconcile is skipped when the complete block has no text (streamed 
     assert.equal(ctx.claudeStreamedTextStart, undefined, 'anchor still resets');
 });
 
-// ─── WP4 (devlog 260703 doc 12): durable tool-row convergence via event flow ───
+// ─── WP4: durable tool-row convergence via event flow ───
 
 test('WP4: codex running→done replacement carries the trace pointer and converges one row', () => {
     const runId = startTraceRun({ cli: 'codex', audience: 'public' });
@@ -2013,7 +2013,7 @@ test('WP4: claude tool_result converges the trace row even after RAM eviction', 
 // External channels (Slack/Telegram/Discord) deliver text derived from
 // ctx.fullText, so narration that survives there reaches the user's final
 // answer. The live UI reads pendingOutputChunk separately and keeps everything.
-// Plan: devlog/_plan/260826_intermediate_text_leak/050_phase4_claude.md
+
 
 function boundaryCtx() {
     return { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
@@ -2190,7 +2190,7 @@ test('claude live stream keeps narration the durable answer drops', () => {
 });
 
 // ─── NARRATION-BOUNDARY-01: opencode step boundary + grok limitation ─────────
-// Plan: devlog/_plan/260826_intermediate_text_leak/060_phase5_grok_opencode.md
+
 
 function opencodeCtx() {
     return {

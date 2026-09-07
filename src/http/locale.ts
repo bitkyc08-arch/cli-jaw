@@ -1,5 +1,5 @@
 // ─── Request locale resolution (web surface) ─────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 20 §3.1).
+// Extracted from server.ts in Phase 2.
 // Priority: explicit override > body.locale > ?locale= > Accept-Language > settings.
 
 import type { Request } from 'express';

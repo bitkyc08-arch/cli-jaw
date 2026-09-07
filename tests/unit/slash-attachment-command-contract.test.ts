@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const chatSource = readFileSync(new URL('../../public/js/features/chat.ts', import.meta.url), 'utf8');
-// /api/command lives in routes/command.ts since the Phase 2 extraction (devlog 260609, 20 §3.2).
+// /api/command lives in routes/command.ts since the Phase 2 extraction.
 const serverSource = readFileSync(new URL('../../src/routes/command.ts', import.meta.url), 'utf8');
 
 test('SAC-001: chat detects slash commands independently from attached files', () => {

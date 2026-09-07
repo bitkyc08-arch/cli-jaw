@@ -3,8 +3,8 @@
 //
 // The concurrency machinery (suppression, coalescing, cancellation, generation)
 // is covered by slack-enrichment-cache.test.ts — this file asserts only what is
-// specific to Slack conversations. Contract:
-// devlog/260812_slack_conversation_context/011_wp1_contract.md.
+// specific to Slack conversations.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

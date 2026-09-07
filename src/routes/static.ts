@@ -1,7 +1,7 @@
 // ─── Root + media static routes ───────────────────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.1).
+// Extracted from server.ts in Phase 2.
 // ⚠️ registerStaticRoutes must be called BEFORE app.use(express.static(public))
-// — GET / prefers the Vite build (public/dist/index.html) over public/index.html.
+// GET / prefers the Vite build (public/dist/index.html) over public/index.html.
 
 import type { Router, RequestHandler } from 'express';
 import fs from 'fs';

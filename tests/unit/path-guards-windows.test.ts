@@ -1,7 +1,6 @@
 // Windows path-identity guards, exercised on any host by injecting the path
 // environment. The Windows filesystem behaviors these rules defend against were
-// measured on a real host and recorded in
-// devlog/_plan/260812_windows_and_channels_parity/005_real_windows_host_evidence.md:
+// measured on a real host:
 //   - `a.md:hidden` writes an NTFS stream that a name-only directory listing
 //     never shows, while its content stays fully readable.
 //   - `trailing.md.` lands on disk as `trailing.md`, so two distinct strings

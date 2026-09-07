@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-# Clone with skills (public)
+# Clone with public submodules
 git clone --recursive https://github.com/lidge-jun/cli-jaw.git
 cd cli-jaw
 npm install
@@ -15,7 +15,7 @@ npm test
 ```
 lidge-jun/cli-jaw              ← this repo (public)
 ├── skills_ref/  (submodule)   ← lidge-jun/cli-jaw-skills (public)
-└── devlog/      (submodule)   ← lidge-jun/cli-jaw-internal (private)
+└── officecli/   (submodule)   ← lidge-jun/OfficeCLI (public)
 ```
 
 ### Submodules
@@ -23,10 +23,11 @@ lidge-jun/cli-jaw              ← this repo (public)
 | Submodule | Repo | Visibility | 용도 |
 |-----------|------|:---:|------|
 | `skills_ref/` | [cli-jaw-skills](https://github.com/lidge-jun/cli-jaw-skills) | public | 100+ bundled skills |
-| `devlog/` | cli-jaw-internal | **private** | Internal devlog & planning |
+| `officecli/` | [OfficeCLI](https://github.com/lidge-jun/OfficeCLI) | public | Office document tools |
 
-> **devlog 접근이 필요한 경우**: [Issue를 열어](https://github.com/lidge-jun/cli-jaw/issues) collaborator 권한을 요청하세요.  
-> devlog가 없어도 코드 빌드와 테스트에는 영향 없습니다.
+Private plans, audits, evidence, and history belong only in a separate sibling clone of [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal). Request collaborator access through an [issue](https://github.com/lidge-jun/cli-jaw/issues). Public builds and tests do not require it.
+
+Never create private records inside this checkout, including `devlog`, `_plan`, `_fin`, or `.jwc` aliases at any depth, even when a generic skill suggests them. Keep `docs/` and `structure/` for public product documentation and omit private record paths from public docs and source.
 
 ### Clone Options
 
@@ -34,7 +35,7 @@ lidge-jun/cli-jaw              ← this repo (public)
 # 1. 코드만 (일반 유저 / CI)
 git clone https://github.com/lidge-jun/cli-jaw.git
 
-# 2. 코드 + skills (개발자)
+# 2. 코드 + 공개 서브모듈 (개발자)
 git clone --recursive https://github.com/lidge-jun/cli-jaw.git
 
 # 3. 이미 clone 한 후 submodule 추가
@@ -47,9 +48,31 @@ git submodule update --init --recursive
 npm install          # dependencies
 npm run dev          # dev server (tsx watch)
 npm run build        # production build
-npm test             # full test suite
+npm test             # root + unit tests (integration is separate)
 npm run typecheck    # tsc --noEmit
 ```
+
+## Local Private-Path Check
+
+Enable the repository's pre-push hook for this checkout. First inspect any existing hook configuration; if you already have hooks, integrate this check into them instead of replacing them.
+
+```bash
+git config --show-origin --get-all core.hooksPath  # no output means no configured override
+git config --local extensions.worktreeConfig true
+git config --worktree core.hooksPath .githooks
+```
+
+Before pushing, check both the candidate index and every outgoing commit tree:
+
+```bash
+npm run check:private-boundary
+git fetch origin dev
+node scripts/check-private-boundary.mjs --range origin/dev HEAD
+```
+
+Use the destination branch's current remote tip as the range base. The default check scans indexed paths; `--range` checks every outgoing commit, including private files added and later deleted. `.githooks/pre-push` passes Git's ref updates to `--pre-push` on stdin. Do not bypass this check with `--no-verify`.
+
+These checks reject private path names, not private content hidden under otherwise public names. Review the diff for private record links and content too. CI is a backstop after upload; it cannot prevent or retract disclosure from a push. Package exclusions also do not protect Git pushes: npm's `files` allowlist can override root `.npmignore`, so private paths need explicit exclusions there as well.
 
 ## Submodule Workflow
 
@@ -57,12 +80,12 @@ npm run typecheck    # tsc --noEmit
 
 ```bash
 # 1. 서브모듈 안에서 커밋 + 푸시
-cd skills_ref   # 또는 cd devlog
+cd skills_ref   # 또는 cd officecli
 git add -A && git commit -m "update" && git push
 cd ..
 
 # 2. 메인 레포에서 참조 업데이트
-git add skills_ref   # 또는 git add devlog
+git add skills_ref   # 또는 git add officecli
 git commit -m "chore: update skills_ref ref"
 git push
 ```

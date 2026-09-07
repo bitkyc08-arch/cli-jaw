@@ -23,12 +23,7 @@ test('RH-002: .npmignore excludes skills_ref', () => {
     assert.ok(npmignore.includes('skills_ref'), '.npmignore should exclude skills_ref');
 });
 
-// ── RH-003: .npmignore에 devlog/ 포함 ──
-
-test('RH-003: .npmignore excludes devlog', () => {
-    const npmignore = fs.readFileSync(join(root, '.npmignore'), 'utf8');
-    assert.ok(npmignore.includes('devlog'), '.npmignore should exclude devlog');
-});
+// Private packaging boundaries are exercised by private-boundary.test.ts.
 
 // ── RH-004: tests/phase-100/ 디렉토리 미존재 ──
 
@@ -116,7 +111,9 @@ test('RH-008: root npm package stays lean and excludes Electron app/deps', () =>
 
     assert.equal(hasElectronDep, false, 'root package.json must not depend on electron');
     assert.equal(includesElectronApp, false, 'published npm files must not include electron/');
-    assert.deepEqual(files, ['dist/', '!dist/src/lib/native/*.node', 'public/', 'scripts/', 'package.json']);
+    // Additional exclusions can tighten packaging without broadening its public roots.
+    assert.deepEqual(files.filter((entry: string) => !entry.startsWith('!')), ['dist/', 'public/', 'scripts/', 'package.json']);
+    assert.ok(files.includes('!dist/src/lib/native/*.node'), 'native binaries must remain excluded');
 });
 
 // ── RH-009: the npm description's skill counts must be true (#524) ──

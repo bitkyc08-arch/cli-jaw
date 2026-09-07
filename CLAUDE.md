@@ -6,7 +6,9 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 - Start at `structure/INDEX.md` for the current architecture map.
 - Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
-- Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.
+- `docs/` and `structure/` contain public product documentation only. Private plans, audits, evidence, and history belong only in a separate sibling clone of [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal); request access through an [issue](https://github.com/lidge-jun/cli-jaw/issues).
+- Never create private records inside this checkout, including `devlog`, `_plan`, `_fin`, or `.jwc` aliases at any depth. This overrides generic skill defaults. Do not include private record paths in public docs or source.
+- Before public pushes, check the index with `npm run check:private-boundary` and outgoing commit trees with `node scripts/check-private-boundary.mjs --range <remote-base> HEAD`; enable the checkout-local pre-push hook as described in [CONTRIBUTING.md](CONTRIBUTING.md#local-private-path-check). Review content separately. CI runs after upload and cannot prevent initial disclosure.
 
 ## Build & Deploy Contract
 
@@ -78,7 +80,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 - Web/CLI `jaw dashboard serve` defaults to manager port `24576`; Electron implicit spawn owns the separate `24577-24590` manager lane and does not reuse `24576`.
 - Sidecar packaging owns a locked source snapshot/staging transaction; smoke runs the target Node from an isolated artifact copy, not checkout dependencies. Keep compiled-asset/prune/native/no-JWC gates, exact candidate/seal identity, retained failure roots and report-before-cleanup ordering. Skipped/timeout is not verification and local fingerprints are not signatures; see `structure/infra.md`.
 - Explicit `CLI_JAW_ISOLATED_QA_ROOT` selects fixed task homes/strict worker-manager-preview ports through `src/shared/isolated-qa.ts`. Validate/scrub before imports, apply Electron paths before lock/session, preserve captured policy and forbid global registration/installer, foreign scan/peer and Manager lifecycle actions in QA. Normal mode stays unchanged. Controlled launch is not an arbitrary-command sandbox or packaged/native certification; see `structure/infra.md`.
-- The Electron Manager right sidebar uses an open-tab model (2026-07-04): module tab kinds `files | diff | browser | design`, multi-instance except the Diff singleton, launcher row + equal-width tab strip + `+` menu, per-tab resource state persisted in tab metadata (`RightSidebarOpenTab.files/browser/design`), only the ACTIVE tab body mounts (hidden Electron webviews composite over the window), CEO hidden. Plans: `devlog/_plan/260705_electron_file_folder_unified_tabs/`.
+- The Electron Manager right sidebar uses an open-tab model (2026-07-04): module tab kinds `files | diff | browser | design`, multi-instance except the Diff singleton, launcher row + equal-width tab strip + `+` menu, per-tab resource state persisted in tab metadata (`RightSidebarOpenTab.files/browser/design`), only the ACTIVE tab body mounts (hidden Electron webviews composite over the window), CEO hidden.
 - Design workspace v1: `jaw design <list|create|show|path|rescan|edit|export|files|snapshots|catalog>` is FILE-FIRST over `src/manager/design/store.ts` (`~/.cli-jaw-dashboard/design/projects/<project-key>/pages/<page-id>/`, `page.json` source of truth, revision 409s, keep-last-20 snapshots). Manager routes live at `/api/dashboard/design` (mutators require the Electron desktop header; preview is CSP-locked, `script-src 'none'`). The Design module tab's Run button enqueues a pageDir-scoped generation prompt into the currently selected instance.
 - Embedded Browser agent surface (030, v1–v5): agent-visible Manager Browser pages are relayed into the SELECTED instance's runtime-context by default. Agent endpoints via a renderer-relayed command queue: `POST …/<targetId>/screenshot` (PNG temp-file path), `POST …/<targetId>/snapshot` (bounded accessibility tree), and `POST …/<targetId>/act` (click/type/scroll/key). `act` is available for agent-visible targets by default (`actionsEnabled` remains a compatibility flag) and still validates payload bounds + re-checks the current URL policy in main. Element inspect/actions use Electron CDP attachment with ONLY DOM/Overlay/Input/Accessibility domains (native element-box highlight via `Overlay.setInspectMode`); the Runtime domain / page-side script evaluation is never enabled. Page titles/urls are sanitized + JSON-delimited before entering agent context.
 - `jaw browser fetch <url>` is the adaptive URL-reader mirror from agbrowse: use it for a known URL/search-result URL, not as generic search. For raw search intent, use `/search <query>` so the search skill can choose search, browser verification, and model-gated parallel research policy.
@@ -104,7 +106,7 @@ Prefer the existing gates only:
 ```bash
 npm run gate:all
 npm test
-bash structure/audit-fin-status.sh
+bash structure/check-doc-drift.sh
 ```
 
 Doc-only changes should not modify `.mjs`, `.js`, or `.ts` source files unless explicitly requested.

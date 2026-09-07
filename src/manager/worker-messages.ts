@@ -72,7 +72,7 @@ export const WORKER_RECENT_WINDOW = 200;
 
 export async function fetchWorkerAssistantTextById(fetchImpl: WorkerFetch, port: number, messageId: number): Promise<string> {
     if (!Number.isInteger(messageId)) return '';
-    // Two-stage (devlog 260609, 41 P4-lite): the target id comes from
+    // Two-stage: the target id comes from
     // /api/messages/latest, so the recent window almost always contains it.
     // Only when 200+ newer rows buried it do we pay for the full history.
     const recent = await fetchWorkerMessageRows(fetchImpl, port, WORKER_RECENT_WINDOW);

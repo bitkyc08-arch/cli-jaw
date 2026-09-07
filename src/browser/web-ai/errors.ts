@@ -8,7 +8,7 @@ import { stripUndefined } from '../../core/strip-undefined.js';
 //   BrowserCapabilityError        -> capability.unsupported
 //   ProviderRuntimeDisabledError  -> provider.runtime-disabled
 //
-// Catalog (devlog/03_phase2_errors.md in agbrowse is the source of truth):
+// Catalog:
 //
 //   cdp.unreachable / cdp.target-mismatch
 //   provider.composer-not-visible / provider.model-mismatch

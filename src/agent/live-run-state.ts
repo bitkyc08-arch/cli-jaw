@@ -13,8 +13,7 @@ export type LiveRunEntry = {
     startedAt?: number;
     /** Trace run id of the spawn that owns this live run. Rides on
      *  agent_output/agent_done broadcasts and the orchestrate snapshot so the
-     *  web UI can scope SSE replays to the run they belong to (devlog 260612
-     *  manager_stream_hidden_state_audit 06-08). */
+     *  web UI can scope SSE replays to the run they belong to. */
     traceRunId?: string;
     /** Cumulative streamed length, UNCAPPED — the replay-cursor unit. `text`
      *  keeps only the newest MAX_LIVE_TEXT_CHARS tail (260613 05 finding 9),
@@ -85,7 +84,7 @@ export function replaceLiveRunTools(scope: string, toolLog: unknown[]): void {
     // a boss tool sync must NOT wipe employee progress appended via appendLiveRunTool.
     // Without this, a dense boss (claude) overwrites the scope on every tool, so the
     // mirrors are gone by persist time, while a sparse boss (codex) leaves them intact
-    // — the exact reported tool-card asymmetry (hydration loss R1, devlog 260620).
+    // the exact reported tool-card asymmetry.
     const mirrors = current.toolLog.filter((t) => t.isEmployee === true);
     current.toolLog = mirrors.length
         ? sanitizeToolLogForDurableStorage([...sanitized, ...mirrors])

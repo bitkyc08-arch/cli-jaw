@@ -1,6 +1,6 @@
 // Code mode REST surface (Phase 1 scaffold). Streaming/permission events flow via
-// the 'jwc' SSE topic; prompt is accept-then-stream — never a blocking response
-// (jawcode 113.2 §4). Design SoT: jawcode devlog 112.3 §S1.
+// the 'jwc' SSE topic; prompt is accept-then-stream — never a blocking response.
+// Session transport owns execution; routes expose the scoped control surface.
 import { execFile } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';

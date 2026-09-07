@@ -407,7 +407,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 if (changed && changed.status !== 'running' && !ctx.isRaw) {
                     const ok = changed.status === 'complete';
                     // jawcode attention latch \u2014 the status-bar badge grows a `!`
-                    // until the user opens the Ctrl+O panel (devlog doc 40).
+                    // until the user opens the Ctrl+O panel.
                     if (!ok) ctx.bgtaskAttention = true;
                     // jawcode unicode glyph set: \u2714 complete \u00b7 \u23f9 cancelled \u00b7 \u2718 failed/orphaned
                     const mark = ok ? `${c.green}\u2714` : changed.status === 'cancelled' ? `${c.red}\u23f9` : `${c.red}\u2718`;
@@ -420,8 +420,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 if (isFullscreen(ctx)) ctx.requestFrame?.();
                 // Open fullscreen panel paints from ctx.bgtaskOverlayItems,
                 // which only openBgtaskOverlay refreshes — refetch so the panel
-                // doesn't keep showing a finished task as running (adversarial
-                // review, devlog doc 40). Classic mode keeps snapshot-at-open
+                // doesn't keep showing a finished task as running. Classic mode keeps snapshot-at-open
                 // semantics: repainting a shrinking box would leave residue.
                 if (ctx.store.overlay.bgtaskOpen && isFullscreen(ctx)) {
                     void openBgtaskOverlay(ctx).catch(() => { /* keep last snapshot */ });
@@ -504,7 +503,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                     // Steer/retry/schedule lifecycle — these explain why the
                     // current stream just died or restarted; the Web UI renders
                     // them but the TUI used to drop them silently
-                    // (devlog 260703 tui_steer_esc_rca doc 30 §A3).
+                    //.
                     case 'steer_started': {
                         const promptPreview = String(event.raw['prompt'] || '').replace(/\s+/g, ' ').trim().slice(0, 60);
                         const message = `↳ steer (${event.raw['origin'] || 'web'}): ${promptPreview}`;

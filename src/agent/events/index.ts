@@ -344,7 +344,7 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
             if (runIdx !== -1) {
                 // Carry the trace pointer onto the replacement: a fresh object would
                 // get stamped as a DUPLICATE row while the original row stays
-                // 'running' forever (WP4, devlog 260703 doc 12 item 2).
+                // 'running' forever.
                 const prior = ctx.toolLog[runIdx];
                 if (prior?.traceRunId && prior.traceSeq) {
                     toolLabel.traceRunId = prior.traceRunId;

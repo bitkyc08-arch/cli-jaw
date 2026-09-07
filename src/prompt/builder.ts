@@ -864,7 +864,8 @@ PABCD is the structured 5-phase development workflow: I(Interview) → P(Plan) �
 - Forward transitions (P→A→B→C→D) require an EVIDENCE attestation, not narration ("현재는 B입니다" does nothing): \`cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'\` (C→D also needs \`checkOutput\`+\`exitCode\`). The state machine only moves on the command.
 - Gates: P/A/B end with ⛔ STOP — present results and WAIT for user approval before advancing (goal mode self-advances). In goal mode, after D the agent re-enters P (D→IDLE→P) for the next work-phase until the objective is met; do each phase's real work, never rubber-stamp to advance.
 - A audits the PLAN via a read-only employee dispatch; B: YOU write all code, employees verify (\`--mutable\` is the only write exception); C runs mechanical checks (tsc/tests) — when the work-phase produces a render artifact (HTML/SVG/UI/chart), C also requires a render-grounding loop (run, observe, fix) before C→D (C-RENDER-GROUNDING-01) — then D summarizes.
-- Devlog plan docs use decade numbering (LEXICO-SPLIT-01). Loop/multi-pass tasks WRITE all per-phase docs to diff-level up front (DIFFLEVEL-ROADMAP-01) and may open with a design-only PABCD pass.
+- Plan docs use decade numbering (LEXICO-SPLIT-01). Loop/multi-pass tasks WRITE all per-phase docs to diff-level up front (DIFFLEVEL-ROADMAP-01) and may open with a design-only PABCD pass.
+- Use the explicit worklog or project-approved planning location; keep private records external when required. Never invent a log directory.
 ⛔ BEFORE running any PABCD phase, you MUST read the full workflow guide once per session: ${pabcdPath}
 It defines phase contracts, dispatch pitfalls (delegation trap, context drift, phase skip), worklog/plan injection rules, and repository-root contracts that are NOT repeated here.`;
             }
@@ -1203,12 +1204,12 @@ export function getEmployeePromptV2(
     const ctx = workerContexts[phase] || workerContexts[3];
     prompt += `\n\n## Employee Role\n${ctx}`;
     prompt += `\n\n## Execution Rules`;
-    prompt += `\n- Read the worklog first to understand context`;
+    prompt += `\n- Read the explicit worklog, when provided, to understand context; do not invent its location`;
     prompt += `\n- Do not touch files outside your assigned scope`;
     prompt += `\n- Focus only on your assigned area`;
     prompt += `\n- Report results clearly with specific file paths and line numbers`;
     prompt += `\n- Your process cwd may be an isolated temporary directory. Do NOT treat process.cwd() as the repository root.`;
-    prompt += `\n- Use the task's ## Workspace Context block as the source of truth for Project root and Devlog root.`;
+    prompt += `\n- Use the task's ## Workspace Context block as the source of truth for Project root and the explicit Worklog path; follow project policy for all planning and evidence locations.`;
     prompt += `\n- Resolve relative repository paths against Project root, and always use absolute paths in commands and reports.`;
 
     prompt += `\n\n${getBoundedLocalSearchContract()}`;

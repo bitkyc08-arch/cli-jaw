@@ -3,7 +3,7 @@
 // Protocol: ACP = JSON-RPC 2.0 over NDJSON stdio. Implemented with a minimal inline
 // client (no new dependency); swapping to @agentclientprotocol/sdk is a drop-in later
 // since the surface below mirrors ClientSideConnection method names.
-// Design SoT: jawcode devlog 112.3 §S1 (C2) / handshake facts from acp-agent.ts 실사.
+// Handshake facts follow acp-agent.ts.
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';

@@ -1,6 +1,5 @@
 /**
- * TextBuffer — grapheme-aware single-line/multi-line edit buffer (Phase 3a,
- * devlog 260529_tui_parity, doc 08). Pure data structure (no I/O), so the
+ * TextBuffer — grapheme-aware single-line/multi-line edit buffer. Pure data structure (no I/O), so the
  * delicate composer/input-handler wiring (Phase 3b) builds on a tested core.
  *
  * Cursor is a GRAPHEME index (so CJK/emoji move as one unit). Supports

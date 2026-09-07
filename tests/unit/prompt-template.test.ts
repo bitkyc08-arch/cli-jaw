@@ -1,6 +1,6 @@
 // P37-PROMPT: A1 template must carry the Desktop/Browser Control anchor,
 // intent matrix, who-performs-it block, and forbidden phrases.
-// Matches devlog/_plan/computeruse/37_revisions_and_integration.md §D/§E/§M.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

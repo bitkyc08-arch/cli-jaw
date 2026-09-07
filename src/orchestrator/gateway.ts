@@ -137,7 +137,7 @@ function applyMidRunPolicy(
 // L2 defense against duplicate inserts caused by:
 //   (a) rapid user re-submit (impatience / button double-click)
 //   (b) dispatch Bash-tool timeout → Boss hallucinates "in progress" → user retypes
-// See devlog/_fin/260417_message_duplication/.
+
 const DEDUP_WINDOW_MS = 5000;
 const recentSubmissions = new Map<string, { ts: number; requestId: string }>();
 
@@ -294,8 +294,8 @@ export function submitMessage(
     // This fixes the dual-insert bug where bot.ts called both enqueue + insert.
     // NOTE: pending worker replay is intentionally not an admission gate — orchestrate()
     // drains pending replays at entry (pipeline.ts drainPendingReplays), so
-    // starting immediately is safe and avoids the processQueue deadlock
-    // documented in devlog/_fin/260417_message_duplication/02_*.
+    // starting immediately is safe and avoids the processQueue deadlock.
+
     if (isAgentBusy(scope) || hasBlockingWorkers(scope)) {
         if (multiSessionEnabled) {
             return applyMidRunPolicy(resolveMidRunPolicy(meta, chatSessionId), {

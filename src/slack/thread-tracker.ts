@@ -3,9 +3,8 @@
 // was mentioned in it (app_mention) or posted a reply into it. The mention
 // gate consults this set so a conversation the user STARTED with a mention
 // keeps flowing without re-mentioning the bot on every follow-up
-// (Hermes thread_require_mention:false semantics — devlog
-// 260806_slack_thread_dynamic_lookup/001 §1).
-//
+// (Hermes thread_require_mention:false semantics).
+
 // Persistence: JAW_HOME/slack-threads.json, written atomically (tmp+rename,
 // same pattern as src/goal/store.ts). Restart survival matters here — losing
 // the set silently turns every open thread back into "mention required",

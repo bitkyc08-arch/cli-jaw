@@ -1,4 +1,4 @@
-// Burst measurement for the 260806 rate-limit hardening unit (devlog 050).
+// Burst measurement for browser and CLI rate-limit isolation.
 // Three sequential phases so before/after runs are deterministic:
 //   0. fetch + validate the Bearer token BEFORE any load (429-impossible here)
 //   1. "sacrificial" lane: 350 unheadered (browser-class) GETs, concurrency 20

@@ -582,7 +582,7 @@ async function bootstrap(): Promise<void> {
     initMediaLightbox();
     document.getElementById('chatSearchTrigger')?.addEventListener('click', toggleChatSearch);
     initAttentionBadge();
-    // Connect early (devlog 260705_frontend_perf H5): channel-up drives
+    // Connect early: channel-up drives
     // loadMessages(), which only needs i18n + the badge/help listeners above —
     // the CLI-registry fetch below used to serially delay first history paint.
     connect();

@@ -13,7 +13,7 @@ export const VIEWPORT_FILL_SENTINEL = "\x00__jwc_viewport_fill__\x00";
  * `max(0, rows - otherLines)` blank lines, so the components below it sit on
  * the terminal floor while content above grows downward into the gap.
  *
- * Devlog 083.7 (composer bottom pin). When disabled it renders nothing, which
+ * When disabled it renders nothing, which
  * restores the legacy "frame ends where content ends" behavior byte-for-byte.
  */
 export class ViewportFill implements Component {

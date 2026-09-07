@@ -1,4 +1,4 @@
-// ─── Compiled digest injection (devlog 040 §10, §0c R1) ──
+// ─── Compiled digest injection ──
 // The only path that puts vault content into the system prompt. Two things make it
 // dangerous and both are handled here: the file is user-controlled, and it can be
 // swapped for a symlink after the vault was scaffolded.

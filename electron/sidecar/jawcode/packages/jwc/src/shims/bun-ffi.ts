@@ -6,7 +6,7 @@
  */
 
 function ffiUnavailable(): never {
-	throw new Error("bun:ffi is unavailable in the jwc Node bundle (TUI stays Bun-only — devlog 100 MOC D8)");
+	throw new Error("bun:ffi is unavailable in the jwc Node bundle");
 }
 
 export function dlopen(..._args: unknown[]): never {

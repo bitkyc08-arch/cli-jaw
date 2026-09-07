@@ -7,7 +7,7 @@ System-level AI agent with full computer control via CLI wrapping (pi, agy, ai-e
 ```
 lidge-jun/cli-jaw              ← public (this repo)
 ├── skills_ref/  (submodule)   ← lidge-jun/cli-jaw-skills (public reference skills)
-├── devlog/      (submodule)   ← lidge-jun/cli-jaw-internal (private)
+├── officecli/   (submodule)   ← lidge-jun/OfficeCLI (public)
 └── .npmignore                 ← npm publish 시 submodules 제외
 ```
 
@@ -149,7 +149,7 @@ ssh <host> 'ps -o lstart= -p $(sed -n "s/.*pid.: *\\([0-9]*\\).*/\\1/p" ~/.cli-j
 # 코드만
 git clone https://github.com/lidge-jun/cli-jaw.git
 
-# 코드 + skills + devlog (private 권한 필요)
+# 코드 + 공개 서브모듈 (skills, OfficeCLI)
 git clone --recursive https://github.com/lidge-jun/cli-jaw.git
 ```
 
@@ -169,15 +169,19 @@ git -c core.longpaths=true clone --recursive https://github.com/lidge-jun/cli-ja
 서브모듈 수정 후 반드시 메인 레포에서도 ref 커밋:
 
 ```bash
-cd devlog  # 또는 skills_ref
+cd skills_ref  # 또는 officecli
 git add -A && git commit -m "update" && git push
 cd ..
-git add devlog && git commit -m "chore: update devlog ref" && git push
+git add skills_ref && git commit -m "chore: update skills_ref ref" && git push
 ```
 
-### devlog 접근
+### Private records boundary
 
-`devlog/` 는 private 레포입니다. 접근 필요 시 [Issue](https://github.com/lidge-jun/cli-jaw/issues)에서 collaborator 권한을 요청하세요.
+Private plans, audits, evidence, and development history belong only in a separate sibling clone of [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal). Request collaborator access through an [issue](https://github.com/lidge-jun/cli-jaw/issues).
+
+Never create private records inside this checkout, including `devlog`, `_plan`, `_fin`, or `.jwc` aliases at any depth. This boundary overrides generic skill defaults. `docs/` and `structure/` hold public product documentation only; do not put private logs or private record paths in public docs or source.
+
+Before any public push, run `npm run check:private-boundary` for the index and `node scripts/check-private-boundary.mjs --range <remote-base> HEAD` for every outgoing commit tree. Follow [contributor hook setup](CONTRIBUTING.md#local-private-path-check) to enable `.githooks/pre-push` for this checkout; it invokes `--pre-push` using Git's stdin. Review content as well as paths and do not bypass the hook. CI is a backstop after upload, not a pre-disclosure guard.
 
 ### Kanban
 
@@ -194,7 +198,7 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 - Claude native: the optional SDK, shared pool/host and existing lifecycle own sequential main turns, fresh worker assignments, immutable terminal claims, hard Stop and interrupted MESSAGE before exit-settle. Default steer remains kill/resume, never advertised as in-band. Auto/safe decisions use live requests; deny/unknown profiles fail before preparation, including the memory extractor. Images are bounded and child activity is foreground-only. Child declarations reconcile from both parent/child frames; their ID ownership survives child completion and is not the same as live permission eligibility. Pre-start failure/Stop use one cached fallback before compatibility output; `onlyIfRunning` preserves finished trace headers.
 
 - Cursor native main: explicit native/auto only; restrictive permissions and unsupported workers fail before `regenerateB`, bucket/bootstrap/snapshot, detection or pool work. `AcpRuntimeSession` keeps raw final/partial independent of bounded Activity and claims an immutable logical result before lifecycle; passive finalization survives main-map removal. Native run cleanup holds the exact lease through application settlement and uses captured exit-barrier identity. Server-explicit scope/chat bindings survive multi-session off; private identity-only I/O liveness keeps the owning collector alive without messaging content. Preserve legacy/manual compact while excluding print-era automatic compact/count heuristics from explicit native outcomes.
-- `structure/` is the current architecture-doc hub; do not point new docs at `devlog/structure/`.
+- `structure/` is the current public architecture-doc hub.
 - Keep `README.md`, root `AGENTS.md`, root `CLAUDE.md`, and `structure/AGENTS.md` synchronized when command/API/orchestration surfaces change.
 - Recent non-strict hotspots: explicit `/continue`, workflow helper slash commands (`/plan` as PABCD P compatibility guide, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`, `/gd`; forward PABCD transitions require `cli-jaw orchestrate <phase> --attest '{"from","to","did",...}'`), pre-prompt context hooks (`context-hooks.json`, `cli-jaw hooks`), bounded local search contract (narrow-path Grep/rg; external search via active search skill), Telegram Hub P0–P4 (`structure/telegram.md`, `/api/dashboard/telegram-hub`), goal pause gate continuation suppression (`goal_pause_gate_pending`), `tests/run.mts` programmatic test driver, `/goal plan` and `/goalplan` store user direction as `planHint` and require `/goal refine` before checkpoints; agent pause first-tap state is exposed as derived `pauseGate` on status/API surfaces while persisted status remains `active`; bounded automation is `/goal run ...`, not top-level `/autopilot`), Codex App clean-install default with opt-in migration for existing settings, bounded child-backed nullable CLI status, read-only OpenCodex root-URL/live-health diagnostics, Pi top-level `pi --mode rpc` runtime with isolated `PI_CODING_AGENT_DIR` profiles, AGY `-p` print-mode runtime with capability-probed optional `--model` (observed in AGY 1.0.12), Grok weekly quota via `~/.grok/auth.json` + Grok Build billing gRPC-web before legacy monthly fallback, SSE-first `GET /api/events` event channel with WebSocket fallback, bounded tool-log sanitizer, worker progress query/watch, canonical `/api/channel/send`, heartbeat `every`/`cron` schedules, heartbeat Slack mention watch inside `runHeartbeatJob` (`mentionWatch`, bot-token `conversations.history` scan instead of user-token-only `search.messages`, frontier/resume/round-robin/429 stop/60-channel cap, per-item busy yield, server-owned thread send then seen receipt, at-least-once delivery; the ledger is keyed by `(jobId, workspaceId, userId)` with the workspace id taken from a per-token `auth.test` rather than `settings.slack.teamId`, pre-v2 rows hold a job in a durable SQLite quarantine cleared only by `POST /api/heartbeat/:jobId/mention-watch-fresh-start` with a new `since`, and a duplicate job id in one PUT is a 400; the answer turn carries the answered thread's `chatSessionId` but runs in a dedicated `mention-watch:<remoteKey>` scope so inbound Slack cannot steer it, with a per-conversation guard of `getState(remoteKey) === 'IDLE'` + `hasChatSessionWork` + non-blocking `sessionLanes.hasPending`, and the thread session is minted only on admission)
 , browser runtime diagnostics/session lifecycle, Electron Node sidecar packaging, private active `k-writing` routing for Korean promotional/content writing, inbound ACK reactions and queue-notice lifecycle owned by `src/messaging/ack-reaction.ts` + `src/messaging/queue-notice.ts` (channels supply transport factories only; the notice is deleted only AFTER a successful answer and rewritten on timeout/shutdown; `QueueNoticeRegistry.drain` bounds shutdown and actually aborts; ACK settles immediately after successful text delivery and BEFORE the optional image relay, because uploads are uncancellable and would otherwise strand the reaction on `running` after the answer is already visible), canonical platform classification via `src/core/platform-kind.ts` (`windows-native|wsl|linux|darwin|other`; `process.platform` decides first and `WSLENV` is never a WSL signal), and `npm run gate:all`.
@@ -327,33 +331,6 @@ File tree の行数は **`(NNNL)`** 형식으로 기재. 두 가지 변형 허�
 - 검증: `bash structure/verify-counts.sh` (exit code = 불일치 수; 현재는 `str_func.md` 파일 트리의 모든 `(NNNL)` 파일 항목도 검사)
 - 자동 수정: `bash structure/verify-counts.sh --fix`
 - **파일 수정 후 반드시 verify-counts 실행해서 문서 동기화**
-
-### Devlog Archive (`devlog/_fin/`)
-
-- 완료된 phase 폴더는 `devlog/_fin/`으로 이동 (folder-per-phase, 단독 `.md` 금지)
-- 계획/구현대기 문서는 `devlog/_plan/`으로 이동 (`_fin`에 두지 않음)
-- `devlog/` 루트에는 진행 중인 폴더만 유지
-- 후순위 작업은 `269999_` 접두사로 표시
-- Reference bundles (skill packages, test fixtures)은 반드시 phase 폴더 안에 포함
-- 전체 규칙: [`devlog/_fin/HYGIENE.md`](devlog/_fin/HYGIENE.md)
-- 점검: `bash structure/audit-fin-status.sh`
-- 자동 분리: `bash structure/audit-fin-status.sh --move-planning`
-
-### Phase Document Frontmatter
-
-```yaml
----
-created: 2026-MM-DD
-status: planning | active | blocked | done | deferred
-tags: [cli-jaw, ...]
----
-# (fin) Phase Title    ← 구현 완료 시 (fin) 접두사
-```
-
-- `status:` 필드 필수 — `planning`, `active`, `blocked`, `done`, `deferred` 중 택 1
-- Legacy prose forms (`> Status:`, `**Status**:`) remain readable during migration,
-  but new/updated phase docs must use YAML frontmatter.
-- 구현 완료된 문서 제목에 `(fin)` 접두사 추가
 
 ### OfficeCLI (On-Demand)
 

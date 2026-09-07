@@ -57,7 +57,7 @@ test('jwc agent_end does not duplicate already streamed final text', () => {
     }
 });
 
-// ─── WP4b (devlog 260703 doc 13): agent_tool carries the authoritative run start ───
+// ─── WP4b: agent_tool carries the authoritative run start ───
 
 test('jwc tool broadcasts carry startedAt from the context runStartedAt', () => {
     const events: Array<{ type: string; data: Record<string, unknown> }> = [];

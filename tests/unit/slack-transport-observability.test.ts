@@ -5,7 +5,7 @@
 // forwarder all call `sendSlackText` directly. Instrumenting only the choke point
 // left exactly those invisible — the set a 'did one turn answer twice' audit
 // needs — so a census over the other record could look complete while missing
-// them. That is the mistake devlog 050 documents.
+// them. Both records are required for a complete audit.
 import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';

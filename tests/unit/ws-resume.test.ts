@@ -24,7 +24,7 @@ test('ws-resume: restore trigger debounce exists without full history reload sta
 });
 
 test('ws-resume: restore sync reloads history only for history-sensitive reasons', () => {
-    // devlog 260609 75/82 deliberately retired the snapshot-only restore
+    // The SSE migration deliberately retired the snapshot-only restore
     // contract: hidden/preview restores can miss history-changing events, so
     // classified reasons reload durable history first. Reload churn is bounded
     // by the trigger debounce plus message-history's signature/scope skip.

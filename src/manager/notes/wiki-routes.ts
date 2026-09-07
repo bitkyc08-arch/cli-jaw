@@ -1,4 +1,4 @@
-// Manager access to an instance's wiki (devlog 041-C).
+// Manager access to an instance's wiki.
 //
 // The generic /i proxy could carry these requests — it validates the port range and
 // passes JSON through untouched — but it opens its own loopback connection, and an

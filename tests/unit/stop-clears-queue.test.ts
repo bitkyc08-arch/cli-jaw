@@ -7,9 +7,8 @@ import { dirname, join } from 'node:path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Static guards for the stop / steer / pending-queue regression fixes
-// (devlog/_plan/steer/05_stop_steer_bug_report.md).
-//
+// Static guards for the stop / steer / pending-queue regression fixes.
+
 // These do not exercise runtime behavior — they pin the source-level
 // invariants so the fixes don't silently regress.
 

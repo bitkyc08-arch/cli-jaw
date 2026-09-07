@@ -29,7 +29,7 @@ import { recordSelfDelivery } from './turn-delivery.js';
  *  every Slack post — the dispatch settle path, the queued reply, and the
  *  forwarders call the transport directly, and those are recorded by
  *  `slack.post` in `src/slack/send-only-client.ts`. A census needs BOTH records;
- *  neither one alone is complete, which is the mistake devlog 050 documents.
+ *  neither one alone is complete, so both must be inspected.
  *
  *  The message body is deliberately absent. A duplicate audit needs the surface
  *  and destination; the body is redacted elsewhere at real cost. */

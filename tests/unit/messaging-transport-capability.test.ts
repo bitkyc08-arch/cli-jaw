@@ -14,7 +14,7 @@ function read(relPath: string): string {
 }
 
 test('channel-health exports capability snapshot for /api/health', () => {
-    // /api/health lives in routes/system.ts since the Phase 2 extraction (devlog 260609, 20).
+    // /api/health lives in routes/system.ts since the Phase 2 extraction.
     const server = read('src/routes/system.ts');
     const messaging = read('src/routes/messaging.ts');
     const runtimeSettings = read('src/core/runtime-settings.ts');

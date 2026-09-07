@@ -35,9 +35,9 @@ export function buildPlanAuditArtifact(
         'Verify imports and function signatures match real code.',
         'Check for integration risks.',
         'Verify existing source-of-truth docs/logs were read when present.',
-        'No new structure/, devlog/, docs, or AGENTS files without user approval.',
+        'No new structure/, working logs, docs, or AGENTS files without user approval. Follow project policy for record placement; keep private records external when required.',
         'New TS files follow strict-compatible TypeScript.',
-        'Devlog phase documents use the numbered lexicographic filename convention (LEXICO-SPLIT-01); bare-named or research/implementation-mixed docs are a FAIL.',
+        'Plan phase documents use the numbered lexicographic filename convention (LEXICO-SPLIT-01); bare-named or research/implementation-mixed docs are a FAIL.',
         'Multi-phase units satisfy DIFFLEVEL-ROADMAP-01: every roadmap phase has a diff-level decade doc, and the phase map is dependency-ordered (PHASE-SPLIT-01).',
     ].join('\n- ');
 

@@ -49,7 +49,7 @@ Project docs are NOT always injected. Before writing code or making architectura
 
 1. Check for and read if present: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `structure/`, `docs/`, `CONTRIBUTING.md`
 2. For skills_ref work: read `skills_ref/README.md` for registry structure, active skill mechanics, and category conventions
-3. For orchestration work: read `devlog/` and `_plan/` for prior decisions and devlog conventions
+3. For orchestration work: read the explicit worklog and project-designated planning records for prior decisions and conventions. Follow project policy for their location; keep private records outside the public repository when required, and never invent a log directory under the project root
 4. Unfamiliar repo: run `cli-jaw map <path>` (ranked structure map, on-demand) before broad/deep Grep; keep Grep for text search. Works on subtrees for large monorepos.
 5. If a referenced file doesn't exist, skip it silently — don't fail or ask
 

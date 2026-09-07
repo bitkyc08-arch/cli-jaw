@@ -253,7 +253,7 @@ export class TUI extends Container {
 	/** Global callback for debug key (Shift+Ctrl+D). Called before input is forwarded to focused component. */
 	onDebug?: () => void;
 	#renderRequested = false;
-	// ── History commit lane (devlog 083.9 P2) ──────────────────────────
+	// ── History commit lane ──────────────────────────
 	/** How committed lines reach the scrollback for this terminal. */
 	#historyLane: HistoryLaneMode = "unsupported";
 	/** Committed pixel rows sitting directly above the live zone, not yet scrolled into scrollback. */
@@ -1151,7 +1151,7 @@ export class TUI extends Container {
 	/**
 	 * Scroll the history region (screen rows 1..regionBottom, 1-based) up by
 	 * `count` rows: its top rows enter the scrollback and `count` blank rows
-	 * open at the region bottom (devlog 083.9 §3b-3). The live zone below the
+	 * open at the region bottom. The live zone below the
 	 * region is untouched.
 	 */
 	#scrollOutCommittedRows(count: number, regionBottom: number): void {
@@ -1169,8 +1169,8 @@ export class TUI extends Container {
 	}
 
 	/**
-	 * Commit finalized lines into the terminal scrollback above the live zone
-	 * (devlog 083.9 P2). The lines never enter the diff-rendered frame — they
+	 * Commit finalized lines into the terminal scrollback above the live zone.
+	 * The lines never enter the diff-rendered frame — they
 	 * become immutable pixels. Returns false when the commit lane is
 	 * unavailable (no fill region, overlay open, unsupported terminal); the
 	 * caller falls back to virtual-lane behavior (chatContainer append).
@@ -1213,7 +1213,7 @@ export class TUI extends Container {
 	/**
 	 * Replace the first ViewportFill sentinel with enough blank lines to pad
 	 * the frame to the viewport height, pinning everything after it to the
-	 * terminal bottom (devlog 083.7). Extra sentinels are dropped (misuse
+	 * terminal bottom. Extra sentinels are dropped (misuse
 	 * guard); when no sentinel is present the input is returned as-is.
 	 */
 	#expandViewportFill(lines: string[], height: number): string[] {
@@ -1277,7 +1277,7 @@ export class TUI extends Container {
 		let newLines = this.render(width);
 		if (renderMetrics.enabled) renderMetrics.recordHelper("renderTree", renderMetrics.now() - renderTreeStart);
 
-		// Expand the viewport-fill sentinel (devlog 083.7) to the viewport
+		// Expand the viewport-fill sentinel to the viewport
 		// remainder. Must run before overlay compositing (overlays position
 		// against the final frame) and before cursor extraction (absolute rows
 		// must be final). No sentinel present → input returned untouched, so the
@@ -1357,7 +1357,7 @@ export class TUI extends Container {
 
 		// Viewport-only repaint without 2J/3J: replays the visible rows in place and
 		// leaves scrollback pixels untouched. Originally multiplexer-only; now the
-		// default for every above-viewport change (devlog 083.8 S3).
+		// default for every above-viewport change.
 		const viewportRepaint = (reason: string): void => {
 			this.#fullRedrawCount += 1;
 			if (renderMetrics.enabled) renderMetrics.recordFullRedraw(reason);
@@ -1542,7 +1542,7 @@ export class TUI extends Container {
 		// A change above the previous viewport used to force fullRender(true) —
 		// 2J+3J wipes the terminal scrollback and repaints, which reads as the
 		// screen being "sucked upward" right when a trailing thinking block
-		// collapses at message_end (devlog 083.8 ④). Codex-parity policy instead:
+		// collapses at message_end. Codex-parity policy instead:
 		// repaint only the live viewport and leave scrollback pixels alone —
 		// #previousLines tracks the desired logical transcript, and the next
 		// deliberate full rebuild (width change, /redraw, compactViewportFill)

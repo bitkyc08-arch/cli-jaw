@@ -222,7 +222,7 @@ export function scrollToBottom(force = false): void {
         // schedule and fire (threshold promotion). One rAF gate batches BOTH
         // paths — streaming emits scrollToBottom per chunk/tool event, and the
         // VS branch used to run virtualizer.scrollToIndex + scrollTop reads
-        // synchronously per call (devlog 260705_frontend_perf H1).
+        // synchronously per call.
         const vs = getVirtualScroll();
         if (vs.active) {
             vs.scrollToBottom();

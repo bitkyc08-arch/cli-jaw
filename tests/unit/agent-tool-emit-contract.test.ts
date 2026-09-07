@@ -1,4 +1,4 @@
-// WP4b (devlog 260703 doc 13): every agent_tool SSE emit goes through the
+// WP4b: every agent_tool SSE emit goes through the
 // trace-stamped helper path (or explicitly carries startedAt), so the payload
 // always has the authoritative run start and — where a trace run exists —
 // traceRunId/traceSeq. Source-contract pattern per tool-log-memory-boundaries.

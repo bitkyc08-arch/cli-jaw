@@ -39,7 +39,7 @@ function withScreen(fn: (screen: Screen, term: AnsiTerminalModel, out: () => str
     }
 }
 
-// 260703 scrollback hardening (devlog _plan/260703_tui_scrollback_hardening/10):
+// 260703 scrollback hardening:
 // red→green repros for the four Screen defects, driven through the hardened
 // AnsiTerminalModel (real DECSTBM + 3J semantics).
 

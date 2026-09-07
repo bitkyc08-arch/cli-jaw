@@ -213,9 +213,8 @@ export function shouldProcessSlackEvent(
         if (!config.selfUserId || !mentionsUser(event.text || '', config.selfUserId)) {
             // Thread continuation, but only for a thread the bot itself started:
             // there, its reply is the parent and every follow-up is addressed to
-            // it, so re-mentioning would be noise (Hermes
-            // thread_require_mention:false semantics — devlog 260806 unit).
-            //
+            // it, so re-mentioning would be noise (Hermes thread_require_mention:false semantics).
+
             // A thread the bot was pulled INTO partway does not qualify. People
             // were already talking there and keep talking to each other; reading
             // one mention as consent for the rest of that conversation is how the

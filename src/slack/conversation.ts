@@ -8,8 +8,7 @@
 // uses. This module owns only what is specific to Slack conversations — the API
 // shapes, participant derivation, and what each failure means.
 //
-// Design + audit history: devlog/260812_slack_conversation_context/
-// {011_wp1_contract.md, 012_wp1_replan_shared_primitive.md}.
+
 
 import { slackApi, type SlackFetch } from './api.js';
 import { fetchSlackReplies, type SlackHistoryMessage } from './history.js';

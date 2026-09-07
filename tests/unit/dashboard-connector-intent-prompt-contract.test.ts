@@ -1,6 +1,6 @@
 // Contract test: A1 carries the dashboard-connector-intent anchor and the
 // prompt builder is wired to safe-append the anchor for users with edited
-// A-1.md files. Matches devlog/_fin/260511_dashboard_agent_workspace/03_phase3_prompt_intent_guard.md.
+// A-1.md files.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

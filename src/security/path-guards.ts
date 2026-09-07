@@ -63,7 +63,7 @@ export const hostPathEnvironment: PathEnvironment = {
 /**
  * Reject NTFS alternate-data-stream suffixes and Win32-trimmed components.
  *
- * Measured on Windows (devlog/_plan/260812_windows_and_channels_parity/005):
+ * Measured on Windows:
  * writing `a.md:hidden` succeeds, the stream is absent from a name-only
  * directory listing, and its content is still fully readable — so a name-based
  * allowlist never sees the payload. `trailing.md.` lands on disk as
@@ -109,8 +109,7 @@ export function assertNoWindowsStreamSuffix(
  * supports per-directory case sensitivity (`fsutil file setCaseSensitiveInfo`)
  * and case-sensitive SMB shares, so `...\Root` and `...\root` can be two
  * different directories. Folding makes a forbidden sibling look contained.
- * This was demonstrated on a real Windows host — see
- * devlog/_plan/260812_windows_and_channels_parity/010.
+ * This was demonstrated on a real Windows host.
  *
  * Case-insensitivity is instead obtained where it is actually true: both the
  * candidate and the roots in `assertSendFilePath` pass through native

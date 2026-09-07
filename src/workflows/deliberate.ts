@@ -62,7 +62,7 @@ export function buildDeliberateArtifact(
             requiresUserAction: true,
             guardrails: [
                 'Do not dispatch employees.',
-                'Do not write project/devlog files at runtime.',
+                'Do not write project files or working logs at runtime. Promotion must follow project policy for record placement, including external private records when required.',
                 'Do not mark anything PASS/FAIL.',
                 'End with one recommendation or an explicit blocker.',
             ],

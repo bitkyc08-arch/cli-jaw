@@ -1,7 +1,7 @@
 // AgentSessionEvent → cli-jaw bus mapping (110.4 fixed table).
 // Reuses the EXISTING agent_* bus events so the Web UI renders jwc turns with
-// zero UI change (D112-1). Keep this 1:1 with jawcode devlog 110.4 — changing
-// the wire here without updating that doc is a drift.
+// zero UI change (D112-1). Keep this 1:1 with the upstream event protocol — changing
+// the wire here without matching the upstream protocol creates drift.
 //
 // jwc event shapes (structural, mirrors jawcode AgentSessionEvent / AgentEvent /
 // AssistantMessageEvent) — no hard import so this compiles before jwc is linked.

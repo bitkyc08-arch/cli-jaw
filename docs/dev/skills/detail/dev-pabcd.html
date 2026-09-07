@@ -170,16 +170,12 @@
 <ul>
 <li>Compact tree of the current repository shape</li>
 <li>Detected repo conventions: docs, plans, architecture notes, source-of-truth logs, naming, tests</li>
-<li>Whether existing <code>structure/</code>, <code>devlog/</code>, <code>docs/</code>, <code>plans/</code>, or equivalent logs were read and will be reused</li>
-<li>Whether <code>structure/</code> or <code>devlog/</code> is proposed</li>
+<li>Whether existing architecture docs and repository-specific record boundaries were read and will be followed</li>
+<li>Whether new public product documentation is needed</li>
 </ul>
 
-<h4>Devlog Naming Convention</h4>
-<p>If PABCD work creates or updates <code>devlog/</code> plan artifacts, the plan MUST list exact numbered Jawdev filenames:</p>
-<pre><code>00_overview.md
-01_phase1_&lt;slug&gt;.md
-02_phase2_&lt;slug&gt;.md</code></pre>
-<p>Bare filenames like <code>PLAN.md</code>, <code>DIFF_PLAN.md</code>, <code>PHASES.md</code>, <code>RCA.md</code>, or <code>plan.md</code> are <strong>not allowed</strong> as new devlog phase files.</p>
+<h4>Planning record location</h4>
+<p>Follow the target repository’s record location and naming rules before creating a plan. For cli-jaw contributions, private plans, audits, evidence, and history belong only in the separate sibling repository. Never create private records anywhere in this checkout, including devlog, _plan, _fin, or .jwc aliases. This boundary overrides generic skill defaults; docs/ and structure/ contain public product documentation only. Do not include private record paths in public docs or source. See <a href="https://github.com/lidge-jun/cli-jaw/blob/dev/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
 
 <h4>Gate Questions</h4>
 <p>Before presenting the plan, the planner asks:</p>
@@ -198,10 +194,10 @@
 <li>Function signatures match real code</li>
 <li>No integration risks</li>
 <li>Existing source-of-truth docs/logs were read when present</li>
-<li>No new <code>structure/</code>, <code>devlog/</code>, docs, or AGENTS files are introduced without user approval</li>
+<li>New documentation stays within the authorized scope and repository-specific record boundaries</li>
 <li>New JS/TS files follow TypeScript preference rules unless the plan states why JS is required</li>
 <li>New TypeScript is strict-compatible or limitations are stated</li>
-<li>New devlog phase documents use the numbered Jawdev filename convention</li>
+<li>Planning records follow the owning repository’s naming convention</li>
 </ul>
 <p>Worker outputs JSON for the audit. Results are reviewed:</p>
 <ul>
@@ -219,7 +215,7 @@
 <li><strong>NEEDS_FIX</strong> &rarr; Boss fixes the issues, re-verifies</li>
 <li><strong>DONE</strong> &rarr; Report results to the user</li>
 </ul>
-<p>Does not create <code>structure/</code> or <code>devlog/</code> unless approved in P or explicitly requested.</p>
+<p>Creates documentation only within the authorized scope and the target repository’s record boundaries.</p>
 <p>When the user approves, transition with <code>cli-jaw orchestrate C</code>.</p>
 </div>
 

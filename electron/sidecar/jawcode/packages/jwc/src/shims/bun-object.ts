@@ -27,7 +27,7 @@ import { bunWrite } from "./bun-write";
 import type { BunShim } from "./types";
 
 function notImplemented(api: string): never {
-	throw new Error(`Bun.${api} shim not implemented (jwc dist-node, see devlog 100.02+)`);
+	throw new Error(`Bun.${api} shim not implemented`);
 }
 
 function stubFn(api: string): (...args: unknown[]) => never {

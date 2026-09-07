@@ -69,7 +69,7 @@ function getRuntimeSnapshot(scopeKey: string) {
     };
 }
 
-// WP4 (devlog 260703 doc 12): the RAM toolLog is a capped cache (160 newest) that
+// WP4: the RAM toolLog is a capped cache (160 newest) that
 // dies with the process; trace_events is authoritative. When RAM is empty or behind,
 // rebuild the boss tools from the durable rows (bounded newest-N read) and keep the
 // RAM-only isEmployee mirrors, then reapply the standard sanitize caps.
@@ -696,7 +696,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 // Proactive drain: if Boss died before receiving the result, user input
                 // would otherwise stall forever. Trigger drainPendingReplays so the result
                 // is fed back via a fresh Boss session without waiting for the next user
-                // message. See devlog/_fin/260417_message_duplication/02_*.
+                // message.
                 const replayScope = slot.replayMeta?.scopeId ?? 'default';
                 if (!isAgentBusy(replayScope)) {
                     queueMicrotask(() => {

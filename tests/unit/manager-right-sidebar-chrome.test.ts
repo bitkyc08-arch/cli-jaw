@@ -92,13 +92,13 @@ test('tab display tooltip and aria carry kind plus full specific detail', () => 
         kind: 'files' as const,
         title: 'Files',
         specificName: 'plan.md',
-        sourceLabel: '/home/u/devlog/plan.md',
+        sourceLabel: '/home/u/project/docs/plan.md',
         ordinal: 1,
     };
     const display = getRightSidebarTabDisplay(tab);
     assert.equal(display.visibleLabel, 'plan.md');
-    assert.equal(display.title, 'Files: /home/u/devlog/plan.md');
-    assert.equal(display.ariaLabel, 'Files tab, /home/u/devlog/plan.md');
+    assert.equal(display.title, 'Files: /home/u/project/docs/plan.md');
+    assert.equal(display.ariaLabel, 'Files tab, /home/u/project/docs/plan.md');
 });
 
 test('tab display falls back to specificName when no sourceLabel exists', () => {
@@ -154,7 +154,7 @@ function parseBreadcrumb(filePath: string | null | undefined): string[] {
 }
 
 test('breadcrumb segments parse from a unix path', () => {
-    const segments = parseBreadcrumb('/Users/jun/devlog/_plan/260705/plan.md');
+    const segments = parseBreadcrumb('/home/user/project/docs/feature/plan.md');
     assert.ok(segments.length > 0);
     assert.equal(segments[segments.length - 1], 'plan.md');
 });

@@ -83,7 +83,7 @@ test('internal trace tool pointers are stored but not marked as detail-available
     assert.equal(tool.rawRetentionStatus, 'internal');
 });
 
-// ─── WP4 (devlog 260703 doc 12): tool-row convergence + live-run hydration ───
+// ─── WP4: tool-row convergence + live-run hydration ───
 
 test('tool rows converge in place and hydrate with synthesized pointers', () => {
     const runId = startTraceRun({ cli: 'claude', audience: 'public' });

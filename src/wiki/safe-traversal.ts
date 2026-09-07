@@ -1,4 +1,4 @@
-// Bounded, fail-closed walk over the wiki vault (devlog 041-B §2.1b, §2.1c).
+// Bounded, fail-closed walk over the wiki vault.
 //
 // The digest reader next door already settled what it takes to read one file out of this
 // vault safely: open without following the final link, judge the descriptor rather than

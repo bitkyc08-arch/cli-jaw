@@ -1,6 +1,6 @@
 ---
 created: 2026-03-27
-tags: [cli-jaw, git, submodule, devlog]
+tags: [cli-jaw, git, submodule]
 aliases: [CLI-JAW Git Structure, cli-jaw 서브모듈 구조, Git Structure Guide]
 ---
 
@@ -15,17 +15,13 @@ live working tree + `.gitmodules` 기준으로 정리한 Git 구조/운영 요�
 ```text
 lidge-jun/cli-jaw              ← public parent repo
 ├── skills_ref/  (submodule)   ← lidge-jun/cli-jaw-skills (public)
-├── devlog/      (submodule)   ← lidge-jun/cli-jaw-internal (private)
 ├── officecli/   (submodule)   ← lidge-jun/OfficeCLI (public)
 └── .npmignore                 ← npm publish 시 submodule 제외
 ```
 
 - `skills_ref/`: 스킬 레퍼런스 저장소
-- `devlog/`: 내부 개발 로그/계획 저장소
 - `officecli/`: Office 문서 도구용 별도 submodule
-- parent repo 기준 `git status`에는 이 3개 submodule이 독립 항목으로 보인다
-- 현재 `.gitmodules`와 `git submodule status` 기준으로 세 submodule 모두 live tree에 존재한다
-- `AGENTS.md`/`CONTRIBUTING.md` 일부 문단은 아직 `officecli/`를 생략하고 있어도, 구조 문서의 기준은 live tree다
+- parent repo 기준 `git status`에는 두 공개 submodule이 독립 항목으로 보인다.
 
 ### Dashboard Diff Root Policy
 
@@ -35,7 +31,7 @@ Manager/Electron Diff panel에서 이 repo를 볼 때 source repo root와 runtim
 - runtime/JAW_HOME 예시: `/Users/jun/.cli-jaw-3459`
 - `jaw dashboard serve`가 스캔한 instance metadata의 `projectDirs[]`와 `workingDir`가 diff root 후보의 source of truth다.
 - Diff panel은 `projectDirs[]`를 우선 사용하고, 설정에 따라 `workingDir` 또는 port별 pinned root를 먼저 사용한다. `$HOME`은 마지막 fallback이다.
-- parent repo와 `skills_ref/`, `devlog/`, `officecli/` submodule은 각각 독립 git repo일 수 있으므로 root selector에서 명시적으로 선택해야 한다.
+- parent repo와 `skills_ref/`, `officecli/` submodule은 각각 독립 git repo이므로 root selector에서 명시적으로 선택해야 한다.
 
 ## 2) Clone Strategy
 
@@ -43,7 +39,7 @@ Manager/Electron Diff panel에서 이 repo를 볼 때 source repo root와 runtim
 # 코드만 (일반 사용자/CI)
 git clone https://github.com/lidge-jun/cli-jaw.git
 
-# 코드 + submodule 전체
+# 코드 + 공개 submodule 전체
 git clone --recursive https://github.com/lidge-jun/cli-jaw.git
 
 # 이미 clone 후 submodule 초기화
@@ -56,28 +52,34 @@ git submodule update --init --recursive
 
 ```bash
 # 1) submodule 내부에서 먼저 커밋/푸시
-cd skills_ref   # 또는 cd devlog / cd officecli
+cd skills_ref   # 또는 cd officecli
 git add -A
 git commit -m "update"
 git push
 cd ..
 
 # 2) parent repo에서 submodule ref 업데이트 커밋
-git add skills_ref   # 또는 git add devlog / git add officecli
+git add skills_ref   # 또는 git add officecli
 git commit -m "chore: update skills_ref ref"
 git push
 ```
 
 핵심: submodule commit과 parent repo ref commit은 별개입니다.
 
-## 4) devlog / internal policy
+## 4) Private records boundary
 
-- `devlog/`는 private submodule입니다.
-- devlog 내부 문서는 `devlog/AGENTS.md`와 하위 `AGENTS.md`를 우선 따른다.
-- 접근 필요 시 이슈에서 collaborator 권한 요청:
-  - https://github.com/lidge-jun/cli-jaw/issues
+비공개 계획·감사·증거·개발 이력은 별도 sibling clone인 [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal)에만 보관합니다. 접근 권한은 [이슈](https://github.com/lidge-jun/cli-jaw/issues)로 요청하세요.
+
+이 체크아웃 안에는 어느 깊이에서도 private 기록을 만들지 않습니다. `devlog`, `_plan`, `_fin`, `.jwc` 별칭도 금지하며, 이 규칙은 일반 스킬의 기본 경로보다 우선합니다. `docs/`와 `structure/`는 공개 제품 문서용이고, 공개 문서·소스에 비공개 기록 경로를 넣지 않습니다.
 
 ## 5) PR & Quality Gate
+
+공개 push 전에는 [기여 가이드의 로컬 hook 설정](../CONTRIBUTING.md#local-private-path-check)을 적용하고, index와 전송할 모든 커밋 트리를 각각 검사합니다. CI는 업로드 이후의 보완 검사이므로 최초 공개를 막아주지 못합니다.
+
+```bash
+npm run check:private-boundary
+node scripts/check-private-boundary.mjs --range <remote-base> HEAD
+```
 
 PR 전 최소 검증:
 
@@ -114,13 +116,7 @@ bash structure/verify-counts.sh
 bash structure/verify-counts.sh --fix
 ```
 
-## 7) Devlog 운영 규칙
-
-- 완료된 phase는 `devlog/_fin/`으로 이동
-- `devlog/` 루트에는 진행 중 항목만 유지
-- 후순위 항목은 `269999_` 접두사 사용
-
-## 8) Structure Sync Scope
+## 7) Structure Sync Scope
 
 - `server.ts`가 route glue layer로 바뀌었으므로 API 변경은 `src/routes/*`와 `structure/server_api.md`를 함께 본다.
 - CLI command transport 변경은 `src/cli/commands.ts`, `src/cli/handlers.ts`, `src/cli/handlers-runtime.ts`, `src/cli/handlers-completions.ts`, `src/cli/handlers-workflows.ts`, `src/cli/api-auth.ts`, `src/command-contract/*`와 `structure/commands.md`를 같이 동기화한다.

@@ -261,14 +261,14 @@ test('manager instance activity unread badges are row-scoped and registry-backed
     assert.equal(
         hook.includes('Date.parse(latest) <= Date.parse(seenActivityAt)'),
         false,
-        'markPortSeen must NOT short-circuit on the global seen ceiling — per-port suppression is independent (devlog 260501)',
+        'markPortSeen must NOT short-circuit on the global seen ceiling — per-port suppression is independent',
     );
     assert.ok(app.includes('activitySeenAt'), 'App must hydrate/persist activitySeenAt through registry UI');
     assert.ok(app.includes('activitySeenByPort'), 'App must hydrate/persist per-port activity seen state');
     assert.equal(
         hook.includes('if (!options.activityDockCollapsed) return {}'),
         false,
-        'opening the Activity dock must NOT wipe per-port badges for other ports (devlog 260501)',
+        'opening the Activity dock must NOT wipe per-port badges for other ports',
     );
     assert.ok(hook.includes('activePreviewPort'), 'activity unread hook must accept the currently-viewed iframe port to suppress its own badge only');
     assert.ok(app.includes('activityUnread.unreadByPort'), 'App must pass per-port unread counts into instance groups');
@@ -328,7 +328,7 @@ test('manager instance rows support custom labels and latest activity titles', (
     const labelHook = read('public/manager/src/hooks/useInstanceLabelEditor.ts');
     const messageHook = read('public/manager/src/hooks/useInstanceMessageEvents.ts');
     // /api/messages/latest lives in routes/messages.ts since the Phase 2 extraction
-    // (devlog 260609, 20) — it is the last handler there, so slice to end of file.
+    // it is the last handler there, so slice to end of file.
     const server = read('src/routes/messages.ts');
     const db = read('src/core/db.ts');
     const latestRoute = server.slice(

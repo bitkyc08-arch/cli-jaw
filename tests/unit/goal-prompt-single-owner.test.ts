@@ -3,7 +3,7 @@
 //   goal-mode behavior rules → continuation prompt (src/goal/heartbeat.ts)
 //   PABCD gate override      → continuation PABCD OVERRIDE block only
 //   PABCD transition guide   → builder '## PABCD Orchestration Guide' + dev-pabcd skill
-// Plan: devlog/_fin/260610_prompt_injection_redesign/10_goal_pabcd_prompt_slim_plan.md
+
 
 // Isolation MUST be the first import: tests/run.mts gives every file its own
 // process but ONE shared CLI_JAW_HOME, so the eight files that call setGoal race
@@ -56,7 +56,7 @@ test('GSO-003: base continuation prompt states each canonical rule once, under b
         assert.equal(count(p, 'documentation + implementation + verification evidence bundle'), 1,
             'evidence bundle definition owned once');
         assert.equal(count(p, 'independent objective reviewer'), 1, 'reviewer rule owned once');
-        // devlog 260624_goal_work_phase_pabcd_loop, Slice 6: base prompt (IDLE) carries the
+        // base prompt (IDLE) carries the
         // multi-phase re-entry rule so a completed cycle does not look like the whole goal.
         assert.equal(count(p, 'MULTI-PHASE LOOP'), 1, 'multi-phase loop re-entry rule owned once in base prompt');
         assert.ok(p.includes('Do not treat one completed cycle as the whole goal'), 'base prompt must warn against one-cycle=whole-goal');
@@ -75,7 +75,7 @@ test('GSO-004: PABCD-state continuation keeps the OVERRIDE block once, under bud
         const p = res.prompt ?? '';
         assert.equal(count(p, 'GOAL IS THE SUPREME RULE — PABCD OVERRIDE'), 1, 'override block present once');
         assert.equal(count(p, 'Do not advance a PABCD-phase within the current cycle unless'), 1, 'phase gate rule owned once');
-        // devlog 260624_goal_work_phase_pabcd_loop, Slice 6: override block must carry the
+        // override block must carry the
         // work-phase=full-cycle model + anti-skip exactly once each.
         assert.equal(count(p, 'ONE WORK-PHASE = ONE FULL PABCD CYCLE'), 1, 'work-phase=full-cycle rule owned once');
         assert.equal(count(p, 'WORK-PHASE BOUNDARY'), 1, 'work-phase boundary rule owned once');

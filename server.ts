@@ -366,11 +366,11 @@ app.use(express.static(join(projectRoot, 'public')));
 registerSessionPageRoute(app);
 
 // Live updates flow through GET /api/events (SSE) — the legacy WebSocket
-// channel was removed in X-01 (devlog 260609, 50). Inbound equivalents:
+// channel was removed in X-01. Inbound equivalents:
 // send_message → POST /api/message, stop → POST /api/stop.
 
 // ─── API Routes ──────────────────────────────────────
-// Phase 2 extraction (devlog 260609, 20): inline handlers/helpers moved to
+// Phase 2 extraction: inline handlers/helpers moved to
 // src/routes/{system,instance,messages,chat-sessions,static,agent-control}.ts,
 // src/http/locale.ts, src/core/session-ops.ts, src/cli/web-command-ctx.ts.
 

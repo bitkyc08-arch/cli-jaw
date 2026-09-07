@@ -135,13 +135,15 @@ the cmd shim or direct Node entry point instead.
 
 ### CI job graph (`.github/workflows/test.yml`, #565)
 
+`scripts/check-private-boundary.mjs` checks indexed paths by default; the local `.githooks/pre-push` uses `--pre-push` to inspect outgoing commit trees before upload. See [contributor setup](../CONTRIBUTING.md#local-private-path-check) for checkout-local activation and manual `--range` checks. CI and publish checks are backstops after upload, not pre-disclosure guards. npm packaging uses explicit private-path exclusions in `package.json`'s `files` allowlist because root `.npmignore` alone does not override that allowlist.
+
 opencodex `ci.yml` 의 샤딩 구조를 이식했다. 하나의 직렬 `node-tests` 잡(9m51s, 34128612867)이
 아래 그래프로 바뀌었고, 같은 커밋 기준 전체 벽시계 5m00s (34139039203).
 
 ```
 changes ──┬── test 1/4 … test 4/4   tsc + tests/run.mts --scope root,unit --shard i/4   (fail-fast: false, 5-min step limit)
           ├── integration           npm run build → build:frontend → server :3457 → --scope integration,manager,bin (CI=1) → fresh-install smoke
-          ├── gates                 gate:all · check:deps · check:deps:audit · devlog _fin audit · copilot gap · file size · windows manifest validate
+          ├── gates                 gate:all · check:deps · check:deps:audit · copilot gap · file size · windows manifest validate
           ├── windows-unit          scripts/ci/windows-unit-manifest.txt via windows-unit-manifest.mjs --print (pwsh, one argv array)
           └── coverage (advisory)   dev push / workflow_dispatch only; continue-on-error; not in the aggregate
                      └──────────────► ci-aggregate   bash scripts/ci/aggregate-check.sh
@@ -638,7 +640,7 @@ Revert path:
 
 ## 시작 경로 안정성 계약 (start-path reliability)
 
-`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면. 유닛: `devlog/_fin/260803_runtime_stability_hardening/`.
+`jaw <command>` 실행 시 네이티브 의존성 준비를 담당하는 표면.
 
 ### 실행 경로
 
@@ -694,8 +696,6 @@ bin/jaw (개발 클론 / 직접 호출 런처)
 ---
 
 ## 런타임 수명주기 계약 (openclaw/hermes 파리티)
-
-유닛: `devlog/_fin/260804_runtime_parity_openclaw_hermes/`.
 
 ### 턴 종료 — `close`이지 `exit`이 아니다
 

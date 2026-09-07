@@ -1,5 +1,5 @@
 // ─── Topic-based Event Bus (SSE backbone) ────────────
-// Phase 1 of runtime SSE refactoring (devlog 260609, 10_phase1).
+// Phase 1 of runtime SSE refactoring.
 // Standalone by design: imports node:events only — no project deps, no cycles.
 // bus.ts dual-emits into this bus; routes/events.ts streams it out as SSE.
 

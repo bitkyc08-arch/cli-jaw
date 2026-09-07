@@ -1,5 +1,5 @@
 // ── Goal continuation boundary + external live-render contracts ──
-// (devlog 260705_web_live_update_boundary)
+
 // Bug 2: goal continuations spawn with _skipInsert, so no user row lands
 // between work-phases. After an SSE reconnect the client's
 // latestAgentDivForActiveRun() heuristic ("last .msg-agent with no following

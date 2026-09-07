@@ -3,8 +3,7 @@
 // cancellation, and generation invalidation.
 //
 // Every conditional path here is driven to fire — a branch nobody can show
-// firing is unverified regardless of suite status. Contract: devlog
-// 260812_slack_conversation_context/012_wp1_replan_shared_primitive.md.
+// firing is unverified regardless of suite status.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

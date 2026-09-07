@@ -119,7 +119,7 @@ export async function cacheMessages(messages: CachedMessage[], scope?: string): 
         void evictStaleScopes(db);
         const tx = db.transaction(STORE, 'readwrite');
         const store = tx.objectStore(STORE);
-        // devlog 260609 79/82: replace only the current scope — a global clear
+        // replace only the current scope — a global clear
         // here erased every other scope's offline fallback on each load, while
         // reads stay scoped via getScopedMessages(). Delete-then-add runs in
         // one transaction, so the scope swap stays atomic.

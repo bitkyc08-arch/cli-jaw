@@ -119,7 +119,7 @@ function defaultPolicy(reason: ProcessTerminationReason): ProcessTerminationPoli
  *
  * Honest limit: Node cannot spawn suspended and assign a Job Object, so a
  * descendant that escapes before the first tree walk is not guaranteed
- * contained. See devlog/_plan/260812_windows_and_channels_parity/050.
+ * contained.
  */
 export class OwnedProcess {
     readonly child: ChildProcess;

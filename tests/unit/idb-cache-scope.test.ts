@@ -1,4 +1,4 @@
-// devlog 260609 79/82 — IndexedDB cache writers must be scope-isolated.
+// IndexedDB cache writers must be scope-isolated.
 // The read path uses the 'scope' index, so a global store.clear() in the
 // writer silently erased every other scope's offline fallback on each load.
 // Static source contracts, same pattern as web-refresh-state-recovery.test.ts.

@@ -12,7 +12,7 @@ function purifier() {
 function sanitizeCssInStyleTags(html: string): string {
     // Fast path: no <style> tag → nothing to strip. Avoids a full div
     // innerHTML parse + serialize round-trip on every markdown render
-    // (devlog 260705_frontend_perf M2). False positives (literal "<style"
+    //. False positives (literal "<style"
     // in text) just take the slow path harmlessly.
     if (!/<style/i.test(html)) return html;
     const div = document.createElement('div');

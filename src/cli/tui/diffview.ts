@@ -1,5 +1,5 @@
 /**
- * Unified-diff → ANSI colorizer (Phase 2b, devlog 260529_tui_parity).
+ * Unified-diff → ANSI colorizer.
  * Colors raw `git diff` text with theme tokens; truncates long diffs.
  * No new dependency — the diff text comes from the existing git path
  * (src/ide/diff.ts getUnifiedDiff). Pure + synchronous + theme-aware.

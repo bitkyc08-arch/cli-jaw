@@ -4,7 +4,7 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 ---
 # Runtime Integration — codex-app / pi × opencodex
 
-> 2026-08-02 native runtime integration 유닛(`devlog/_fin/260802_native_runtime_integration/`)의 SoT 요약. 풀 계약, 취소 의미론, 모델 발견 규칙, pi rpc 판정을 다룬다.
+> Native runtime integration의 공개 계약 요약. 풀 계약, 취소 의미론, 모델 발견 규칙, pi rpc 판정을 다룬다.
 
 ## Shared event contract foundation
 

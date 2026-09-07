@@ -283,7 +283,7 @@ function configureEmbeddedBrowserSession(): void {
   const userAgent = embeddedBrowserUserAgent();
   ses.setUserAgent(userAgent, embeddedBrowserAcceptLanguages());
   // setUserAgent does NOT cover service-worker-initiated fetches — a runtime probe
-  // showed they fall back to the Electron-flavored app UA (see devlog #229 notes).
+  // showed they fall back to the Electron-flavored app UA.
   // Force the header at the network layer for every request in this partition.
   ses.webRequest.onBeforeSendHeaders((details, callback) => {
     details.requestHeaders['User-Agent'] = userAgent;

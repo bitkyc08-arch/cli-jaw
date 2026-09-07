@@ -254,13 +254,13 @@ test('closing a non-existent tab is a no-op', () => {
 // =============================================================================
 
 test('openFileInFilesTab creates a Files tab and assigns the file with name/sourceLabel', () => {
-    const result = openFileInFilesTab(emptyTabs(), '/home/u/devlog/plan.md');
+    const result = openFileInFilesTab(emptyTabs(), '/home/u/project/docs/plan.md');
     assert.equal(result.openTabs.length, 1);
     const tab = result.openTabs[0];
     assert.equal(tab.kind, 'files');
-    assert.equal(tab.files?.activeFilePath, '/home/u/devlog/plan.md');
+    assert.equal(tab.files?.activeFilePath, '/home/u/project/docs/plan.md');
     assert.equal(tab.specificName, 'plan.md');
-    assert.equal(tab.sourceLabel, '/home/u/devlog/plan.md');
+    assert.equal(tab.sourceLabel, '/home/u/project/docs/plan.md');
     assert.equal(result.activeTabId, tab.id);
 });
 
@@ -319,7 +319,7 @@ test('resolveTargetFilesTab prefers the active files tab, else the first files t
 
 test('panelLayoutUiFromState and panelLayoutInitialStateFromUi round-trip', () => {
     let tabs = emptyTabs();
-    tabs = openFileInFilesTab(tabs, '/home/u/devlog/plan.md');
+    tabs = openFileInFilesTab(tabs, '/home/u/project/docs/plan.md');
     tabs = createRightSidebarTab(tabs, 'files');
     tabs = createRightSidebarTab(tabs, 'diff');
     tabs = activateRightSidebarTab(tabs, 'right-files-1');
@@ -349,10 +349,10 @@ test('panelLayoutUiFromState and panelLayoutInitialStateFromUi round-trip', () =
     assert.equal(restored.rightPanel!.tabs.activeTabId, 'right-files-1');
     // specificName / sourceLabel / ordinal survive
     assert.equal(restored.rightPanel!.tabs.openTabs[0].specificName, 'plan.md');
-    assert.equal(restored.rightPanel!.tabs.openTabs[0].sourceLabel, '/home/u/devlog/plan.md');
+    assert.equal(restored.rightPanel!.tabs.openTabs[0].sourceLabel, '/home/u/project/docs/plan.md');
     assert.equal(restored.rightPanel!.tabs.openTabs[1].ordinal, 2);
     // per-tab files state survives
-    assert.equal(restored.rightPanel!.tabs.openTabs[0].files?.activeFilePath, '/home/u/devlog/plan.md');
+    assert.equal(restored.rightPanel!.tabs.openTabs[0].files?.activeFilePath, '/home/u/project/docs/plan.md');
     // nextOrdinalByKind survives
     assert.equal(restored.rightPanel!.tabs.nextOrdinalByKind.files, 3);
     assert.equal(restored.rightPanel!.fileFolderLayout.mode, 'split');

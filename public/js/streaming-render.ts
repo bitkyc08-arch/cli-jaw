@@ -18,7 +18,7 @@ export interface StreamState {
 const FULL_RENDER_THRESHOLD = 2000;
 const THROTTLE_MS = 80;  // ~12fps — was 32ms (30fps), reduced to avoid blocking input
 
-// Adaptive throttle (devlog 260705_frontend_perf H4): each live render re-parses
+// Adaptive throttle: each live render re-parses
 // the FULL accumulated text (marked + sanitize), so per-render cost grows with
 // message length. Stretch the interval as the text grows to keep total work
 // near-linear: 80ms under 2k chars, up to 400ms past ~50k chars.

@@ -2,9 +2,8 @@
 // Read-side of the Slack transport: conversations.history for a channel
 // window, conversations.replies for one thread. The agent uses this through
 // GET /api/slack/history (and `jaw slack history`) to pull conversation
-// context it was not mentioned into. Design + scope facts: devlog
-// 260806_slack_thread_dynamic_lookup/020 (§001 for the rate-limit basis —
-// internal customer-built apps keep Tier 3, so limit=50 defaults are safe).
+// context it was not mentioned into.
+// Internal customer-built apps keep Tier 3, so limit=50 defaults are safe.
 
 import { slackApi, describeSlackError, isRetryableSlackError, type SlackFetch } from './api.js';
 import type { SlackFileEvent } from './events.js';

@@ -46,8 +46,8 @@ const REMOTE_ALLOWED_SETTINGS_KEYS = new Set([
     'slack',          // /forward (slack)
 ]);
 
-// Runtime selection is shared by the whole instance and the instance web owns it
-// (devlog 074). A remote channel changing it would move every other session's model
+// Runtime selection is shared by the whole instance and the instance web owns it.
+// A remote channel changing it would move every other session's model
 // too, so these keys are refused there with an answer that says where to go instead
 // of the generic "unsupported" line.
 const RUNTIME_SELECTION_SETTINGS_KEYS = new Set([

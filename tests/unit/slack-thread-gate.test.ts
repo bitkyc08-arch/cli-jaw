@@ -1,6 +1,6 @@
 // Thread continuation gate: a thread the bot participates in (started by a
 // mention, or the bot replied into it) keeps flowing without re-mention.
-// Plan: devlog/_plan/260806_slack_thread_dynamic_lookup/010.
+
 import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';

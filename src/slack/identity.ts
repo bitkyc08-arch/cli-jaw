@@ -2,9 +2,8 @@
 // Who sent this message? Slack events carry only opaque ids (`user: "U012ABC"`,
 // `bot_id: "B012"`), so without this module the agent receives a prompt with no
 // author at all — which is exactly how an agent ended up shelling out to `curl`
-// to answer "who wrote that". Design + rate-limit facts: devlog
-// 260811_slack_sender_identity_roster/{000,010}.
-//
+// to answer "who wrote that".
+
 // Two hard rules run through everything below:
 //   1. Resolution NEVER throws and never blocks inbound handling. Any failure
 //      degrades to the raw id; identity is decoration, not a precondition.

@@ -1,5 +1,5 @@
 import { constants as fsConstants } from 'node:fs';
-import { access, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertDocsOnlyEdit } from './policy.js';
 
@@ -21,7 +21,6 @@ export function buildJawCeoDocsEditPolicy(args: {
         ],
         allowedDirectories: [
             path.join(args.repoRoot, 'docs'),
-            path.join(args.repoRoot, 'devlog', '_plan', '260508_realtime_voice_mode'),
             args.dashboardNotesRoot,
         ],
     };
@@ -30,30 +29,30 @@ export function buildJawCeoDocsEditPolicy(args: {
 async function canonicalExistingOrParent(target: string): Promise<string> {
     try {
         return await realpath(target);
-    } catch {
-        const parent = path.dirname(target);
-        await mkdir(parent, { recursive: true });
-        return path.join(await realpath(parent), path.basename(target));
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        // A dangling symlink is not a missing file: writing through it could
+        // escape the allowlist. Only genuinely absent components may be added.
+        try {
+            await lstat(target);
+        } catch (statError) {
+            if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') throw statError;
+            const parent = path.dirname(target);
+            if (parent === target) throw error;
+            return path.join(await canonicalExistingOrParent(parent), path.basename(target));
+        }
+        throw error;
     }
 }
 
 async function canonicalizePolicy(policy: JawCeoDocsEditPolicy): Promise<JawCeoDocsEditPolicy> {
     const allowedFiles: string[] = [];
     for (const file of policy.allowedFiles) {
-        try {
-            allowedFiles.push(await canonicalExistingOrParent(file));
-        } catch {
-            allowedFiles.push(path.resolve(file));
-        }
+        allowedFiles.push(await canonicalExistingOrParent(path.resolve(file)));
     }
     const allowedDirectories: string[] = [];
     for (const directory of policy.allowedDirectories) {
-        try {
-            await mkdir(directory, { recursive: true });
-            allowedDirectories.push(await realpath(directory));
-        } catch {
-            allowedDirectories.push(path.resolve(directory));
-        }
+        allowedDirectories.push(await canonicalExistingOrParent(path.resolve(directory)));
     }
     return { allowedFiles, allowedDirectories };
 }

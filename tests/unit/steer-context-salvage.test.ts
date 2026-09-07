@@ -1,4 +1,4 @@
-// wp1 (devlog/_plan/260903_steer_default_context/010): kill-path steer must
+// wp1: kill-path steer must
 // deliver the interrupted turn's partial output to the follow-up run.
 // Behavioral tests only — no source scanning.
 // Must be the FIRST import: config.ts binds DB_PATH at module evaluation.

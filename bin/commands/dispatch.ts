@@ -283,7 +283,7 @@ class DispatchPollError extends Error {
 }
 
 // A single transient fetch failure (ECONNRESET, brief event-loop stall) used
-// to kill a 10-minute poll loop on its first throw (devlog 260613 doc 08).
+// to kill a 10-minute poll loop on its first throw.
 const POLL_RETRY_DELAYS_MS = [500, 1000, 2000];
 
 async function pollFetch(url: string, agentId: string, agentName: string, label: string, runId?: string): Promise<Response> {
@@ -572,7 +572,7 @@ try {
                     // response past undici's 5-min headersTimeout for long
                     // workers — CLI died with "fetch failed" while the worker
                     // kept running, and the result came back later as a
-                    // confusing pendingReplay re-injection (devlog doc 08).
+                    // confusing pendingReplay re-injection.
                     wait: false,
                 }),
             });

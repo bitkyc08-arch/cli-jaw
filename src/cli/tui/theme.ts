@@ -1,5 +1,5 @@
 /**
- * TUI theme tokens + color-capability ladder (Phase 3, devlog 260529_tui_parity, doc 14).
+ * TUI theme tokens + color-capability ladder.
  * Colors aligned to public/manager/src/manager-tokens.css. Four tiers:
  * truecolor → ansi256 → ansi16 → mono, resolved from env/TTY. dark + light palettes.
  * Backward-compatible API (paint/fgToken/attr/colorLevel) — truecolor output is

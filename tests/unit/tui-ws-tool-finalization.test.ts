@@ -992,7 +992,7 @@ test('agent_done error drains remaining live tools as error rows', () => {
 });
 
 
-// ── 260703 CJ-WP3 regressions (devlog _plan/260703_tui_scrollback_hardening/20) ──
+// ── 260703 CJ-WP3 regressions ──
 
 test('agent_done toolLog replay does not duplicate a stepRef-less tool committed live', () => {
     const ctx = makeCtx();

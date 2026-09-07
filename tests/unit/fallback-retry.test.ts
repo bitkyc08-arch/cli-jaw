@@ -118,7 +118,7 @@ test('server.js calls resetFallbackState on settings save', async () => {
     const { dirname, join } = await import('node:path');
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    // applySettingsPatch lives in core/session-ops.ts since the Phase 2 extraction (devlog 260609, 20).
+    // applySettingsPatch lives in core/session-ops.ts since the Phase 2 extraction.
     const src = fs.readFileSync(join(__dirname, '../../src/core/session-ops.ts'), 'utf8');
 
     assert.ok(src.includes('resetFallbackState'), 'session-ops should import/use resetFallbackState');

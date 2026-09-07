@@ -27,7 +27,7 @@ function sanitizeBroadcastData(type: string, data: BroadcastPayload): BroadcastP
 
 // Topic inference for the SSE emit. The trace branch must stay first:
 // internal claude-e runtime events must never route to the public 'agent'
-// topic (devlog 260609 00_1 F2). agents CRUD precedes the generic agent_ prefix.
+// topic. agents CRUD precedes the generic agent_ prefix.
 export function inferTopic(type: string): EventTopic {
     if (type.startsWith('agent:claude-e:')) return 'trace';
     if (type === 'agent_added' || type === 'agent_updated' || type === 'agent_deleted') return 'agents';

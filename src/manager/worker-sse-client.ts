@@ -1,5 +1,5 @@
 // ─── Worker SSE Client (manager → worker /api/events) ──
-// P4-full of runtime SSE refactoring (devlog 260609, 09 §6 + 50 §2).
+// P4-full of runtime SSE refactoring.
 // The manager subscribes to each online worker's SSE stream instead of
 // fetching messages on demand. Legacy workers without /api/events answer
 // 4xx — those are marked unsupported ONCE and never retried (no backoff
@@ -28,8 +28,8 @@ export interface WorkerEventHandlers {
     onDisconnect?: (port: number) => void;
     /** Stream re-opened after an internal eventsource reconnect. Events
      *  emitted during the gap were never delivered (no lastEventId replay on
-     *  this ping-style client) — consumers must re-sync derived state
-     *  (devlog 260612 manager_stream_hidden_state_audit 07 F-W1). */
+     *  this ping-style client) — consumers must re-sync derived state.
+     * */
     onReopen?: (port: number) => void;
 }
 

@@ -1,5 +1,5 @@
 // ─── Agent control routes (stop/clear/reset) ─────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.7).
+// Extracted from server.ts in Phase 2.
 
 import type { Router, RequestHandler } from 'express';
 import { ok } from '../http/response.js';

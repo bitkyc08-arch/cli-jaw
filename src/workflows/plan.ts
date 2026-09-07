@@ -70,7 +70,7 @@ export function buildPlanCompatArtifact(
             guardrails: [
                 'Do not create a second plan mode.',
                 'Do not enter PABCD without explicit user action.',
-                'Do not write project files by default.',
+                'Do not write project files by default. Promotion must follow project policy for record placement, including external private records when required.',
             ],
         },
     };

@@ -1,5 +1,5 @@
 // ─── Command + message routes (web surface) ──────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.6).
+// Extracted from server.ts in Phase 2.
 // H17 /api/command, H18 /api/commands, H19 /api/message — tightly coupled via
 // parseCommand/executeCommand/makeWebCommandCtx, kept in one module.
 
@@ -136,7 +136,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         // external: caller-declared "not the visible web chat input" marker
         // (manager relay, preview iframe relay, scripts). The web UI's SSE
         // new_message handler renders externally-injected user bubbles live
-        // instead of waiting for a history reload (devlog 260705).
+        // instead of waiting for a history reload.
         const external = req.body?.external === true ? true : undefined;
         // A tab on /:seq names the session it is viewing; without this the write goes
         // to whatever session is globally active, which is a different session than the

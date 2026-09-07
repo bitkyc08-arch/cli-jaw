@@ -18,8 +18,8 @@ test('workspace context block includes authoritative project paths and cwd warni
     const root = mkdtempSync(join(tmpdir(), 'jaw-workspace-context-'));
     const block = buildWorkspaceContextBlock({
         workingDir: root,
-        worklogPath: join(root, 'devlog/worklog.md'),
-        task: 'check src/orchestrator/distribute.ts and devlog/structure',
+        worklogPath: join(root, '..', 'execution-records', 'worklog.md'),
+        task: 'check src/orchestrator/distribute.ts',
         now: new Date('2026-06-10T16:40:00.000Z'),
     });
 
@@ -28,10 +28,20 @@ test('workspace context block includes authoritative project paths and cwd warni
     assert.match(block, /Current time: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/);
     assert.match(block, /Timezone: \S+/);
     assert.ok(block.includes('UTC time: 2026-06-10T16:40:00.000Z'));
-    assert.ok(block.includes(`Devlog root: ${JSON.stringify(join(root, 'devlog'))}`));
-    assert.ok(block.includes(`Worklog path: ${join(root, 'devlog/worklog.md')}`));
+    assert.ok(block.includes(`Worklog path: ${join(root, '..', 'execution-records', 'worklog.md')}`));
+    assert.ok(!block.includes('Devlog root:'));
+    assert.ok(!block.includes(join(root, 'devlog')));
     assert.ok(block.includes('Employee runtime cwd: isolated temporary directory'));
     assert.ok(block.includes('Do not infer repository paths from process.cwd()'));
+});
+
+test('workspace context without a worklog leaves record placement to project policy', () => {
+    const block = buildWorkspaceContextBlock({ projectDirs: ['/project-one', '/project-two'] });
+    assert.ok(block.includes('Worklog path: (none)'));
+    assert.ok(block.includes('follow project policy'));
+    assert.ok(!block.includes('Devlog root:'));
+    assert.ok(!block.includes('/project-one/devlog'));
+    assert.ok(!block.includes('/project-two/devlog'));
 });
 
 test('resolved path hints map repo-relative paths to absolute project paths', () => {

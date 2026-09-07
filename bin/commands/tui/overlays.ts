@@ -195,7 +195,7 @@ export async function openBgtaskOverlay(ctx: TuiContext): Promise<void> {
     ov.bgtaskOpen = true;
     closeAutocompleteForCtx(ctx);
     // jawcode attention latch: opening the panel means the user saw the failure —
-    // drop the `!` badge from the status bar (devlog doc 40).
+    // drop the `!` badge from the status bar.
     if (ctx.bgtaskAttention) {
         ctx.bgtaskAttention = false;
         rebuildFooter(ctx);

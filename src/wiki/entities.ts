@@ -1,4 +1,4 @@
-// Read-only entity index over the wiki vault (devlog 041-B, 040 R4).
+// Read-only entity index over the wiki vault.
 //
 // Three steps in a fixed order, and the order is the safety property: the bounded reader
 // hands over text it has already vouched for, the parser turns that text into an object,

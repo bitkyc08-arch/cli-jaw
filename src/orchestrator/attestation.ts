@@ -7,7 +7,7 @@
 // not a malicious human, so a forcing function (commit to a specific narrative +
 // paste real output for C→D) is the goal, not cryptographic unfakeability.
 //
-// Design notes (devlog/_fin/260624_pabcd_evidence_gate/):
+// Design notes:
 //  - Booleans are NOT accepted as evidence (a boolean is cheaper to hallucinate than
 //    prose and launders a lie into a green checkmark) → require a narrative `did`.
 //  - No ctx.auditStatus/verificationStatus enforcement (those are only set by the
@@ -28,7 +28,7 @@ export interface PhaseAttestation {
   /** Optional exit code; if present and non-zero, C→D is rejected. */
   exitCode?: number;
   /**
-   * P→A: the plan unit this cycle is working out of, e.g. `devlog/_plan/260902_slug`.
+   * P→A: the plan unit this cycle is working out of, at the location designated by project policy.
    * Advisory-only — a missing unit does not block, but it is no longer discarded.
    */
   planUnit?: string;
@@ -198,7 +198,7 @@ export function checkAttestationGate(
       ok: true,
       advisory:
         `[UNIT-RESIDENCE-01 advisory] P → A carries no "planUnit". The diff-level plan should ` +
-        `live in a real devlog/_plan/YYMMDD_slug/ unit rather than only in this narrative. ` +
+        `live at the explicit worklog or project-approved planning location, including an external repository when required by project policy, rather than only in this narrative. ` +
         `Pass it as "planUnit" so a later reader can find the plan this cycle was built from.`,
     };
   }

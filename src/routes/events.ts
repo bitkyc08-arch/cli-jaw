@@ -1,5 +1,5 @@
 // ─── GET /api/events — multiplexed SSE event stream ──
-// data-only wire format (devlog 260609 00_1 F1): no `event:` SSE field —
+// data-only wire format: no `event:` SSE field —
 // topic + event travel inside the JSON payload so client onmessage fires.
 
 import type { Router, Request, Response, RequestHandler } from 'express';
@@ -78,8 +78,7 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         // A cursor AHEAD of the current seq means the client kept a lastEventId
         // from a previous server process (ids reset to 0 on restart) — without
         // the explicit gap signal it would be treated as "caught up" and every
-        // event since the restart would be silently lost (devlog 260612
-        // manager_stream_hidden_state_audit 07 F-W2).
+        // event since the restart would be silently lost.
         const lastId = parseLastEventId(req);
         if (lastId > 0) {
             if (lastId > currentSeq() || hasReplayGap(lastId, scopeFilter)) {

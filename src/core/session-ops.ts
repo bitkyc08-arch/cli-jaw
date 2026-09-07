@@ -1,5 +1,5 @@
 // ─── Session/settings lifecycle ops (web surface) ────
-// Extracted from server.ts in Phase 2 (devlog 260609, 20 §3.1).
+// Extracted from server.ts in Phase 2.
 // Execution changes invalidate ownership; explicit display/next-run preferences
 // preserve the already admitted run and its captured persistence namespace.
 

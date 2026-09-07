@@ -8,7 +8,7 @@
  *
  * Every legacy variable name is preserved; only values moved to the
  * zinc/neutral oklch scale with a single oklch primary accent
- * (devlog/_plan/260902_t3_shell_polish/010_design_tokens.md).
+ *.
  * `--accent` is the CTA primary, not a surface tint.
  *
  * Theme resolution lives on <html data-theme="dark|light|auto">. The inline

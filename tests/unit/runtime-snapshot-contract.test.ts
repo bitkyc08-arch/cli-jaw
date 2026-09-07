@@ -13,7 +13,7 @@ function read(path: string): string {
 }
 
 test('/api/runtime exposes cli and model for manager scan rows', () => {
-    // /api/runtime + getRuntimeSnapshot live in routes/system.ts since Phase 2 (devlog 260609, 20).
+    // /api/runtime + getRuntimeSnapshot live in routes/system.ts since Phase 2.
     const server = read('src/routes/system.ts');
 
     assert.ok(server.includes('getCliModelAndEffort'), 'runtime snapshot must use the shared CLI model resolver');

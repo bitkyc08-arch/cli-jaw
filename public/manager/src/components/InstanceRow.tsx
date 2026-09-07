@@ -20,7 +20,7 @@ type InstanceRowProps = {
     showInlineLabelEditor?: boolean;
     showRuntimeLine?: boolean;
     showSelectedActions?: boolean;
-    /** Session disclosure (Active row only; devlog 260806 D2). */
+    /** Session disclosure. */
     sessionCount?: number;
     sessionsOpen?: boolean;
     onToggleSessions?: (port: number) => void;

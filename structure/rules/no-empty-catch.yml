@@ -3,7 +3,6 @@
 # still match — reviewers check that each listed site carries a best-effort reason
 # comment or a log.debug. New sites without one fail review.
 # Usage: sg scan --rule structure/rules/no-empty-catch.yml src bin server.ts public/js
-# Adopted in WP4 (devlog/_fin/260706_structure_modernization/40_phase4_code_rot.md §4.4).
 id: no-empty-catch
 language: TypeScript
 severity: warning

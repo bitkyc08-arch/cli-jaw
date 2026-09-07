@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// /api/message lives in routes/command.ts since the Phase 2 extraction (devlog 260609, 20).
+// /api/message lives in routes/command.ts since the Phase 2 extraction.
 const serverSrc = fs.readFileSync(path.join(__dirname, '../../src/routes/command.ts'), 'utf8');
 
 function routeBlock(route: string): string {

@@ -194,7 +194,7 @@ export type KiroSpawnIdResolution =
     // More than one conversation appeared under this working directory while we were
     // running, so the store cannot say which one is ours. Picking the newest would hand
     // one session another session's conversation, and nothing downstream could detect
-    // that — so ambiguity ends the search rather than guessing (devlog 110 §2h).
+    // that — so ambiguity ends the search rather than guessing.
     | { kind: 'ambiguous'; candidates: readonly string[] };
 
 export function resolveKiroSpawnIdentity(

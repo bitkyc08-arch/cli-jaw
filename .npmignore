@@ -1,6 +1,6 @@
-# Submodules — not included in npm package
+# Public reference submodules — not included in npm package
 skills_ref/
-devlog/
+officecli/
 
 # Dev files
 .git/
@@ -24,3 +24,12 @@ dist/src/lib/native/*.node
 # Prevent nested Vite publicDir/build artifacts
 public/public/
 public/dist/dist/
+
+# Private records belong exclusively in the sibling cli-jaw-internal repository.
+# Match files, symlinks and directories at any depth, including case variants.
+[dD][eE][vV][lL][oO][gG]
+[dD][eE][vV][lL][oO][gG][._-]*
+[cC][lL][iI]-[jJ][aA][wW]-[iI][nN][tT][eE][rR][nN][aA][lL]
+_[pP][lL][aA][nN]
+_[fF][iI][nN]
+.[jJ][wW][cC]

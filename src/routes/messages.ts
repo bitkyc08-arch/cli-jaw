@@ -1,5 +1,5 @@
 // ─── Messages read API ────────────────────────────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.4).
+// Extracted from server.ts in Phase 2.
 // H08-H11 share getActiveChatSession() — keep in one module.
 // (Not to be confused with routes/messaging.ts — channel transport routes.)
 
@@ -29,7 +29,7 @@ interface SavedActivityAnswerRow {
     session_id: string;
 }
 
-// Option D (devlog 260620 Phase 3): tool cards for a finished message come from
+// Option D: tool cards for a finished message come from
 // trace_events (durable, uncapped) when the rollout flag is on AND the message has a
 // linked trace run with tools; otherwise the messages.tool_log blob (legacy/fallback).
 // `fromTrace` is a parameter so both branches stay unit-testable.
@@ -44,9 +44,10 @@ export function resolveToolLog(
             // Boss tools come from trace_events (durable, uncapped). Worker mirrors
             // (isEmployee) stay sourced from the blob, where Phase 1 already preserves them
             // sanitized — so enabling the flag never drops worker cards.
-            // (Folding worker child runs from trace via parent_run_id is the purer Option D
-            // path but needs a cross-process linkage write; the blob mirror is display-
-            // equivalent and ships the flag safely now — devlog 260620 doc 20/31.)
+            // Folding worker child runs via parent_run_id needs a cross-process
+            // linkage write; the blob mirror is display-equivalent and preserves
+            // workers until that linkage is available.
+
             const blobWorkers = parseToolLogBounded(blobToolLog).filter((t) => t.isEmployee === true);
             return serializeSanitizedToolLog(mergeLatestTools(traceTools, blobWorkers, ''));
         }

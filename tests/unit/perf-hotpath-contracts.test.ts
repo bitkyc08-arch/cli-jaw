@@ -1,5 +1,5 @@
 // ── Frontend rendering hot-path performance contracts ──
-// (devlog 260705_frontend_perf WP2)
+
 // H1: scrollToBottom batches the virtual-scroll branch under the same rAF
 //     gate as the direct-DOM branch (was: sync scrollToIndex per token chunk).
 // H2: addStep past the render cap appends incrementally (append + evict +

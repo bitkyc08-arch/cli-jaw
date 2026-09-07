@@ -11,7 +11,7 @@ type UseActivityUnreadOptions = {
     saveUi: (ui: ActivityUiPatch) => Promise<void>;
     // Port whose iframe is currently being viewed in the workbench. Its badge
     // is suppressed so the user does not see "(1)" for the instance they are
-    // already watching. Other ports are unaffected (devlog 260501).
+    // already watching. Other ports are unaffected.
     activePreviewPort: number | null;
 };
 

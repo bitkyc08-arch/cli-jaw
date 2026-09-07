@@ -1,5 +1,5 @@
 // ─── Instance Registry (cached background scan) ──────
-// Phase 4a of runtime SSE refactoring (devlog 260609, 40 §2).
+// Phase 4a of runtime SSE refactoring.
 // Replaces per-request full scans (50 ports × 3 endpoints = 150 loopback
 // fetches) with one background scan every 10s + an in-memory snapshot.
 // Status changes are published to the event-bus 'worker' topic — here

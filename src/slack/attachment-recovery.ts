@@ -6,7 +6,7 @@
 // 같은 업로드의 message 사본은 events.ts 의 mention_via_app_mention 가
 // 드롭한다(한 멘션이 두 에이전트 실행이 되는 것을 막는 의도적 동작). 그래서
 // 멘션과 함께 올린 첨부는 어느 봉투로도 도달하지 못한다. 드롭을 되돌리는 대신
-// 첨부만 되찾는다. 설계 근거: devlog/_plan/260806_slack_multifile_ingest/020.
+// 첨부만 되찾는다.
 
 import { fetchSlackHistory, fetchSlackReplies } from './history.js';
 import type { SlackFileEvent } from './events.js';

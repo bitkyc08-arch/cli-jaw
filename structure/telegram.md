@@ -10,7 +10,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 > Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + text/image forwarder lifecycle + origin filtering + voice STT
 > 현재 Telegram/Discord/Slack은 `src/messaging/`을 공유하며, settings restart는 `core/runtime-settings.ts`에서 한 번에 처리된다
-> Slack 채널 상세는 `devlog/_fin/260802_slack_channel/` (구현 계획) 및 `051_operator_runbook.md` (운영 절차) 참조
+> Slack 설정 명령과 API는 [Commands](commands.md)와 [Server API](server_api.md)를 참조
 > v5 Update: `forwardAll` 토글은 Telegram/Discord 각각의 channel setting으로 분리됨
 > v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P0–P4; per-topic `model`/`systemPrompt` overrides)
 
@@ -347,7 +347,7 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 
 - `telegram` / `discord` / `slack` 인터페이스는 위 whitelist만 허용한다
 - 허용되지 않은 패치는 `tg.` / `dc.` / `sl.settingsUnsupported`로 거절된다
-- **런타임 선택(`cli`, `perCli`, `activeOverrides`)은 원격에서 변경할 수 없다** (devlog 074).
+- **런타임 선택(`cli`, `perCli`, `activeOverrides`)은 원격에서 변경할 수 없다**.
   한 인스턴스의 모든 세션이 하나의 CLI·모델을 공유하므로, 원격 채널에서 바꾸면 인스턴스 웹과
   다른 모든 세션의 선택이 함께 움직인다. 소유자는 인스턴스 웹(`PUT /api/settings`)이고,
   거절 문구 `cmd.runtimeSelectionInstanceWide`가 어디서 바꿔야 하는지 안내한다

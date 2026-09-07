@@ -1,4 +1,4 @@
-// ── Worker-mirror preservation across boss tool syncs (devlog 260620 R1) ──
+// ── Worker-mirror preservation across boss tool syncs ──
 // Root cause being guarded: worker/employee tool cards vanished on reload under
 // claude (dense boss tool stream) but survived under codex (sparse). The boss's
 // replaceLiveRunTools(scope, ctx.toolLog) OVERWROTE the live-run scope on every

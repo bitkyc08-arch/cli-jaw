@@ -170,16 +170,12 @@
 <ul>
 <li>当前仓库结构的紧凑树形图</li>
 <li>检测到的仓库约定：文档、计划、架构说明、真实来源日志、命名规范、测试</li>
-<li>是否已读取现有的 <code>structure/</code>、<code>devlog/</code>、<code>docs/</code>、<code>plans/</code> 或等效日志，以及是否会复用</li>
-<li>是否建议创建 <code>structure/</code> 或 <code>devlog/</code></li>
+<li>是否已读取现有架构文档和仓库专属的记录边界，以及如何遵循</li>
+<li>是否需要新的公开产品文档</li>
 </ul>
 
-<h4>开发日志命名约定</h4>
-<p>如果 PABCD 工作创建或更新了 <code>devlog/</code> 计划产物，计划中必须列出精确的 Jawdev 编号文件名：</p>
-<pre><code>00_overview.md
-01_phase1_&lt;slug&gt;.md
-02_phase2_&lt;slug&gt;.md</code></pre>
-<p>裸文件名如 <code>PLAN.md</code>、<code>DIFF_PLAN.md</code>、<code>PHASES.md</code>、<code>RCA.md</code> 或 <code>plan.md</code> <strong>不允许</strong>作为新的开发日志阶段文件。</p>
+<h4>计划记录位置</h4>
+<p>创建计划前应遵循目标仓库的记录位置和命名规则。为 cli-jaw 做贡献时，私有计划、审计、证据和历史记录只保存在独立的同级仓库中。禁止在本仓库的任何层级创建私有记录，包括 devlog、_plan、_fin 或 .jwc 别名。此边界优先于通用技能默认值；docs/ 和 structure/ 仅用于公开产品文档。不得在公开文档或源码中引用私有记录路径。 详情请参阅 <a href="https://github.com/lidge-jun/cli-jaw/blob/dev/CONTRIBUTING.md">CONTRIBUTING.md</a>。</p>
 
 <h4>关卡问题</h4>
 <p>在展示计划之前，计划阶段会询问：</p>
@@ -198,10 +194,10 @@
 <li>函数签名是否与实际代码匹配</li>
 <li>是否存在集成风险</li>
 <li>现有的真实来源文档/日志是否已被读取</li>
-<li>未经用户批准不得引入新的 <code>structure/</code>、<code>devlog/</code>、文档或 AGENTS 文件</li>
+<li>新文档是否遵循已授权范围和仓库专属的记录边界</li>
 <li>新的 JS/TS 文件遵循 TypeScript 优先规则，除非计划中说明了为什么需要使用 JS</li>
 <li>新的 TypeScript 代码兼容严格模式，或已说明限制</li>
-<li>新的开发日志阶段文档使用编号的 Jawdev 文件名约定</li>
+<li>计划记录遵循所属仓库的命名规则</li>
 </ul>
 <p>Worker 输出审计的 JSON 结果。审查结果：</p>
 <ul>
@@ -219,7 +215,7 @@
 <li><strong>NEEDS_FIX</strong> &rarr; Boss 修复问题，重新验证</li>
 <li><strong>DONE</strong> &rarr; 向用户报告结果</li>
 </ul>
-<p>除非在 P 阶段已批准或用户明确要求，否则不创建 <code>structure/</code> 或 <code>devlog/</code>。</p>
+<p>仅在已授权范围和目标仓库的记录边界内创建文档。</p>
 <p>当用户批准后，使用 <code>cli-jaw orchestrate C</code> 进行状态转换。</p>
 </div>
 

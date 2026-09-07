@@ -1,5 +1,5 @@
 // P37-CU: STATIC_EMPLOYEES + Control runtime hints + dispatch resolution.
-// Matches devlog/_plan/computeruse/37_revisions_and_integration.md §C.
+
 
 import test from 'node:test';
 import assert from 'node:assert/strict';

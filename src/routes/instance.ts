@@ -1,5 +1,5 @@
 // ─── Instance lock/unlock (process protection) ───────
-// Extracted from server.ts in Phase 2 (devlog 260609, 07 §3.3).
+// Extracted from server.ts in Phase 2.
 // Marker file is written by the dashboard manager; these routes only
 // toggle the `protected` flag on an existing marker.
 

@@ -1,4 +1,4 @@
-// ── Client memory cap contracts (devlog 260613 docs 06/50 phase 5b) ──
+// ── Client memory cap contracts ──
 // Long-lived tabs (manager iframe, days of uptime) must not grow without
 // bound: history window, preview cache LRU, IDB stale scopes, listener guards.
 

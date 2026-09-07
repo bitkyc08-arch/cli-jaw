@@ -1,4 +1,4 @@
-// ── Employee hydration merge idempotency contracts (devlog 260613 docs 01/30) ──
+// ── Employee hydration merge idempotency contracts ──
 // Root cause being guarded: employee tool events are internal-audience only,
 // so the web UI sees them exclusively through orchestrate-snapshot hydration.
 // mergeHydratedProcessSteps used a status-sensitive, ambiguity-fragile fuzzy

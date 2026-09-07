@@ -30,13 +30,17 @@ src/lib/native/*.node
 # electron sidecar dist bundles
 electron/sidecar/jawcode/packages/jwc/dist-node/
 
-# reference repos (cloned for analysis, not tracked)
-devlog/_plan/*/_ref_*/
-
-# local/private planning workspace; devlog is a tracked submodule pointer
-devlog/
 .codegraph
 .codexclaw/
 
 # install-state receipt written by postinstall-guard at install time; never tracked
 .jaw-install-state.json
+
+# Private records belong exclusively in the sibling cli-jaw-internal repository.
+# Match files, symlinks and directories at any depth, including case variants.
+[dD][eE][vV][lL][oO][gG]
+[dD][eE][vV][lL][oO][gG][._-]*
+[cC][lL][iI]-[jJ][aA][wW]-[iI][nN][tT][eE][rR][nN][aA][lL]
+_[pP][lL][aA][nN]
+_[fF][iI][nN]
+.[jJ][wW][cC]

@@ -49,8 +49,8 @@ export function resetGoalContAttempts(): void { _goalContAttempts = 0; _goalCont
 // internal), so without this row the chat timeline has no user-turn boundary
 // between work-phases. That broke reconnect hydration: the client's
 // latestAgentDivForActiveRun() heuristic ("last .msg-agent with no following
-// user message") re-attached new tool steps onto the PREVIOUS assistant bubble
-// (devlog 260705_web_live_update_boundary). A short durable user row gives
+// user message") re-attached new tool steps onto the PREVIOUS assistant bubble.
+// A short durable user row gives
 // both live SSE and /api/messages reloads a real message boundary.
 function insertGoalContinuationBoundary(label: string): void {
     const content = `🎯 ${label}`;
@@ -229,7 +229,7 @@ function runtimeCompatibilityText(finalText: string | null): string {
 
 /** Tag agent_done with the trace run that produced it so the web UI can drop
  *  SSE replays of already-finished turns instead of mid-turn-finalizing the
- *  in-flight one (devlog 260612 manager_stream_hidden_state_audit 06-08). */
+ *  in-flight one. */
 function runTag(ctx: { traceRunId?: string | null }): Record<string, unknown> {
     return ctx.traceRunId ? { traceRunId: ctx.traceRunId } : {};
 }

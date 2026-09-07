@@ -39,6 +39,9 @@ jobs:
           # both need commits that a shallow clone does not have.
           fetch-depth: 0
 
+      - name: Check private repository boundary
+        run: node scripts/check-private-boundary.mjs
+
       - name: Determine code changes
         id: scope
         env:
@@ -292,15 +295,13 @@ jobs:
 
   # Fixed-cost checks, run exactly once: gate:all (which already includes
   # tsc --noEmit for server + frontend and the strict-baseline checker), the
-  # dependency gates, the devlog audit, and the repo scans.
+  # dependency gates and the repo scans.
   gates:
     name: gates
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -311,19 +312,6 @@ jobs:
         run: |
           git submodule update --init skills_ref
           git submodule update --init officecli
-
-      - name: Checkout private submodules (needs SUBMODULE_PAT secret)
-        if: ${{ env.SUBMODULE_PAT != '' }}
-        run: |
-          git submodule update --init devlog
-        env:
-          GIT_CONFIG_COUNT: 1
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ env.SUBMODULE_PAT }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
-
-      - name: Skip private submodules when SUBMODULE_PAT is unavailable
-        if: ${{ env.SUBMODULE_PAT == '' }}
-        run: echo "Skipping private devlog checkout because SUBMODULE_PAT is not configured."
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -348,28 +336,6 @@ jobs:
 
       - name: Dependency advisory gate
         run: npm run check:deps:audit
-
-      - name: Verify devlog submodule
-        id: devlog-check
-        run: |
-          if [[ ! -d devlog/_fin ]]; then
-            echo "⚠️ devlog submodule not checked out — SUBMODULE_PAT secret may be missing"
-            echo "available=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Devlog _fin status gate
-        if: steps.devlog-check.outputs.available == 'true'
-        run: bash structure/audit-fin-status.sh
-
-      - name: Upload audit report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: fin-status-audit
-          path: devlog/_fin/_status_audit.md
-          if-no-files-found: ignore
 
       - name: Copilot gap check
         run: npm run check:copilot-gap

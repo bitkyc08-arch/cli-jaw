@@ -1,4 +1,4 @@
-// Leading YAML frontmatter parsing, shared by notes and the wiki (devlog 041-B §3.1b).
+// Leading YAML frontmatter parsing, shared by notes and the wiki.
 //
 // This lives here rather than under manager because core cannot import from there, and
 // the wiki scanner needs the same parser the notes vault uses. Only the parsing half

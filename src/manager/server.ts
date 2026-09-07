@@ -235,7 +235,7 @@ function attachPreviewSnapshot(result: DashboardScanResult): DashboardScanResult
     return result;
 }
 
-// Phase 4a (devlog 260609, 40): background scan cache. Full-scan call sites
+// Phase 4a: background scan cache. Full-scan call sites
 // (instances list, memory supplier, jaw-ceo) read this snapshot; single-port
 // (:port) and git-router scans stay live for lifecycle pollUntilSettled freshness.
 const instanceRegistry = new InstanceRegistry({
@@ -262,7 +262,7 @@ async function cachedFullScan(): Promise<DashboardScanResult> {
         : instanceRegistry.forceRefresh();
 }
 
-// Phase 4b (devlog 260609, 41 P3): peer dashboard scan is up to 14 sequential
+// Phase 4b: peer dashboard scan is up to 14 sequential
 // ports × 450ms in the request path — cache with a 30s TTL. Peers change
 // rarely; ?fresh=1 resets the TTL alongside the instance refresh.
 let peerCache: DashboardInstance[] = [];
@@ -443,7 +443,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         }));
     },
     fetchLatestMessage: async (targetPort) => {
-        // P4-full (devlog 260609, 50 §2): serve from the SSE-fed cache while the
+        // P4-full: serve from the SSE-fed cache while the
         // worker's event stream is live; otherwise fall back to on-demand fetch.
         const cached = getCachedLatestMessage(targetPort);
         let data: WorkerLatestData;
@@ -493,7 +493,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         };
     },
     runLifecycleAction: async ({ action, port: targetPort }) => {
-        // Direct call — no loopback self-fetch (devlog 260609, 09 P5 / 41).
+        // Direct call — no loopback self-fetch.
         try {
             const data = await runDashboardLifecycleAction(action as DashboardLifecycleAction, targetPort);
             return {
@@ -815,8 +815,7 @@ app.patch('/api/dashboard/registry', (req, res) => {
 });
 
 // Shared by the HTTP route below and the jaw-ceo deps — the manager used to
-// fetch its OWN lifecycle endpoint over HTTP for jaw-ceo actions (devlog 260609,
-// 09 P5). Direct call removes that loopback round-trip.
+// fetch its OWN lifecycle endpoint over HTTP for jaw-ceo actions. Direct call removes that loopback round-trip.
 function rejectedLifecycleResult(action: DashboardLifecycleAction, portValue: number, message: string): DashboardLifecycleResult {
     return {
         ok: false, action, port: portValue, status: 'rejected',
@@ -1055,7 +1054,7 @@ async function main(): Promise<void> {
         startScheduleRunner(scheduleStore, {
             log: msg => console.log(msg),
         });
-        // Phase 4a: background scan loop feeding the instance cache (devlog 260609, 40)
+        // Phase 4a: background scan loop feeding the instance cache
         // P4-full: bridge must subscribe BEFORE the first scan publishes
         // 'appeared' diffs, or initial workers would never get SSE streams.
         startWorkerEventBridge();

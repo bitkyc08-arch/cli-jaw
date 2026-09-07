@@ -1,5 +1,5 @@
 // Dynamic lookup contract: conversations.history/replies wrappers, formatting,
-// and the retry/error surfaces. Plan: devlog 260806_slack_thread_dynamic_lookup/020.
+// and the retry/error surfaces.
 import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';

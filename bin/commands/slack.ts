@@ -6,7 +6,7 @@
  * only in the app settings UI, and the PKCE localhost flow (GA 2026-03-30)
  * bans bot scopes on desktop redirects. So the fastest honest flow is:
  * paste the manifest, paste two tokens, let the wizard validate them live.
- * Full analysis: devlog 260803_slack_oauth_setup/000_research.md.
+ *
  */
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';

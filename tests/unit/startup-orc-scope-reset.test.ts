@@ -30,7 +30,7 @@ test('SOS-002: snapshot endpoint includes scope', () => {
 });
 
 test('SOS-003: channel-up hydration pulls scope state from the snapshot (X-01)', () => {
-    // devlog 260609, 50: the WS connect-time orc_state push was removed —
+    // the WS connect-time orc_state push was removed —
     // reload recovery now flows through /api/orchestrate/snapshot (SOS-002)
     // fetched by handleChannelUp on every (re)connect, for SSE and WS alike.
     const wsSrc = readFileSync(new URL('../../public/js/ws.ts', import.meta.url), 'utf8');

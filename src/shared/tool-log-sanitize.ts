@@ -68,7 +68,7 @@ function makeOverflowEntry(omitted: number): SanitizedToolLogEntry {
 
 /** Omitted count carried by an overflow marker from a prior sanitize pass; 0 for real entries.
  *  Live-run state re-sanitizes the same array on every append, so the marker must be
- *  absorbable or repeated passes drop every new entry (devlog 260609 doc 86). */
+ *  absorbable or repeated passes drop every new entry. */
 export function omittedCountOf(entry: unknown): number {
     if (!entry || typeof entry !== 'object') return 0;
     const e = entry as SanitizableToolLogEntry;
@@ -80,8 +80,7 @@ export function omittedCountOf(entry: unknown): number {
 }
 
 /** True when the entry is a synthetic head overflow marker from a prior sanitize
- *  pass — the live-run snapshot uses it as an "RAM log is capped" signal (WP4,
- *  devlog 260703 doc 12). */
+ *  pass — the live-run snapshot uses it as an "RAM log is capped" signal. */
 export function isToolLogOverflowMarker(entry: unknown): boolean {
     return omittedCountOf(entry) > 0;
 }

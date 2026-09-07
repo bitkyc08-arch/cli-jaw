@@ -906,6 +906,10 @@ Sidecar builds use [owned staging and target-runtime smoke checks](structure/inf
 
 ## Contributing
 
+Public code and product docs live here. Private planning and history live only in a separate sibling clone of [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal); request access through an [issue](https://github.com/lidge-jun/cli-jaw/issues). Do not create private records in this checkout, including `devlog`, `_plan`, `_fin`, or `.jwc` aliases, or include private record paths in public docs/source. This boundary overrides generic skill defaults; `docs/` and `structure/` are for public product documentation.
+
+Follow [local pre-push setup and checks](CONTRIBUTING.md#local-private-path-check) before uploading changes. CI is a backstop after upload and cannot prevent initial disclosure.
+
 1. Fork and branch from `dev`
 2. `npm run build && npm run build:frontend && npm test`
 3. For release-sensitive changes, also run `npm run gate:all` and any focused checks for the touched surface.

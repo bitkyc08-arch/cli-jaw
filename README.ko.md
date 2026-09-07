@@ -624,6 +624,10 @@ bash structure/check-doc-drift.sh
 
 ## 기여하기
 
+공개 코드와 제품 문서는 이 저장소에서 관리합니다. 비공개 계획·이력은 별도 sibling clone인 [cli-jaw-internal](https://github.com/lidge-jun/cli-jaw-internal)에만 보관하며, 접근 권한은 [이슈](https://github.com/lidge-jun/cli-jaw/issues)로 요청하세요. 이 체크아웃 안에는 `devlog`, `_plan`, `_fin`, `.jwc` 별칭을 포함해 private 기록을 만들거나 공개 문서·소스에 비공개 기록 경로를 넣지 않습니다. 이 경계는 일반 스킬 기본값보다 우선하며, `docs/`와 `structure/`는 공개 제품 문서용입니다.
+
+업로드 전에 [로컬 pre-push 설정과 검사](CONTRIBUTING.md#local-private-path-check)를 따르세요. CI는 업로드 이후의 보완 검사이므로 최초 공개를 막아주지 못합니다.
+
 1. `dev`에서 Fork하고 브랜치를 만듭니다
 2. `npm run build && npm run build:frontend && npm test`
 3. release-sensitive 변경은 `npm run gate:all`과 touched surface focused check도 실행합니다

@@ -9,9 +9,8 @@
 // a SECOND time for conversation lookups produced four consecutive audit
 // failures, because the second specification kept disagreeing with the first
 // about cancellation ownership. Extracting it means the discipline is written
-// once and both adapters inherit it. Design: devlog
-// 260812_slack_conversation_context/012_wp1_replan_shared_primitive.md.
-//
+// once and both adapters inherit it.
+
 // Two rules run through everything below:
 //   1. Enrichment is decoration, never a precondition. Every failure path
 //      degrades; nothing here throws at its caller.

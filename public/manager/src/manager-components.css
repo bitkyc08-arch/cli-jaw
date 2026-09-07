@@ -477,7 +477,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
 }
 
-/* ─── Active-row session disclosure (devlog 260806 D2) ─── */
+/* ─── Active-row session disclosure ─── */
 .instance-session-list {
     display: grid;
     gap: 2px;

@@ -10,10 +10,9 @@
 ## Context
 
 cli-jaw has a web UI served by Express (`public/`, ~4,100 lines of TypeScript across
-19 modules). The frontend was bundled with esbuild since 2026-02-25 (see
-`devlog/_fin/260225_esbuild_번들러_도입.md`). A Vite migration was proposed as P1 in the
-frontend modernization roadmap (`devlog/_plan/future_feature/260227_frontend_modernization/plan.md`)
-and evaluated during the vanilla-to-TS migration (`devlog/_fin/260226_vanilla_to_ts/plan.md`).
+19 modules). The frontend was bundled with esbuild since 2026-02-25. A Vite
+migration was evaluated during frontend modernization and the vanilla-to-TS
+migration.
 
 This ADR consolidates those analyses into a single decision record.
 
@@ -113,6 +112,3 @@ Re-evaluate this decision if any of these conditions change:
 ## References
 
 - `esbuild.config.mjs` — current 24-line build config
-- `devlog/_fin/260225_esbuild_번들러_도입.md` — original esbuild adoption record
-- `devlog/_fin/260226_vanilla_to_ts/plan.md` — first esbuild vs Vite comparison (§ 번들러 검토)
-- `devlog/_plan/future_feature/260227_frontend_modernization/plan.md` — Vite listed as P1 (superseded by this ADR)

@@ -11,8 +11,7 @@ import type { ChatSessionSummary } from '../lib/session-store';
 
 export type { ChatSessionSummary } from '../lib/session-store';
 
-// Inline session disclosure under the Active instance row (devlog
-// 260806_manager_active_session_disclosure). Lazy: fetches only while open.
+// Inline session disclosure under the Active instance row. Lazy: fetches only while open.
 // Fields other than id/seq/label/message_count are absent when the instance
 // runs with multiSession off, so everything renders with fallbacks.
 /** "jaw:slack:channel:C0BM..:thread:1785.." → "slack C0BM.. · thread" */

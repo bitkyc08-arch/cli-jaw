@@ -1,4 +1,4 @@
-// wp2 (devlog/_plan/260903_steer_default_context/020): codex-app native
+// wp2: codex-app native
 // same-turn steer (turn/steer) — wire shape, error taxonomy, spawn routing.
 // Must be the FIRST import: config.ts binds DB_PATH at module evaluation.
 import '../setup/isolated-home.ts';

@@ -1,5 +1,5 @@
 // ── SSE Event Channel (singleton) ──
-// Phase 3 of runtime SSE refactoring (devlog 260609, 30 §4).
+// Phase 3 of runtime SSE refactoring.
 // data-only wire format (00_1 F1): the server never sets the SSE `event:`
 // field — topic + event arrive inside the JSON payload, so a single
 // onmessage handler receives everything.
@@ -26,7 +26,7 @@ let reconnectDelay = 2000;
 const MAX_RECONNECT_DELAY = 30_000;
 const RECONNECT_BACKOFF = 1.5;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-// ── Staleness watchdog (devlog 260613 doc 40) ──
+// ── Staleness watchdog ──
 // EventSource only reconnects on onerror; a silently dead socket (sleep,
 // network change) never fires it — the channel looks open while delivering
 // nothing, and the UI freezes until a focus-triggered snapshot. The server
@@ -95,7 +95,7 @@ export function onChannelOpen(cb: () => void): void { onOpenCb = cb; }
 /** Register the connection-lost callback. Fired once per drop (connected → disconnected transition), not per retry. */
 export function onChannelDisconnect(cb: () => void): void { onDisconnectCb = cb; }
 
-/** Register the SSE-unsupported callback (devlog 260609, 31): fired at most once
+/** Register the SSE-unsupported callback: fired at most once
  *  per connect attempt when the stream errors WITHOUT ever opening AND SSE has
  *  never connected in this session — i.e. a legacy server without /api/events.
  *  When it fires, internal backoff is suppressed; the consumer owns fallback. */

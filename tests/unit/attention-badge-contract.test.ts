@@ -9,7 +9,6 @@ const root = join(__dirname, '../..');
 const badgePath = join(root, 'public/js/features/attention-badge.ts');
 const mainPath = join(root, 'public/js/main.ts');
 const chatPath = join(root, 'public/js/features/chat.ts');
-const planPath = join(root, 'devlog/_fin/260425_browser_unread_badge/plan.md');
 const packagePath = join(root, 'package.json');
 const frontendTsconfigPath = join(root, 'tsconfig.frontend.json');
 
@@ -78,11 +77,5 @@ test('AB-007: frontend typecheck is available for public/js changes', () => {
     assert.ok(pkg.includes('tsconfig.frontend.json'), 'frontend typecheck should use tsconfig.frontend.json');
     assert.ok(tsconfig.includes('public/js/**/*.ts'), 'frontend tsconfig should include public/js TypeScript files');
 
-    if (existsSync(planPath)) {
-        const plan = readFileSync(planPath, 'utf8');
-        assert.ok(
-            plan.includes('npm run typecheck:frontend') || plan.includes('tsconfig.frontend.json'),
-            'plan should require frontend typecheck because root tsc does not cover public/js'
-        );
-    }
+
 });

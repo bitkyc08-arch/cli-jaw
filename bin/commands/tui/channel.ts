@@ -1,6 +1,5 @@
 /**
- * Chat transport channel — SSE-first with legacy-WS fallback (X-01,
- * devlog 260609, 50). New servers have no WebSocket channel; old servers
+ * Chat transport channel — SSE-first with legacy-WS fallback. New servers have no WebSocket channel; old servers
  * have no /api/events — the adapter connects to whichever answers and
  * exposes the WebSocket subset the TUI already uses (send/on/close), so
  * every call site stays transport-agnostic:

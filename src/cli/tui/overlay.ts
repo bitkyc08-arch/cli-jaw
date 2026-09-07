@@ -276,7 +276,7 @@ export function layoutCenteredBox(
 
 // ANSI-aware pad/clip: inner lines carry color escapes (bgtask rows, dim
 // hints) — clipping by string length cut visible text mid-word and leaked an
-// unclosed escape into the box border (adversarial review, devlog doc 40).
+// unclosed escape into the box border.
 // clipTextToCols passes CSI sequences through and appends a reset when any
 // ANSI was seen; visualWidth ignores escapes and counts wide glyphs as 2.
 function padInner(text: string, innerW: number): string {
@@ -473,7 +473,7 @@ const BGTASK_DEFAULT_COLORS: BgtaskOverlayColors = {
 
 // jawcode footer-panel row style: `{icon} {kind} {label} \u00B7 {hint}` with the
 // unicode symbol preset (\u2714 \u2718 \u23F9 \u26A0 \u27F3) and ` \u00B7 ` separators; attention rows
-// (failed/orphaned) carry warning color and sort first (devlog doc 40).
+// (failed/orphaned) carry warning color and sort first.
 export function buildBgtaskInnerLines(
     dimCode: string,
     resetCode: string,

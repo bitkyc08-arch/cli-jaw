@@ -53,7 +53,7 @@ function getCommandTimeoutMs(text: string): number {
 }
 
 // 첨부 프롬프트는 파일 종류를 유지해야 한다. 고정 "파일" 문구만 쓰면 이미지를
-// 올려도 에이전트가 Read 도구로 열려다 실패한다 (devlog 260806_slack_multifile_ingest/001 §4 D2).
+// 올려도 에이전트가 Read 도구로 열려다 실패한다.
 const ATTACHMENT_KEY: Record<MediaKind, string> = {
     image: 'chat.file.sentImage',
     video: 'chat.file.sentVideo',
@@ -236,7 +236,7 @@ document.addEventListener('click', async (event) => {
 
 // In-flight guard: prevents double-send from rapid clicks / Enter-bursts while the
 // POST to /api/message is outstanding. Server-side dedup in gateway.ts is the
-// second line of defense. See devlog/_fin/260417_message_duplication/.
+// second line of defense.
 let __chatSending = false;
 
 export type SendSource = 'button' | 'enter' | 'cmd-execute';
@@ -258,7 +258,7 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
         return;
     }
 
-    // Stop-mode click policy (devlog 260501_chat_pause_and_unread_badge):
+    // Stop-mode click policy:
     //  - any stop-mode button click  → fire /api/stop and return.
     //    /api/stop stops this session's run when the tab names one, and every
     //    run otherwise, which is the user's intent ("실제로 정지가 안돼").
@@ -373,7 +373,7 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
             } else if (result.viaRelay) {
                 // Preview relay: the manager POSTs with external:true, so the
                 // SSE new_message handler renders this bubble. Rendering here
-                // too would duplicate it (devlog 260705).
+                // too would duplicate it.
                 upsertMessage({ role: 'user', content: text, timestamp: Date.now() });
                 if (data.continued) addSystemMsg(t('chat.continue'));
                 reconcileChatBottomAfterLayout(true);

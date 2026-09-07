@@ -94,7 +94,7 @@ export function buildMediaPromptMany(filePaths: string[], caption?: string) {
     }
 
     // 2개 이상일 때 종류 판정을 잃으면 이미지가 "Read 도구로 읽어라"로 내려가
-    // 에이전트가 PNG를 텍스트로 열려다 실패한다 (실증: devlog 001 §3).
+    // 에이전트가 PNG를 텍스트로 열려다 실패한다.
     const kinds = normalized.map(mediaKindFromPath);
     const fileList = normalized
         .map((filePath, index) => `${index + 1}. [${KIND_LABEL[kinds[index]!]}] ${filePath}`)

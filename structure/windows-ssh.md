@@ -10,8 +10,7 @@ tags: [cli-jaw, windows, openssh, conpty, issue-326]
 `ssh -tt`에서 관측되는 `ESC[?9001h/l`·`ESC[?1004h/l` 제어시퀀스는 **호스트 측
 conhost/ConPTY**가 발행한다. cli-jaw 아님.
 
-근거(원본: `devlog/_plan/260812_remaining_issues_round/326_evidence.md`,
-캡처 `C:\Users\user\jaw326-evidence` case-1..9):
+2026-08-12에 확인한 9개 호출 케이스의 관측 결과:
 
 - jaw 미기동 plain `node -p`만으로도 동일 시퀀스 재현(양쪽 셸 공통).
 - `ssh -T`에서는 전 케이스 소멸. `?1049`(alternate screen)는 어떤 케이스에서도 미출현.

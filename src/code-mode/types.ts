@@ -1,4 +1,4 @@
-// Code mode shared types (Phase 1 scaffold — design SoT: jawcode devlog 112.3/112.4).
+// Code mode shared types.
 // Transport abstraction per D112-1: UI/routes depend on CodeSessionTransport only,
 // so the ACP-stdio implementation can be swapped for in-process later with zero UI change.
 

@@ -3,7 +3,7 @@
  *
  * 확장자 → image/video/file 판정이 프롬프트 생성 지점마다 재구현되어 있었고,
  * 그 결과 서버 다중 첨부(2개 이상)와 웹 첨부(개수 무관)가 파일 종류를 잃었다.
- * 근거: devlog/_plan/260806_slack_multifile_ingest/001 §3-4.
+ *
  *
  * 이 파일은 두 tsconfig가 각각 타입체크한다:
  *   tsconfig.json          (NodeNext)  — include: lib/**\/*.ts

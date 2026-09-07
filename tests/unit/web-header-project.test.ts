@@ -31,7 +31,7 @@ test('WHP-002: settings_change updates the header without reloading settings', (
 });
 
 test('WHP-005: scope-affecting settings_change reloads history before snapshot', () => {
-    // devlog 260609 78/82 — message scope is keyed on workingDir; the event
+    // message scope is keyed on workingDir; the event
     // payload always carries projectDirs, so the gate must use changedKeys.
     const handlerIdx = wsSrc.indexOf('function handleSettingsChange');
     assert.ok(handlerIdx > 0, 'ws must centralize settings_change handling');

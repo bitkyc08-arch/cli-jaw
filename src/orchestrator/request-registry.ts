@@ -1,5 +1,5 @@
 /**
- * Request settlement registry (#276 / devlog 061).
+ * Request settlement registry (#276).
  *
  * `POST /api/message` always returns a requestId, but until now that id was not
  * a promise of anything. Whether a completion event ever carried it back

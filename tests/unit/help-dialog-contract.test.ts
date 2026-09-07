@@ -17,7 +17,6 @@ const indexPath = join(root, 'public/index.html');
 const cssPath = join(root, 'public/css/modals.css');
 const chatCssPath = join(root, 'public/css/chat.css');
 const localePaths = ['ko', 'en', 'ja', 'zh'].map(locale => join(root, `public/locales/${locale}.json`));
-const planPath = join(root, 'devlog/_fin/260425_help_dialog/plan.md');
 
 const topicIds = Object.keys(HELP_TOPICS).sort();
 
@@ -257,25 +256,5 @@ test('HD-009: shortcut help content names the actual supported key bindings', ()
         for (const token of requiredTokens) {
             assert.ok(text.includes(token), `shortcut help in ${path} should mention ${token}`);
         }
-    }
-});
-
-test('HD-010: plan records audit-sensitive integration requirements', (t) => {
-    if (!existsSync(planPath)) {
-        t.skip('help dialog plan is stored in optional devlog submodule');
-        return;
-    }
-    const plan = read(planPath);
-
-    for (const text of [
-        'await initI18n()',
-        'leaf',
-        'Escape',
-        'focus',
-        'innerHTML',
-        'textContent',
-        'data-help-topic',
-    ]) {
-        assert.ok(plan.includes(text), `plan should mention: ${text}`);
     }
 });

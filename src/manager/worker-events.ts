@@ -1,5 +1,5 @@
 // ─── Worker Event Bridge (subscriptions + message cache) ──
-// P4-full of runtime SSE refactoring (devlog 260609, 50 §2).
+// P4-full of runtime SSE refactoring.
 // Owns the manager-side lifecycle of worker SSE subscriptions, driven by
 // InstanceRegistry diffs on the event-bus ('worker' topic, Phase 4a):
 //   appeared / status→online  → subscribe

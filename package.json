@@ -49,7 +49,19 @@
     "!dist/src/lib/native/*.node",
     "public/",
     "scripts/",
-    "package.json"
+    "package.json",
+    "!**/[dD][eE][vV][lL][oO][gG]",
+    "!**/[dD][eE][vV][lL][oO][gG]/**",
+    "!**/[dD][eE][vV][lL][oO][gG][._-]*",
+    "!**/[dD][eE][vV][lL][oO][gG][._-]*/**",
+    "!**/[cC][lL][iI]-[jJ][aA][wW]-[iI][nN][tT][eE][rR][nN][aA][lL]",
+    "!**/[cC][lL][iI]-[jJ][aA][wW]-[iI][nN][tT][eE][rR][nN][aA][lL]/**",
+    "!**/_[pP][lL][aA][nN]",
+    "!**/_[pP][lL][aA][nN]/**",
+    "!**/_[fF][iI][nN]",
+    "!**/_[fF][iI][nN]/**",
+    "!**/.[jJ][wW][cC]",
+    "!**/.[jJ][wW][cC]/**"
   ],
   "scripts": {
     "dev": "tsx --env-file=.env server.ts",
@@ -133,7 +145,7 @@
     "check:sidecar-prune-safety": "node scripts/check-sidecar-prune-safety.mjs",
     "sync:electron-version": "node scripts/sync-electron-version.cjs",
     "gate:all": "node scripts/release-gates.mjs",
-    "prepublishOnly": "npm run build && npm run build:frontend && npm run check:frontend-build-output",
+    "prepublishOnly": "npm run check:private-boundary && npm run build && npm run build:frontend && npm run check:frontend-build-output",
     "electron:dev": "concurrently -k -n jaw,electron \"node scripts/electron-dev-manager.mjs\" \"npm --prefix electron run dev\"",
     "electron:build": "npm --prefix electron run build",
     "sidecar:bundle": "bash scripts/bundle-sidecar.sh darwin arm64",
@@ -148,7 +160,8 @@
     "check:app-icons": "node scripts/check-app-icon-assets.cjs",
     "check:electron-no-native": "node scripts/check-electron-no-native.cjs",
     "smoke:tui-fullscreen": "tsx scripts/smoke/tui-fullscreen-frame-smoke.ts",
-    "verify:dist-assets": "bash scripts/verify-dist-assets.sh"
+    "verify:dist-assets": "bash scripts/verify-dist-assets.sh",
+    "check:private-boundary": "node scripts/check-private-boundary.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

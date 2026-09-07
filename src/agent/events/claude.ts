@@ -341,7 +341,7 @@ export function handleClaudeEvent(
                 } else {
                     // RAM cap evicted the placeholder — converge the durable row via
                     // the stamp-time index so trace state still reaches final
-                    // status (WP4, devlog 260703 doc 12 item 3).
+                    // status.
                     const pointer = ctx.toolTraceIndex?.get(`claude:tooluse:${block.tool_use_id}`);
                     if (pointer) {
                         const base = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq);

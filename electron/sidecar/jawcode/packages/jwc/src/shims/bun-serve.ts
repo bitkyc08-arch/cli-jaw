@@ -91,7 +91,7 @@ async function writeResponse(res: ServerResponse, response: Response): Promise<v
 
 export function bunServe(options: BunServeOptions) {
 	if (options.websocket) {
-		throw new Error("Bun.serve shim: websocket upgrade is deferred on Node (devlog 100.07 §결정 기준)");
+		throw new Error("Bun.serve shim: websocket upgrade is deferred on Node");
 	}
 	const hostname = options.hostname ?? "0.0.0.0";
 	const requestedPort = options.port ?? 0;

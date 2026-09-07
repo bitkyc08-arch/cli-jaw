@@ -10,7 +10,7 @@ export function handleJawRuntimeEvent(event: Record<string, unknown>, _agentLabe
     const seq = Number(event['seq'] || 0);
 
     // Internal runtime traces — 'internal' keeps them off WS clients and the
-    // SSE dual-emit path (devlog 260609 00_1 F2).
+    // SSE dual-emit path.
     switch (eventName) {
         case 'runtime_started':
             broadcast('agent:claude-e:runtime_started', { runId, seq, version: event['helperVersion'] }, 'internal');

@@ -1,4 +1,4 @@
-// ── Live long-turn step expander (devlog 260620 Phase 4) ──
+// ── Live long-turn step expander ──
 // A long process block elides its middle to a head/tail window for DOM/memory safety.
 // pb.steps still holds EVERY step (uncapped client array), so the elided middle is now
 // revealable on demand: the "Show N hidden steps" marker is a button that flips

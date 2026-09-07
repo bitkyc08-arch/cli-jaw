@@ -1,4 +1,4 @@
-// ── Option D /api/messages tool_log source resolution (devlog 260620 Phase 3) ──
+// ── Option D /api/messages tool_log source resolution ──
 // resolveToolLog picks trace_events (durable, uncapped) over the messages.tool_log
 // blob when the rollout flag is on AND the message has a linked trace run with tools;
 // otherwise it falls back to the blob (legacy + old messages). Default OFF.

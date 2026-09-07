@@ -1,5 +1,5 @@
 // ─── Web command context factory ──────────────────────
-// Extracted from server.ts in Phase 2 (devlog 260609, 20 §3.1, §3.4).
+// Extracted from server.ts in Phase 2.
 // Builds the CommandCtx for web-origin slash commands (/api/command,
 // /api/message, skill routes).
 
