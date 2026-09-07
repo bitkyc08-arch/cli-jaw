@@ -1,7 +1,7 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { fail } from '../http/response.js';
-import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, waitForExitSettled, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
+import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForMainProcessEnd, waitForExitSettled, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
 import { listToolEntriesForRun } from '../trace/store.js';
 import { mergeLatestTools } from '../agent/merge-tool-log.js';
@@ -421,7 +421,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                     const maxIdBeforeKill = getMaxMessageId(chatSessionId);
                     const stopped = killActiveAgent(scope, 'steer');
                     if (stopped) {
-                        await waitForProcessEnd(scope, steerWaitMs);
+                        await waitForMainProcessEnd(scope, steerWaitMs);
                         // The kill drops the scope's map entry synchronously, so the
                         // wait above can precede the exit handler's salvage insert.
                         await waitForExitSettled(scope);

@@ -238,7 +238,7 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     }
     const { currentSessionScope } = await import('../core/session-context.js');
     const scopeKey = currentSessionScope()?.scope ?? 'default';
-    const { isAgentBusy, killActiveAgent, waitForProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent, canSteerAgent, steerAgent } = await import('../agent/spawn.js');
+    const { isAgentBusy, killActiveAgent, waitForMainProcessEnd, waitForExitSettled, getSteerWaitMsForActiveAgent, canSteerAgent, steerAgent } = await import('../agent/spawn.js');
     if (!isAgentBusy(scopeKey)) {
         return { ok: false, type: 'error', text: t('cmd.steer.noAgent', {}, L) };
     }
@@ -272,7 +272,7 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     const maxIdBeforeKill = getMaxMessageId(steerSessionId);
     const steerWaitMs = getSteerWaitMsForActiveAgent(scopeKey);
     killActiveAgent(scopeKey, 'steer');
-    await waitForProcessEnd(scopeKey, steerWaitMs);
+    await waitForMainProcessEnd(scopeKey, steerWaitMs);
     // killActiveAgent drops the scope's map entry synchronously, so the wait above
     // can return before the exit handler has saved the interrupted partial output.
     await waitForExitSettled(scopeKey);
