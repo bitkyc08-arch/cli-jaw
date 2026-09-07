@@ -83,3 +83,7 @@ When refreshing docs from recent non-strict commits, check these first:
 - Keep root `AGENTS.md`, `CLAUDE.md`, `README.md`, and public `docs/dev/` pages aligned with this folder when the architecture map changes.
 
 - The Classic permission selector offers Auto (YOLO) / Safe choices, stored as literal `auto` / `safe`. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.
+
+### Quota reader contract
+
+Native quota readers follow the OpenCodex source contract: Codex window duration/plan policy, Spark and reset-credit metadata; Claude model-scoped windows and credential-scoped cache. Missing measurements remain unknown, 429 alone never means 100%, and upstream bodies are bounded. See `docs/migration/quota-reader-parity.md`.

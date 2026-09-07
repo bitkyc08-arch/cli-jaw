@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readClaudeCreds, getClaudeCredentialsPath, readLatestGrokSessionUsage, parseGrokCreditsGrpcWeb } from '../../src/routes/quota.ts';
+import { fetchClaudeUsage, fetchCodexUsage, readClaudeCreds, getClaudeCredentialsPath, readLatestGrokSessionUsage, parseGrokCreditsGrpcWeb } from '../../src/routes/quota.ts';
 
 // Read source for structural verification
 const quotaSrc = readSource(
@@ -27,28 +27,43 @@ const sidebarCss = readSource(
 
 // ── Quota route: auth failure vs transient error ──
 
-test('QS-001: fetchClaudeUsage distinguishes 401/403 from 5xx', () => {
-    // 401/403 should return {authenticated: false}
-    assert.ok(
-        quotaSrc.includes('resp.status === 401') && quotaSrc.includes('resp.status === 403'),
-        'should check for 401/403 status codes',
-    );
-    assert.ok(
-        quotaSrc.includes('{ authenticated: false }'),
-        'should return {authenticated: false} for auth failures',
-    );
-    assert.ok(
-        quotaSrc.includes('{ error: true }'),
-        'should return {error: true} for transient errors',
-    );
+test('QS-001: fetchClaudeUsage distinguishes 401/403 from 5xx', async () => {
+    const previousFetch = globalThis.fetch;
+    try {
+        for (const status of [401, 403, 500, 503]) {
+            const calls: Array<{ input: string; init: RequestInit | undefined }> = [];
+            globalThis.fetch = async (input, init) => {
+                calls.push({ input: String(input), init });
+                return new Response(null, { status });
+            };
+            const result = await fetchClaudeUsage({ token: `fixture-qs001-${status}` });
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0]!.input, 'https://api.anthropic.com/api/oauth/usage');
+            assert.equal(calls[0]!.init?.redirect, 'error');
+            assert.ok(calls[0]!.init?.signal instanceof AbortSignal);
+            assert.deepEqual(result, status === 401 || status === 403
+                ? { authenticated: false } : { error: true });
+        }
+    } finally { globalThis.fetch = previousFetch; }
 });
-
-test('QS-002: fetchCodexUsage distinguishes 401/403 from 5xx', () => {
-    const codexFn = quotaSrc.slice(quotaSrc.indexOf('fetchCodexUsage'));
-    assert.ok(
-        codexFn.includes('resp.status === 401') && codexFn.includes('resp.status === 403'),
-        'codex should also check 401/403',
-    );
+test('QS-002: fetchCodexUsage distinguishes 401/403 from 5xx', async () => {
+    const previousFetch = globalThis.fetch;
+    try {
+        for (const status of [401, 403, 500, 503]) {
+            const calls: Array<{ input: string; init: RequestInit | undefined }> = [];
+            globalThis.fetch = async (input, init) => {
+                calls.push({ input: String(input), init });
+                return new Response(null, { status });
+            };
+            const result = await fetchCodexUsage({ access_token: 'fixture-qs002', account_id: 'fixture-account' });
+            assert.equal(calls.length, 1);
+            assert.equal(calls[0]!.input, 'https://chatgpt.com/backend-api/wham/usage');
+            assert.equal(calls[0]!.init?.redirect, 'error');
+            assert.ok(calls[0]!.init?.signal instanceof AbortSignal);
+            assert.deepEqual(result, status === 401 || status === 403
+                ? { authenticated: false } : { error: true });
+        }
+    } finally { globalThis.fetch = previousFetch; }
 });
 
 test('QS-003: readClaudeCreds supports cross-platform Claude credentials file', () => {

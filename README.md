@@ -590,6 +590,8 @@ OpenCodex routing remains owned by Codex's root `openai_base_url` setting. CLI-J
 
 The quota/status panel keeps the same runtime keyset as the registry. Cold status requests return a neutral “checking” snapshot immediately while binary, authentication, and capability probes run in a bounded child process. Wrapper runtimes (`ai-e`, `claude-e`, `codex-app`) delegate to their underlying provider, while Pi/AGY/Cursor/OpenCode are shown as auth/status-only when their CLIs do not expose quota windows. Grok uses the current Grok CLI auth store for the SuperGrok weekly usage pool and falls back to legacy monthly credits when the weekly endpoint is unavailable.
 
+Native quota readers follow the OpenCodex source contract: Codex window duration/plan policy, Spark and reset-credit metadata; Claude model-scoped windows and credential-scoped cache. Missing measurements remain unknown, 429 alone never means 100%, and upstream bodies are bounded. See `docs/migration/quota-reader-parity.md`.
+
 **Fallback chain**: if one engine is rate-limited, the next picks up. Configure with `/fallback [cli1 cli2...]`.
 
 **OpenCode wildcard**: connect any model endpoint — OpenRouter, local LLMs (Large Language Models), any OpenAI-compatible API.

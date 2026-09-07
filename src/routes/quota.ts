@@ -6,6 +6,9 @@ import { join } from 'path';
 import { resolveHomePath } from '../core/path-expand.js';
 import { probeGrokModels } from '../core/probe-exec.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { createHash } from 'node:crypto';
+import { parseClaudeUsageWindows, parseCodexUsageWindows, type NativeUsageWindows } from './quota-native-window.js';
+import { readQuotaJson } from './quota-wire.js';
 
 interface GrokSessionUsage {
     sourcePath: string;
@@ -124,89 +127,128 @@ export function readClaudeCreds(): ClaudeCreds | null {
     return readClaudeCredsFromFile();
 }
 
+export function getCodexCredentialsPath(configDir = process.env['CODEX_HOME'], homeDir = os.homedir()): string {
+    return join(configDir?.trim() ? resolveHomePath(configDir, homeDir) : join(homeDir, '.codex'), 'auth.json');
+}
 export function readCodexTokens() {
     try {
-        const authPath = join(os.homedir(), '.codex', 'auth.json');
-        const j = JSON.parse(fs.readFileSync(authPath, 'utf8'));
-        if (j?.tokens?.access_token) return { access_token: j.tokens.access_token, account_id: j.tokens.account_id ?? '' };
-    } catch (e: unknown) { console.debug('[quota:codex] token read failed', (e as Error).message); }
-    return null;
+        const j = JSON.parse(fs.readFileSync(getCodexCredentialsPath(), 'utf8'));
+        const access = j?.tokens?.access_token;
+        const account = j?.tokens?.account_id;
+        if (typeof access !== 'string' || !access.trim()) return null;
+        return { access_token: access, account_id: typeof account === 'string' ? account : '' };
+    } catch {
+        // Native credential read failure is status-only; never log JSON parse excerpts.
+        return null;
+    }
 }
-
-let _claudeUsageCache: { data: Record<string, unknown>; ts: number } | null = null;
-const CLAUDE_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 interface ClaudeCredsLike { quotaCapable?: boolean; account?: unknown; source?: string; token?: string }
 interface CodexTokensLike { access_token?: string; account_id?: string }
-
+type ClaudeSnapshot = NativeUsageWindows & { raw: unknown };
+type ClaudeProbe = ClaudeSnapshot | { authenticated: false } | { error: true; reason?: string; windows?: never[] };
+const CLAUDE_FRESH_TTL_MS = 30_000;
+const CLAUDE_FALLBACK_TTL_MS = 5 * 60_000;
+const CLAUDE_CACHE_MAX_ENTRIES = 16;
+const claudeUsageCache = new Map<string, { data: ClaudeSnapshot; ts: number }>();
+const claudeUsageInflight = new Map<string, Promise<ClaudeProbe>>();
+function pruneClaudeUsageCache(now: number): void {
+    for (const [key, entry] of claudeUsageCache) {
+        if (now - entry.ts >= CLAUDE_FALLBACK_TTL_MS) claudeUsageCache.delete(key);
+    }
+    while (claudeUsageCache.size > CLAUDE_CACHE_MAX_ENTRIES) {
+        const key = claudeUsageCache.keys().next().value;
+        if (key === undefined) break;
+        claudeUsageCache.delete(key);
+    }
+}
 export async function fetchClaudeUsage(creds: ClaudeCredsLike | null | undefined) {
     if (!creds) return null;
     if (creds.quotaCapable === false) {
         return { authenticated: true, account: creds.account, windows: [], source: creds.source };
     }
-    if (!creds.token) return null;
-    try {
-        const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
-            headers: { 'Authorization': `Bearer ${creds.token}`, 'anthropic-beta': 'oauth-2025-04-20' },
-            signal: AbortSignal.timeout(8000),
-        });
-        if (!resp.ok) {
-            if (resp.status === 401 || resp.status === 403) return { authenticated: false };
-            if (resp.status === 429) {
-                if (_claudeUsageCache && Date.now() - _claudeUsageCache.ts < CLAUDE_CACHE_TTL) {
-                    return { ..._claudeUsageCache.data, cached: true };
+    if (typeof creds.token !== 'string' || !creds.token.trim()) return null;
+    const token = creds.token;
+    const key = createHash('sha256').update(token).digest('hex');
+    const now = Date.now();
+    pruneClaudeUsageCache(now);
+    const cached = claudeUsageCache.get(key);
+    if (cached && now - cached.ts < CLAUDE_FRESH_TTL_MS) {
+        return { ...structuredClone(cached.data), account: creds.account, cached: true };
+    }
+    let pending = claudeUsageInflight.get(key);
+    if (!pending) {
+        const probe = async (): Promise<ClaudeProbe> => {
+            try {
+                const signal = AbortSignal.timeout(8000);
+                const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
+                    redirect: 'error',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'claude-cli/2.1.63 (external, cli)',
+                        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05',
+                        'Authorization': `Bearer ${token}`,
+                    }, signal,
+                });
+                if (!resp.ok) {
+                    try { void resp.body?.cancel().catch(() => undefined); } catch { /* best effort */ }
+                    if (resp.status === 401 || resp.status === 403) {
+                        claudeUsageCache.delete(key);
+                        return { authenticated: false };
+                    }
+                    if (resp.status === 429) return { error: true, reason: 'rate_limited', windows: [] };
+                    return { error: true };
                 }
-                return {
-                    account: creds.account,
-                    windows: [{ label: '5-hour', percent: 100, resetsAt: null }],
-                    error: true, reason: 'rate_limited',
-                };
-            }
-            return { error: true };
+                const raw = await readQuotaJson(resp);
+                const parsed = parseClaudeUsageWindows(raw);
+                if (!parsed) return { error: true };
+                const result = { ...parsed, raw };
+                claudeUsageCache.set(key, { data: structuredClone(result), ts: Date.now() });
+                pruneClaudeUsageCache(Date.now());
+                return result;
+            } catch { return { error: true }; }
+        };
+        const owned = probe().finally(() => {
+            if (claudeUsageInflight.get(key) === owned) claudeUsageInflight.delete(key);
+        });
+        claudeUsageInflight.set(key, owned);
+        pending = owned;
+    }
+    const result = await pending;
+    if ('error' in result && result.reason === 'rate_limited') {
+        const fallback = claudeUsageCache.get(key);
+        if (fallback && Date.now() - fallback.ts < CLAUDE_FALLBACK_TTL_MS) {
+            return { ...structuredClone(fallback.data), account: creds.account, cached: true };
         }
-        const data = await resp.json() as Record<string, { utilization?: number; resets_at?: string | null } | undefined>;
-        const windows = [];
-        const labelMap = { five_hour: '5-hour', seven_day: '7-day', seven_day_sonnet: '7-day Sonnet', seven_day_opus: '7-day Opus' };
-        for (const [key, label] of Object.entries(labelMap)) {
-            const w = data[key];
-            if (w?.utilization != null) {
-                windows.push({ label, percent: Math.round(w.utilization), resetsAt: w.resets_at ?? null });
-            }
-        }
-        const result = { account: creds.account, windows, raw: data };
-        _claudeUsageCache = { data: result, ts: Date.now() };
-        return result;
-    } catch { return { error: true }; }
+        return { ...result, account: creds.account };
+    }
+    if ('raw' in result) return { ...structuredClone(result), account: creds.account };
+    return result;
 }
-
 export async function fetchCodexUsage(tokens: CodexTokensLike | null | undefined) {
-    if (!tokens) return null;
+    if (!tokens || typeof tokens.access_token !== 'string' || !tokens.access_token.trim()) return null;
     try {
+        const signal = AbortSignal.timeout(8000);
         const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', {
+            redirect: 'error',
             headers: { 'Authorization': `Bearer ${tokens.access_token}`, 'ChatGPT-Account-Id': tokens.account_id ?? '' },
-            signal: AbortSignal.timeout(8000),
+            signal,
         });
         if (!resp.ok) {
+            try { void resp.body?.cancel().catch(() => undefined); } catch { /* best effort */ }
             if (resp.status === 401 || resp.status === 403) return { authenticated: false };
             return { error: true };
         }
-        const data = await resp.json() as {
-            email?: string | null;
-            plan_type?: string | null;
-            rate_limit?: {
-                primary_window?: { used_percent?: number; reset_at?: number };
-                secondary_window?: { used_percent?: number; reset_at?: number };
-            };
+        const raw = await readQuotaJson(resp);
+        const parsed = parseCodexUsageWindows(raw);
+        if (!parsed) return { error: true };
+        const data = raw as Record<string, unknown>;
+        const account = {
+            email: typeof data['email'] === 'string' ? data['email'] : null,
+            plan: typeof data['plan_type'] === 'string' ? data['plan_type'] : null,
         };
-        const account = { email: data.email ?? null, plan: data.plan_type ?? null };
-        const windows = [];
-        if (data.rate_limit?.primary_window) {
-            windows.push({ label: '5-hour', percent: data.rate_limit.primary_window.used_percent ?? 0, resetsAt: data.rate_limit.primary_window.reset_at ? new Date(data.rate_limit.primary_window.reset_at * 1000).toISOString() : null });
-        }
-        if (data.rate_limit?.secondary_window) {
-            windows.push({ label: '7-day', percent: data.rate_limit.secondary_window.used_percent ?? 0, resetsAt: data.rate_limit.secondary_window.reset_at ? new Date(data.rate_limit.secondary_window.reset_at * 1000).toISOString() : null });
-        }
-        return { account, windows, raw: data };
+        return { account, ...parsed, raw };
     } catch { return { error: true }; }
 }
 

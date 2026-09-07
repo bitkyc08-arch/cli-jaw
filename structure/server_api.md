@@ -315,6 +315,8 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 
 ### `/api/quota`
 
+- Native Claude/Codex readers normalize upstream windows with `quota-native-window.ts` and bounded JSON from `quota-wire.ts`. Codex honors `CODEX_HOME`, declared short/monthly durations, Spark weekly limits and additive read-only `resetCredits`; missing readings do not create a zero bar. Claude supports Fable and weekly-scoped model limits; its 30-second fresh and 5-minute 429 fallback caches are credential-scoped. A 429 without a measured same-credential snapshot returns an error with no fabricated quota bar.
+
 - 응답 키: `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` (`CLI_KEYS` 순서).
 - `pi`는 Settings의 Pi profile registration을 통해 endpoint/model/key를 검증하고, quota 자체는 auth/status-only로 표시한다.
 - `agy`는 `src/routes/quota-agy-reverse.ts`의 `fetchAgyUsage()`를 통해 Antigravity quota snapshot을 읽는다.
