@@ -348,6 +348,7 @@ Rows use an inline-size container: below 240px of row content width, quick actio
 원인 경로:
 
 - `manager/src/InstancePreview.tsx`는 선택된 instance의 일반 Web UI를 iframe으로 mount한다.
+- Active 행 재클릭이 Settings로 가던 단축은 제거됐다(모든 online 행 클릭은 `/0` 프리뷰). 세션 행 클릭은 서버 활성 세션만 바꾸고 프리뷰를 `/<seq>`로 이동시키지 않는다(후속 과제).
 - `manager/src/preview.ts`는 dedicated preview origin 또는 legacy `/i/{port}/` proxy URL을 만들고, 두 transport 모두 기본 세션 경로 `/0`을 붙인다(theme query/hash 유지). 네비게이터에서 online 인스턴스 행을 클릭하면 `InstanceListContent`가 `onPreview`로 라우팅해 Preview 탭이 켜지고 `/0`이 로드된다(offline 행은 선택만). Active 행의 세션 disclosure(`hooks/useActiveSessionDisclosure.ts`)는 선택 포트마다 기본 open이며 세션 1개부터 chevron을 보이고, `.instance-session-list`는 30px 행 3개(`max-height: 108px`) 안에서 내부 스크롤한다. 인스턴스 웹 UI 쪽은 `js/features/session-hub.ts`의 `initialized` 플래그로 navigation-off 서버의 `/:seq`에서도 초기화 후 전송을 허용한다(초기화 전 fail-closed 가드는 그대로).
 - iframe 안의 일반 Web UI는 `js/features/message-history.ts`의 `BOOT_MESSAGE_WINDOW = 3000`에 따라 `/api/messages?limit=3000` 최근 메시지 창을 boot fetch한다.
 - 2026-06-14 실측에서 선택 instance `:3457`의 `/api/messages?limit=3000` payload는 3000 messages / 약 23.4MB JSON, full `/api/messages`는 5781 messages / 약 45.8MB JSON이었다.
