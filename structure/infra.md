@@ -164,6 +164,17 @@ SDK query와 프로세스 경계는 fixture로 격리하며, macOS에서 같은 
 | Fullscreen TUI `/quit` PTY smoke | `JAW_TUI_SMOKE_TIMEOUT=15 COLUMNS=100 LINES=30 scripts/smoke/tui-quit-smoke.exp` | built `dist/bin/cli-jaw.js chat`가 raw-mode fullscreen composer에서 `/quit`로 정상 종료되는지 검증 |
 | Fullscreen TUI frame resize stress | `npx tsx --import ./tests/setup/test-home.ts scripts/smoke/tui-frame-resize-stress.ts` | live/committed/expanded tool rows + final answer가 resize 후에도 width-safe이고 bottom composer cluster가 고정되는지 검증 |
 | Fullscreen TUI WS sequence stress | `npx tsx --import ./tests/setup/test-home.ts scripts/smoke/tui-ws-sequence-stress.ts` | synthetic WS 이벤트로 live tool, final answer, Ctrl-O expansion, resize-safe frame을 서버/모델 없이 검증 |
+| Native Activity deterministic POSIX PTY | `node_modules/.bin/tsx tests/smoke/tui-activity-pty.mts --built-head <HEAD> --build-report <build-report.json> --evidence <owned-dir>` | 컴파일된 CLI·가짜 HTTP/SSE·실제 POSIX PTY로 제출/Stop, saved MESSAGE 복구, F6·resize·paste, raw NDJSON과 종료를 검증. 실제 provider/DB 영속성 증거는 아님 |
+
+PTY 도구는 설치된 Node/tsx/xterm과 Python 3 POSIX 표준 라이브러리를 사용하며,
+새 패키지를 설치하지 않는다. `--build-report`는 호출자가 실제 실행한
+`npm run build --ignore-scripts`의 `command`, `exitCode`, `timedOut`, `overflow`,
+`groupLive`, `rootRemoved` 결과를 가진 JSON이다. 성공 기록만으로 빌드 출처를
+추정하지 말고 해당 소스·dist와의 일치도 확인한다. 도구는 현재 HEAD와 소스/dist
+변경 여부를 추가 검사한다. `--ownership-self-test --evidence <owned-dir>`는
+실제 PID 재사용 없이 신호 권한·불확실한 정리 결과를 검증한다. 회수된 PID/PGID에는
+파괴적 신호를 보내지 않으며, 소유권이 불분명하면 실패와 임시 루트 보존으로 끝난다.
+이 보존을 무효화하는 상위 임시 디렉터리 자동 삭제 wrapper로 감싸지 않는다.
 
 ### 실행 모드
 
