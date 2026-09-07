@@ -366,7 +366,7 @@ test('manager instance rows support custom labels and latest activity titles', (
     assert.equal(latestRoute.includes('getMessages.all()'), false, 'latest endpoint must not fetch full message history');
 });
 
-test('manager workbench modes remain instance-only while Notes renders outside Workbench', () => {
+test('manager workbench modes remain instance-only while Notes renders outside Workbench', async () => {
     const app = read('public/manager/src/App.tsx');
     const router = read('public/manager/src/SidebarRailRouter.tsx');
     const workbench = read('public/manager/src/components/Workbench.tsx');
@@ -376,7 +376,21 @@ test('manager workbench modes remain instance-only while Notes renders outside W
     assert.ok(router.includes('DashboardSettingsWorkspace'), 'SidebarRailRouter must render Dashboard settings outside Workbench');
     assert.ok(router.includes("props.sidebarMode === 'notes'"), 'Notes must be selected by workspace mode, not a Workbench tab');
     assert.ok(router.includes("props.sidebarMode === 'settings'"), 'Dashboard settings must be selected by workspace mode, not a Workbench tab');
-    assert.ok(workbench.includes("const MODES: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings']"), 'Workbench tabs must stay Overview/Preview/Logs/Settings only');
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { JSDOM } = await import('jsdom');
+    const { Workbench } = await import('../../public/manager/src/components/Workbench');
+    const globals = globalThis as unknown as Record<string, unknown>, previous = globals['React'];
+    globals['React'] = React;
+    try {
+        const dom = new JSDOM(renderToStaticMarkup(React.createElement(Workbench, { mode: 'preview', active: true,
+            onModeChange() {}, header: null, overview: null, logs: null, preview: React.createElement('iframe'),
+            settings: 'settings form', settingsOpen: true, onSettingsClose() {} })));
+        assert.deepEqual([...dom.window.document.querySelectorAll('[role="tab"]')].map(el => el.textContent), ['Overview', 'Preview', 'Logs']);
+        assert.equal(dom.window.document.querySelector('aside[aria-label="Instance settings"]')?.textContent?.includes('settings form'), true);
+        assert.equal(dom.window.document.querySelector('[data-preview-host]')?.hasAttribute('hidden'), false);
+        dom.window.close();
+    } finally { globals['React'] = previous; }
     assert.equal(workbench.includes("'notes'"), false, 'Workbench must not add Notes as a detail tab');
     assert.ok(app.includes('notesSelectedPath'), 'App must hydrate and persist selected note path');
     assert.ok(app.includes('notesViewMode'), 'App must hydrate and persist Notes view mode');
@@ -610,7 +624,6 @@ test('manager frontend routes layout through responsive shell components', () =>
     assert.ok(workbench.includes("'overview'"), 'workbench must expose Overview tab');
     assert.ok(workbench.includes("'preview'"), 'workbench must expose Preview tab');
     assert.ok(workbench.includes("'logs'"), 'workbench must expose Logs tab');
-    assert.ok(workbench.includes("'settings'"), 'workbench must expose Settings tab');
     assert.ok(detail.includes("props.activeTab === 'overview'"), 'detail panel must render Overview content');
     assert.ok(detail.includes("props.activeTab === 'logs'"), 'detail panel must render Logs content');
     assert.ok(detail.includes("props.activeTab === 'settings'"), 'detail panel must render Settings content');

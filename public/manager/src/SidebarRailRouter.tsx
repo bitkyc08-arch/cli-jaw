@@ -5,6 +5,7 @@ import { InstanceNavigator } from './components/InstanceNavigator';
 import { MobileNav } from './components/MobileNav';
 import { SidebarRail } from './components/SidebarRail';
 import { Workbench } from './components/Workbench';
+import { WorkbenchSettingsToggle } from './components/WorkbenchHeader';
 import { WorkspaceLayout } from './components/WorkspaceLayout';
 import { lazy } from 'react';
 import { RightSidebar } from './panels/RightSidebar';
@@ -139,6 +140,9 @@ type Props = {
     titlesByPort: Record<number, string>;
     busyPorts: Set<number>;
     activeDetailTab: DashboardDetailTab;
+    instanceSettingsOpen: boolean;
+    onInstanceSettingsOpenChange: (open: boolean) => void;
+    onSettingsDirtyChange: (entry: 'panel' | 'dashboard', dirty: boolean) => void;
     onDetailTabChange: (tab: DashboardDetailTab) => void;
     workbenchHeader: ReactNode;
     detailContent: (tab: DashboardDetailTab) => ReactNode;
@@ -569,7 +573,7 @@ export function SidebarRailRouter(props: Props) {
                     )}
                     <div className="workspace-surface-layer">
                         <WorkspaceSurface active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'}>
-                            <Workbench mode={props.activeDetailTab} onModeChange={props.onDetailTabChange} header={props.workbenchHeader} modeActions={props.jawCeoWorkbenchButton} overview={props.detailContent('overview')} preview={(
+                            <Workbench mode={props.activeDetailTab} onModeChange={props.onDetailTabChange} header={props.workbenchHeader} modeActions={<>{props.jawCeoWorkbenchButton}<WorkbenchSettingsToggle open={props.instanceSettingsOpen} onToggle={() => props.onInstanceSettingsOpenChange(!props.instanceSettingsOpen)} /></>} active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'} settingsOpen={props.instanceSettingsOpen} onSettingsClose={() => props.onInstanceSettingsOpenChange(false)} overview={props.detailContent('overview')} preview={(
                                 <InstancePreview instance={props.selectedInstance} data={props.data} enabled={props.previewEnabled} active={props.sidebarMode === 'instances' && props.activeDetailTab === 'preview'} refreshKey={props.previewRefreshKey} theme={props.previewTheme} {...(props.onOpenNotesFromPreview ? { onOpenNotesFromPreview: props.onOpenNotesFromPreview } : {})} onOpenDocFromPreview={handleRightPreviewFile} onPreviewDroppedFiles={handlePreviewDroppedFiles} docPanelCapable={desktopPanelsAvailable} previewInsertTextRequest={previewInsertTextRequest} onPreviewInsertTextResult={handlePreviewInsertTextResult} />
                             )} logs={props.detailContent('logs')} settings={props.detailContent('settings')} />
                         </WorkspaceSurface>
@@ -617,7 +621,7 @@ export function SidebarRailRouter(props: Props) {
                 />
             )}
             sidePanel={(!isElectron && ceoConsoleOpen) ? jawCeoPanel : undefined}
-            mobileNav={<MobileNav activeTab={props.activeDetailTab} onOpenInstances={props.onOpenDrawer} onSelectTab={props.onSelectTab} onToggleActivity={props.onToggleActivityFromMobile} />}
+            mobileNav={<MobileNav activeTab={props.instanceSettingsOpen ? 'settings' : props.activeDetailTab} onOpenInstances={props.onOpenDrawer} onSelectTab={props.onSelectTab} onToggleActivity={props.onToggleActivityFromMobile} />}
             drawer={(
                 <InstanceDrawer open={props.drawerOpen} profileFilters={props.drawerProfileFilters} onClose={props.onCloseDrawer}>
                     {props.instanceListContent}

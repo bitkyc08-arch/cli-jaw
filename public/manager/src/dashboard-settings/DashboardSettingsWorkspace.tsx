@@ -95,6 +95,11 @@ const COPY = {
                 scope: '단축키',
                 description: '현재 필터 목록에서 이전 인스턴스를 선택합니다.',
             },
+            shortcutToggleInstanceSettings: {
+                label: '인스턴스 설정',
+                scope: '단축키',
+                description: '설정 패널을 열거나 닫습니다. 미리보기 iframe 안에서는 작동하지 않습니다.',
+            },
             shortcutNextInstance: {
                 label: '다음 인스턴스',
                 scope: '단축키',
@@ -180,6 +185,11 @@ const COPY = {
                 label: 'Previous instance',
                 scope: 'Shortcut',
                 description: 'Select the previous instance in the current filtered list.',
+            },
+            shortcutToggleInstanceSettings: {
+                label: 'Instance settings',
+                scope: 'Shortcut',
+                description: 'Open or close the settings panel in the Manager document; unavailable inside the preview iframe.',
             },
             shortcutNextInstance: {
                 label: 'Next instance',
@@ -267,6 +277,11 @@ const COPY = {
                 scope: '快捷键',
                 description: '选择当前筛选列表中的上一个实例。',
             },
+            shortcutToggleInstanceSettings: {
+                label: '实例设置',
+                scope: '快捷键',
+                description: '打开或关闭设置面板；在预览 iframe 内不可用。',
+            },
             shortcutNextInstance: {
                 label: '下一个实例',
                 scope: '快捷键',
@@ -352,6 +367,11 @@ const COPY = {
                 label: '前のインスタンス',
                 scope: 'ショートカット',
                 description: '現在のフィルタ一覧で前のインスタンスを選択します。',
+            },
+            shortcutToggleInstanceSettings: {
+                label: 'インスタンス設定',
+                scope: 'ショートカット',
+                description: '設定パネルを開閉します。プレビュー iframe 内では使えません。',
             },
             shortcutNextInstance: {
                 label: '次のインスタンス',
@@ -481,6 +501,7 @@ function DashboardShortcutInput(props: DashboardShortcutInputProps) {
 }
 
 function shortcutCopyKey(action: DashboardShortcutAction): keyof typeof COPY.ko.fields {
+    if (action === 'toggleInstanceSettings') return 'shortcutToggleInstanceSettings';
     if (action === 'focusInstances') return 'shortcutFocusInstances';
     if (action === 'focusActiveSession') return 'shortcutFocusActiveSession';
     if (action === 'focusNotes') return 'shortcutFocusNotes';

@@ -159,10 +159,7 @@
     padding: 4px 8px;
 }
 
-.workbench-preview .workbench-mode-tabs button {
-    min-height: 24px;
-    padding: 3px 8px;
-}
+/* Workbench mode-tab skin is owned by manager-components.css. */
 
 .workbench-preview .preview-panel {
     gap: 3px;

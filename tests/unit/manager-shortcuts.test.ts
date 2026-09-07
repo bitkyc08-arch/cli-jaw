@@ -111,3 +111,43 @@ test('Alt+Digit recovers jumpInstance even when macOS rewrites the key character
         'jumpInstance3',
     );
 });
+
+test('instance settings shortcut defaults and overrides survive normalization', () => {
+    const defaults = normalizeManagerShortcutKeymap({});
+    assert.equal(defaults.toggleInstanceSettings, 'Meta+,');
+    assert.equal(actionForShortcutEvent(keyEvent(',', { metaKey: true }), defaults), 'toggleInstanceSettings');
+    assert.equal(actionForShortcutEvent(keyEvent(',', { ctrlKey: true }), defaults), null);
+    assert.equal(actionForShortcutEvent(keyEvent(',', { metaKey: true, shiftKey: true }), defaults), null);
+    const changed = normalizeManagerShortcutKeymap({ toggleInstanceSettings: 'Alt+S' });
+    assert.equal(actionForShortcutEvent(keyEvent('s', { altKey: true }), changed), 'toggleInstanceSettings');
+    assert.equal(actionForShortcutEvent(keyEvent(',', { metaKey: true }), changed), null);
+});
+
+test('settings toggle has its own localized label in all Manager locales', async () => {
+    const React = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { JSDOM } = await import('jsdom');
+    const { DashboardSettingsWorkspace } = await import('../../public/manager/src/dashboard-settings/DashboardSettingsWorkspace');
+    const { defaultDashboardRegistry } = await import('../../src/manager/registry');
+    const globals = globalThis as unknown as Record<string, unknown>, previous = globals['React'];
+    globals['React'] = React;
+    try {
+        for (const [locale, expected] of [
+            ['ko', '인스턴스 설정'], ['en', 'Instance settings'],
+            ['ja', 'インスタンス設定'], ['zh', '实例设置'],
+        ] as const) {
+            const savedUi = defaultDashboardRegistry().ui;
+            const ui = { ...savedUi, locale,
+                dashboardShortcutKeymap: normalizeManagerShortcutKeymap(savedUi.dashboardShortcutKeymap) };
+            const dom = new JSDOM(renderToStaticMarkup(React.createElement(DashboardSettingsWorkspace, {
+                activeSection: 'display', ui, titleSupport: { ready: 0, legacy: 0, offline: 0, byPort: {} },
+                onUiPatch() {}, onOpenHelpTopic() {},
+            })));
+            const doc = dom.window.document;
+            assert.equal(doc.querySelector('label[for="dashboard-shortcut-toggleInstanceSettings"] > span')?.textContent, expected);
+            assert.equal(doc.querySelector<HTMLInputElement>('#dashboard-shortcut-toggleInstanceSettings')?.value, 'Meta+,');
+            assert.notEqual(doc.querySelector('label[for="dashboard-shortcut-nextInstance"] > span')?.textContent, expected);
+            dom.window.close();
+        }
+    } finally { globals['React'] = previous; }
+});

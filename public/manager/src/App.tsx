@@ -7,7 +7,6 @@ import { ProfileChip } from './components/ProfileChip';
 import { AppChrome } from './AppChrome';
 import { type HelpTopicId } from './help/helpContent';
 import { isHelpShortcutEditableTarget } from './help/help-shortcuts';
-import { WorkbenchHeader } from './components/WorkbenchHeader';
 import { loadPreviewEnabled, savePreviewEnabled } from './lib/preview-prefs';
 import { useHiddenUnload } from './lib/use-hidden-unload';
 import { type DashboardSettingsSection } from './dashboard-settings/DashboardSettingsSidebar';
@@ -23,7 +22,7 @@ import { normalizeSidebarModeForBuild, REMINDERS_WORKSPACE_ENABLED } from './das
 import { readInitialSidebarMode, readTrayRemindersMode } from './dashboard-url-state';
 import { TrayRemindersApp } from './dashboard-reminders/TrayRemindersApp';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
-import { useDashboardView } from './hooks/useDashboardView';
+import { useDashboardView, hydrateInstanceSettings, createInstanceSettingsNavigation, useSettingsDirtyState } from './hooks/useDashboardView';
 import { useActivityUnread } from './hooks/useActivityUnread';
 import { useTheme } from './hooks/useTheme';
 import { useCommandPalette } from './hooks/useCommandPalette';
@@ -58,7 +57,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
     const [transitioningPort, setTransitioningPort] = useState<number | null>(null);
     const [transitionAction, setTransitionAction] = useState<DashboardLifecycleAction | null>(null);
     const [activeProfileIds, setActiveProfileIds] = useState<string[]>([]);
-    const [settingsDirty, setSettingsDirty] = useState(false);
+    const { settingsDirty, panelSettingsDirty, setSettingsDirty, onSettingsDirtyChange, onPanelSettingsDirtyChange } = useSettingsDirtyState();
     const [notesDirtyPath, setNotesDirtyPath] = useState<string | null>(null);
     const [notesSidebarMode, setNotesSidebarMode] = useState<NotesSidebarMode>('files');
     const [notesSearchFocusToken, setNotesSearchFocusToken] = useState(0);
@@ -194,7 +193,8 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             try {
                 const loaded = await registry.refresh();
                 const ui = loaded.registry.ui;
-                view.setSelectedPort(ui.selectedPort); view.setActiveDetailTab(ui.selectedTab); view.setSidebarCollapsed(ui.sidebarCollapsed);
+                const restored = hydrateInstanceSettings(ui);
+                view.setSelectedPort(ui.selectedPort); view.setActiveDetailTab(restored.selectedTab); view.setInstanceSettingsOpen(restored.instanceSettingsOpen); view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed); view.setActivityDockHeight(ui.activityDockHeight);
                 const sidebarMode = normalizeSidebarModeForBuild(readInitialSidebarMode(window.location.search) ?? ui.sidebarMode);
                 view.setSidebarMode(sidebarMode);
@@ -243,26 +243,26 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         setActiveProfileIds(next);
         void registry.save({ activeProfileFilter: next });
     }
-    function canLeaveDirtySettings(): boolean {
-        if (view.activeDetailTab !== 'settings' || !settingsDirty) return true;
-        return window.confirm('Discard unsaved Settings changes?');
-    }
+    const { canLeaveDirtySettings, setInstanceSettingsOpen } = createInstanceSettingsNavigation({
+        view, settingsDirty, panelSettingsDirty, setSettingsDirty, clearPanelDirty: () => onSettingsDirtyChange('panel', false), saveUi, selectedPort: selectedInstance?.port ?? null,
+    });
 
     function handlePreview(instance: DashboardInstance): void {
-        if (!canLeaveDirtySettings()) return;
-        setSettingsDirty(false); activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port);
+        if (instance.port !== selectedInstance?.port && !canLeaveDirtySettings()) return;
+        if (instance.port !== selectedInstance?.port) setSettingsDirty(false);
+        activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port);
         view.setActiveDetailTab('preview'); view.setActivityDockCollapsed(true); view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port, selectedTab: 'preview', activityDockCollapsed: true });
     }
     function handleOpenJawCeoWorker(port: number): void { const instance = instances.find(row => row.port === port); if (instance) handlePreview(instance); }
     function handleSelectInstance(instance: DashboardInstance): void {
-        if (!canLeaveDirtySettings()) return;
-        setSettingsDirty(false); activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port); view.setDrawerOpen(false);
+        if (instance.port !== selectedInstance?.port && !canLeaveDirtySettings()) return;
+        if (instance.port !== selectedInstance?.port) setSettingsDirty(false);
+        activityUnread.markPortSeen(instance.port); view.setSelectedPort(instance.port); view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port });
     }
     function handleTabChange(tab: DashboardDetailTab): void {
-        if (tab !== 'settings' && !canLeaveDirtySettings()) return;
-        if (tab !== 'settings') setSettingsDirty(false);
+        if (tab === 'settings') { setInstanceSettingsOpen(true); return; }
         if (view.activeDetailTab === 'preview' && tab !== 'preview') {
             const port = view.selectedPort;
             if (port != null) activityUnread.markPortSeen(port);
@@ -384,6 +384,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             handleTabChange,
             setPreviewRefreshKey,
             handleSidebarToggle,
+            toggleInstanceSettings: () => setInstanceSettingsOpen(!view.instanceSettingsOpen),
         });
     }
     useEffect(() => {
@@ -393,7 +394,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             runManagerShortcut(action);
         });
         return unsubscribe;
-    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.sidebarMode, view.activeDetailTab, settingsDirty]);
+    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty]);
 
     useEffect(() => {
         function onKeyDown(event: KeyboardEvent): void {
@@ -414,7 +415,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         }
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.dashboardShortcutKeymap, view.sidebarMode, view.activeDetailTab, settingsDirty]);
+    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.dashboardShortcutKeymap, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty]);
 
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
@@ -475,12 +476,11 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             busyPorts={messageActivity.busyPorts} showLatestActivityTitles={view.showLatestActivityTitles}
             showInlineLabelEditor={view.showInlineLabelEditor} showSidebarRuntimeLine={view.showSidebarRuntimeLine}
             showSelectedRowActions={view.showSelectedRowActions} profiles={profiles} getLabel={instanceLabel}
-            onRouteToSettings={(port) => { /* 260806 D3: Active-row re-click → Settings */ view.setActiveDetailTab('settings'); void saveUi({ selectedPort: port, selectedTab: 'settings' }); }}
+            onRouteToSettings={(port) => setInstanceSettingsOpen(true, port)}
             formatUptime={formatUptime} onSelect={handleSelectInstance} onPreview={handlePreview}
             onMarkActivitySeen={activityUnread.markPortSeen} onInstanceLabelSave={labelEditor.saveInstanceLabel}
             onLifecycle={(action, instance) => void handleLifecycle(action, instance)} />
     );
-    const workbenchHeader = <WorkbenchHeader instance={selectedInstance} previewEnabled={previewEnabled} onPreviewEnabledChange={setPreviewEnabled} onPreviewRefresh={() => setPreviewRefreshKey(key => key + 1)} onOpenHelpTopic={openHelpTopic} onPickProject={(port) => void projectPicker.pick(port)} projectPickBusy={projectPicker.busyPort != null} />;
     const dashboardSettingsUi = dashboardSettingsUiFromView(view, theme.theme), titleSupport = summarizeActivityTitleSupport(messageActivity.titleSupportByPort);
     const profileChipStrip = (chipProfiles: DashboardProfile[]) => chipProfiles.length > 0 ? <div className="profile-chip-strip drawer-chip-strip" aria-label="Profile filters">{chipProfiles.map(profile => <ProfileChip key={profile.profileId} profile={profile} active={activeProfileIds.includes(profile.profileId)} count={profileCounts[profile.profileId] || 0} onToggle={toggleProfile} />)}</div> : null;
 
@@ -489,11 +489,11 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             instance={selectedInstance}
             data={data}
             activeTab={tab}
-            onSettingsDirtyChange={setSettingsDirty}
+            onSettingsDirtyChange={onPanelSettingsDirtyChange}
             onSettingsSaved={() => { if (selectedInstance) void refreshInstance(selectedInstance.port); publishInvalidation({ topics: ['instances'], reason: 'instance:settings-saved', source: 'ui', sourceId: 'app' }); }}
             onRegistryPatch={(port, patch) => { void registry.save({ instances: { [String(port)]: patch } }).then(() => { load(); publishInvalidation({ topics: ['instances'], reason: 'instance:registry-patched', source: 'ui', sourceId: 'app' }); }); }}
         />
     );
 
-    return <AppChrome view={view} palette={palette} theme={theme} query={query} loading={loading} showHidden={showHidden} instances={instances} selectedInstance={selectedInstance} data={data} summary={summary} scheduleGroup={scheduleGroup} boardView={boardView} notesModel={notesModel} notesSelectedNote={notesSelectedNote} notesDirtyPath={notesDirtyPath} notesHighlightedPath={notesHighlightedPath} notesSidebarMode={notesSidebarMode} notesSearchFocusToken={notesSearchFocusToken} settingsSection={dashboardSettingsSection} dashboardSettingsUi={dashboardSettingsUi} titleSupport={titleSupport} activityEvents={activityEvents} busyPorts={messageActivity.busyPorts} titlesByPort={messageActivity.titlesByPort} lifecycleMessage={lifecycleMessage} error={error} registryMessage={registry.error || labelEditor.error || managerEvents.error} workbenchHeader={workbenchHeader} detailContent={detailContent} instanceListContent={instanceListContent} drawerProfileFilters={profileChipStrip(profiles)} jawCeoWorkbenchButton={jawCeoBridge.workbenchButton} jawCeoVoiceOverlay={jawCeoBridge.voiceOverlay} jawCeo={jawCeoBridge.ceo} jawCeoVoice={jawCeoBridge.voice} jawCeoOpen={jawCeoBridge.open} jawCeoSelectedPort={activeJawCeoPort} onJawCeoOpenChange={jawCeoBridge.setOpen} onJawCeoOpenWorker={handleOpenJawCeoWorker} previewEnabled={previewEnabled} previewRefreshKey={previewRefreshKey} autoUnloadNotice={autoUnloadNotice} helpOpen={helpOpen} helpTopic={helpTopic} setQuery={setQuery} setShowHidden={setShowHidden} setPreviewEnabled={setPreviewEnabled} setAutoUnloadNotice={setAutoUnloadNotice} setHelpOpen={setHelpOpen} setHelpTopic={setHelpTopic} onOpenHelpTopic={openHelpTopic} setNotesSidebarMode={setNotesSidebarMode} setBoardView={setBoardView} setScheduleGroup={setScheduleGroup} setDashboardSettingsSection={setDashboardSettingsSection} load={load} cycleTheme={cycleTheme} openSelectedInBrowser={openSelectedInBrowser} handleSelectInstance={handleSelectInstance} handleSidebarModeChange={handleSidebarModeChange} handleSidebarToggle={handleSidebarToggle} handleNotesSelectedPathChange={handleNotesSelectedPathChange} openNotesFromPreview={openNotesFromPreview} handleNotesViewModeChange={handleNotesViewModeChange} handleNotesAuthoringModeChange={handleNotesAuthoringModeChange} handleNotesWordWrapChange={handleNotesWordWrapChange} handleNotesVimModeChange={handleNotesVimModeChange} handleNotesTreeWidthChange={handleNotesTreeWidthChange} handleNotesGraphSettingsChange={handleNotesGraphSettingsChange} openNotesSidebarSearch={openNotesSidebarSearch} setNotesDirtyPath={setNotesDirtyPath} handleTabChange={handleTabChange} handleActivityToggle={handleActivityToggle} handleActivityHeight={handleActivityHeight} onDismissLifecycleMessage={() => setLifecycleMessage(null)} handleDashboardSettingsPatch={handleDashboardSettingsPatch} activityUnreadOpenAndMarkSeen={activityUnread.openAndMarkSeen} panelInitialState={panelInitialState} onPanelStateChange={handlePanelStateChange} onShortcutAction={runManagerShortcut} />;
+    return <AppChrome view={view} palette={palette} theme={theme} query={query} loading={loading} showHidden={showHidden} instances={instances} selectedInstance={selectedInstance} data={data} summary={summary} scheduleGroup={scheduleGroup} boardView={boardView} notesModel={notesModel} notesSelectedNote={notesSelectedNote} notesDirtyPath={notesDirtyPath} notesHighlightedPath={notesHighlightedPath} notesSidebarMode={notesSidebarMode} notesSearchFocusToken={notesSearchFocusToken} settingsSection={dashboardSettingsSection} dashboardSettingsUi={dashboardSettingsUi} titleSupport={titleSupport} activityEvents={activityEvents} busyPorts={messageActivity.busyPorts} titlesByPort={messageActivity.titlesByPort} lifecycleMessage={lifecycleMessage} error={error} registryMessage={registry.error || labelEditor.error || managerEvents.error} onPickProject={(port) => void projectPicker.pick(port)} projectPickBusy={projectPicker.busyPort != null} onRefreshPreview={() => setPreviewRefreshKey(key => key + 1)} onInstanceSettingsOpenChange={setInstanceSettingsOpen} onSettingsDirtyChange={onSettingsDirtyChange} detailContent={detailContent} instanceListContent={instanceListContent} drawerProfileFilters={profileChipStrip(profiles)} jawCeoWorkbenchButton={jawCeoBridge.workbenchButton} jawCeoVoiceOverlay={jawCeoBridge.voiceOverlay} jawCeo={jawCeoBridge.ceo} jawCeoVoice={jawCeoBridge.voice} jawCeoOpen={jawCeoBridge.open} jawCeoSelectedPort={activeJawCeoPort} onJawCeoOpenChange={jawCeoBridge.setOpen} onJawCeoOpenWorker={handleOpenJawCeoWorker} previewEnabled={previewEnabled} previewRefreshKey={previewRefreshKey} autoUnloadNotice={autoUnloadNotice} helpOpen={helpOpen} helpTopic={helpTopic} setQuery={setQuery} setShowHidden={setShowHidden} setPreviewEnabled={setPreviewEnabled} setAutoUnloadNotice={setAutoUnloadNotice} setHelpOpen={setHelpOpen} setHelpTopic={setHelpTopic} onOpenHelpTopic={openHelpTopic} setNotesSidebarMode={setNotesSidebarMode} setBoardView={setBoardView} setScheduleGroup={setScheduleGroup} setDashboardSettingsSection={setDashboardSettingsSection} load={load} cycleTheme={cycleTheme} openSelectedInBrowser={openSelectedInBrowser} handleSelectInstance={handleSelectInstance} handleSidebarModeChange={handleSidebarModeChange} handleSidebarToggle={handleSidebarToggle} handleNotesSelectedPathChange={handleNotesSelectedPathChange} openNotesFromPreview={openNotesFromPreview} handleNotesViewModeChange={handleNotesViewModeChange} handleNotesAuthoringModeChange={handleNotesAuthoringModeChange} handleNotesWordWrapChange={handleNotesWordWrapChange} handleNotesVimModeChange={handleNotesVimModeChange} handleNotesTreeWidthChange={handleNotesTreeWidthChange} handleNotesGraphSettingsChange={handleNotesGraphSettingsChange} openNotesSidebarSearch={openNotesSidebarSearch} setNotesDirtyPath={setNotesDirtyPath} handleTabChange={handleTabChange} handleActivityToggle={handleActivityToggle} handleActivityHeight={handleActivityHeight} onDismissLifecycleMessage={() => setLifecycleMessage(null)} handleDashboardSettingsPatch={handleDashboardSettingsPatch} activityUnreadOpenAndMarkSeen={activityUnread.openAndMarkSeen} panelInitialState={panelInitialState} onPanelStateChange={handlePanelStateChange} onShortcutAction={runManagerShortcut} />;
 }

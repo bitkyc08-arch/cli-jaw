@@ -1,4 +1,5 @@
 import { instanceLabel } from '../instance-label';
+import { icon } from '../../../js/icons';
 import { HelpTopicButton } from '../help/HelpTopicButton';
 import type { HelpTopicId } from '../help/helpContent';
 import type { DashboardInstance } from '../types';
@@ -103,4 +104,12 @@ export function WorkbenchHeader(props: WorkbenchHeaderProps) {
             )}
         </div>
     );
+}
+
+export function WorkbenchSettingsToggle(props: { open: boolean; onToggle: () => void }) {
+    return <button type="button" className="workbench-settings-toggle" aria-label="Instance settings"
+        title="Instance settings" aria-pressed={props.open} aria-controls="workbench-instance-settings"
+        onClick={props.onToggle}>
+        <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon('settings', 16) }} />
+    </button>;
 }

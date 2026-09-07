@@ -14,6 +14,7 @@ export type DashboardLocale = 'ko' | 'en' | 'zh' | 'ja';
 export type DashboardSidebarMode = 'instances' | 'board' | 'schedule' | 'reminders' | 'notes' | 'settings';
 export type DashboardViewMode = 'jaw' | 'code';
 export type DashboardShortcutAction =
+    | 'toggleInstanceSettings'
     | 'focusInstances'
     | 'focusActiveSession'
     | 'focusNotes'
@@ -289,6 +290,7 @@ export type DashboardRegistryScan = {
 export type DashboardRegistryUi = {
     selectedPort: number | null;
     selectedTab: DashboardDetailTab;
+    instanceSettingsOpen: boolean;
     sidebarCollapsed: boolean;
     activityDockCollapsed: boolean;
     activityDockHeight: number;

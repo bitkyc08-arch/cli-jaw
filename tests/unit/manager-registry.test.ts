@@ -342,3 +342,20 @@ test('manager registry clears blank instance labels back to fallback', () => {
 
     assert.equal(saved.registry.instances['3462']?.label, null);
 });
+
+test('instance settings UI is a bounded boolean and its shortcut survives disk round-trip', () => {
+    const path = registryPath();
+    assert.equal(loadDashboardRegistry({ path }).registry.ui.instanceSettingsOpen, false);
+    for (const value of [true, false, 'true', 1, {}, null]) {
+        writeFileSync(path, JSON.stringify({ ui: { selectedTab: 'settings', instanceSettingsOpen: value } }));
+        const ui = loadDashboardRegistry({ path }).registry.ui;
+        assert.equal(ui.instanceSettingsOpen, value === true);
+        assert.equal(ui.selectedTab, 'settings');
+    }
+    patchDashboardRegistry({ ui: { selectedTab: 'overview', instanceSettingsOpen: true,
+        dashboardShortcutKeymap: { ...defaultDashboardRegistry().ui.dashboardShortcutKeymap, toggleInstanceSettings: 'Alt+S' } } }, { path });
+    assert.equal(loadDashboardRegistry({ path }).registry.ui.instanceSettingsOpen, true);
+    assert.equal(loadDashboardRegistry({ path }).registry.ui.dashboardShortcutKeymap.toggleInstanceSettings, 'Alt+S');
+    patchDashboardRegistry({ ui: { instanceSettingsOpen: false } }, { path });
+    assert.equal(loadDashboardRegistry({ path }).registry.ui.instanceSettingsOpen, false);
+});

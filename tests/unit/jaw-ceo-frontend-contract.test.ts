@@ -20,7 +20,7 @@ function sliceBetween(source: string, start: string, end: string): string {
     return source.slice(from, to);
 }
 
-test('jaw-ceo frontend installs workbench launcher outside instance groups', () => {
+test('jaw-ceo frontend installs workbench launcher outside instance groups', async () => {
     const app = read('public/manager/src/App.tsx');
     const bridge = read('public/manager/src/jaw-ceo/useJawCeoDashboardBridge.tsx');
     const router = read('public/manager/src/SidebarRailRouter.tsx');
@@ -38,7 +38,22 @@ test('jaw-ceo frontend installs workbench launcher outside instance groups', () 
     assert.ok(router.includes('<JawCeoConsole'), 'router must render the CEO console in the right panel or sidePanel slot');
     assert.ok(router.includes('jawCeoWorkbenchButton?: ReactNode'), 'router must accept a CEO Workbench button slot');
     assert.ok(workbench.includes('modeActions?: ReactNode'), 'Workbench must expose a tab-bar action slot');
-    assert.ok(workbench.indexOf('workbench-mode-tabs') < workbench.indexOf('props.modeActions'), 'CEO button must render beside the mode tabs');
+    const React = await import('react'), { renderToStaticMarkup } = await import('react-dom/server');
+    const { JSDOM } = await import('jsdom');
+    const { Workbench } = await import('../../public/manager/src/components/Workbench');
+    const { WorkbenchSettingsToggle } = await import('../../public/manager/src/components/WorkbenchHeader');
+    const globals = globalThis as unknown as Record<string, unknown>, previous = globals['React']; globals['React'] = React;
+    try {
+        const actions = React.createElement(React.Fragment, null, React.createElement('button', { id: 'ceo-test' }, 'CEO'),
+            React.createElement(WorkbenchSettingsToggle, { open: false, onToggle() {} }));
+        const dom = new JSDOM(renderToStaticMarkup(React.createElement(Workbench, { mode: 'overview', active: true,
+            onModeChange() {}, header: null, modeActions: actions, overview: null, preview: null, logs: null,
+            settings: null, settingsOpen: false, onSettingsClose() {} })));
+        const tabs = dom.window.document.querySelector('.workbench-mode-tabs');
+        assert.equal(tabs?.nextElementSibling?.id, 'ceo-test');
+        assert.equal(tabs?.nextElementSibling?.nextElementSibling?.getAttribute('aria-label'), 'Instance settings');
+        dom.window.close();
+    } finally { globals['React'] = previous; }
     assert.equal(router.includes('jawCeoNavigatorContent'), false, 'CEO must not be injected into Navigator');
     assert.equal(list.includes('ceoPendingByPort'), false, 'instance list must not accept CEO pending counts by default');
     assert.equal(groups.includes('ceoWatchedPorts'), false, 'instance groups must not pass CEO watch state by default');

@@ -51,6 +51,7 @@ const NOTES_GRAPH_SECTIONS = ['filters', 'display', 'forces', 'groups'] as const
 const DIFF_ROOT_POLICIES: DashboardDiffRootPolicy[] = ['project-first', 'working-dir-first', 'manual'];
 const DIFF_MODES: DashboardDiffMode[] = ['unstaged', 'staged', 'head', 'base'];
 const SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
+    'toggleInstanceSettings',
     'focusInstances',
     'focusActiveSession',
     'focusNotes',
@@ -59,6 +60,7 @@ const SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
 ];
 
 export const DEFAULT_DASHBOARD_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
+    toggleInstanceSettings: 'Meta+,',
     focusInstances: 'Alt+I',
     focusActiveSession: 'Alt+P',
     focusNotes: 'Alt+N',
@@ -274,6 +276,7 @@ function defaultUi(): DashboardRegistryUi {
     return {
         selectedPort: null,
         selectedTab: 'overview',
+        instanceSettingsOpen: false,
         sidebarCollapsed: false,
         activityDockCollapsed: false,
         activityDockHeight: DEFAULT_ACTIVITY_HEIGHT,
@@ -345,6 +348,8 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
     return {
         selectedPort,
         selectedTab,
+        instanceSettingsOpen: typeof input["instanceSettingsOpen"] === 'boolean'
+            ? input["instanceSettingsOpen"] : fallback.instanceSettingsOpen,
         sidebarCollapsed: typeof input["sidebarCollapsed"] === 'boolean' ? input["sidebarCollapsed"] : fallback.sidebarCollapsed,
         activityDockCollapsed: typeof input["activityDockCollapsed"] === 'boolean' ? input["activityDockCollapsed"] : fallback.activityDockCollapsed,
         activityDockHeight: clampInt(input["activityDockHeight"], fallback.activityDockHeight, MIN_ACTIVITY_HEIGHT, MAX_ACTIVITY_HEIGHT),
