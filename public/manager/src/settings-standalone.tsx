@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { SettingsShell } from './settings/SettingsShell';
+import { SettingsPage } from './settings/SettingsPage';
 import { createSettingsClient } from './settings/settings-client';
 import type { SettingsClient } from './settings/types';
 import { getAuthToken } from '../../js/api.js';
@@ -33,8 +33,13 @@ if (parent !== window) {
     } catch { /* Cross-origin hosts cannot supply the initial theme. */ }
 }
 const themeListener = (event: MessageEvent): void => {
-    if (event.source !== parent || event.origin !== location.origin || event.data?.type !== 'jaw-preview-theme-sync') return;
-    applyTheme(event.data.theme);
+    if (event.source !== parent || event.origin !== location.origin) return;
+    if (event.data?.type === 'jaw-preview-theme-sync') applyTheme(event.data.theme);
+    if (event.data?.type === 'settings:request-back') {
+        const back = host.querySelector<HTMLButtonElement>('.settings-back');
+        if (back) back.click();
+        else parent.postMessage({ type: 'settings:back' }, location.origin);
+    }
 };
 window.addEventListener('message', themeListener);
 
@@ -67,9 +72,18 @@ const beforeUnload = (event: BeforeUnloadEvent): void => {
 window.addEventListener('beforeunload', beforeUnload);
 const standaloneProps: { scopes?: Array<'instance'>; client?: SettingsClient } = { scopes: ['instance'], client };
 const root = createRoot(host);
-root.render(<SettingsShell port={port} instanceUrl={location.origin + apiBase} {...standaloneProps}
-    onDirtyChange={value => { dirty = value; }}
-    onSaved={() => { if (parent !== window) parent.postMessage({ type: 'jaw-settings-saved' }, location.origin); }} />);
+let revision = 0;
+const requestBack = (): void => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+    if (dirty) { revision++; renderSettings(); }
+    if (parent !== window) parent.postMessage({ type: 'settings:back' }, location.origin);
+};
+function renderSettings(): void {
+    root.render(<SettingsPage key={revision} onBack={requestBack} port={port} instanceUrl={location.origin + apiBase} {...standaloneProps}
+        onDirtyChange={value => { dirty = value; }}
+        onSaved={() => { if (parent !== window) parent.postMessage({ type: 'jaw-settings-saved' }, location.origin); }} />);
+}
+renderSettings();
 if (parent !== window) parent.postMessage({ type: 'jaw-settings-ready' }, location.origin);
 if (import.meta.hot) import.meta.hot.dispose(() => {
     root.unmount();

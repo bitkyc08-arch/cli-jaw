@@ -5,7 +5,7 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 ## Documentation Map
 
 - Start at `structure/INDEX.md` for the current architecture map.
-- Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by an instance settings side panel (Meta+,), backed by Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and shares the standalone `dist/settings` entry with the Classic 설정 tab; Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `structure/frontend.md`.
+- Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by a ZCode-style full settings page that swaps the workspace (header gear / Meta+,, `← Back to workspace`, grouped icon nav, card content), persisted as Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and the same page is served standalone from `dist/settings` behind the Classic header gear (the right-panel 설정 tab is gone); Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `structure/frontend.md`.
 - Keep `README.md`, `AGENTS.md`, this file, and `structure/AGENTS.md` aligned when command/API/orchestration behavior changes. Concurrent inbound gateway changes belong in `structure/INDEX.md`, `structure/infra.md`, `structure/telegram.md`, and the messaging runtime docs.
 - Do not use the old `devlog/structure/` path for architecture docs; the active folder is `structure/`.
 

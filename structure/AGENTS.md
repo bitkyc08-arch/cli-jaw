@@ -16,7 +16,7 @@
 
 ## Current sync hotspots (2026-06)
 
-- Recent non-strict hotspots: Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by an instance settings side panel (Meta+,), backed by Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and shares the standalone `dist/settings` entry with the Classic 설정 tab; Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `frontend.md`.
+- Recent non-strict hotspots: Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by an full settings page from the command-bar gear (Meta+,), backed by Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and shares the standalone `dist/settings` entry with the Classic header-gear settings page; Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `frontend.md`.
 
 - Classic retained Activity: keep `activity-history.ts` (discovery disclosure removed
   260908), the one-row `activity-view.ts` summary header, shared fixed-through reads,

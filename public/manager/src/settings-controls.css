@@ -214,22 +214,21 @@
 }
 
 .settings-shell .settings-field, .settings-shell .dashboard-settings-row {
-    display:grid; grid-template-columns:minmax(0,1fr) minmax(160px,192px);
-    align-items:center; column-gap:32px; row-gap:4px; padding-block:12px; margin:0;
-    border:0; border-radius:0; background:transparent; box-shadow:none;
+    display:grid; grid-template-columns:minmax(0,1fr) 192px;
+    align-items:center; column-gap:24px; row-gap:4px; padding:12px 16px; margin:0;
+    border:0; border-top:1px solid var(--settings-border); border-radius:0; background:transparent; box-shadow:none;
 }
-.settings-shell .settings-field-label, .settings-shell .dashboard-settings-row-heading { grid-column:1; grid-row:1; font-size:14px; font-weight:600; color:var(--text-primary); }
-.settings-shell .settings-field-description, .settings-shell .dashboard-settings-row-description { grid-column:1; grid-row:2; font-size:13px; line-height:1.45; color:var(--text-secondary); }
-.settings-shell .settings-field > :is(input,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:2; grid-row:1 / span 2; min-width:0; }
+.settings-shell .settings-field-label, .settings-shell .dashboard-settings-row-heading { grid-column:1; grid-row:1; font-size:14px; font-weight:500; color:var(--text-primary); }
+.settings-shell .settings-field-hint, .settings-shell .settings-field-description, .settings-shell .dashboard-settings-row-description { grid-column:1; grid-row:2; font-size:13px; line-height:24px; color:var(--text-secondary); }
+.settings-shell .settings-field > :is(input,select,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:2; grid-row:1 / span 2; min-width:0; }
 .settings-shell .settings-field-error { grid-column:1 / -1; }
 .settings-shell .settings-select-menu { left:auto; right:0; width:min(100%,560px); }
 .settings-shell .settings-field :is(input:not([type=checkbox]),textarea), .settings-shell .settings-select-trigger { background:var(--surface-raised); box-shadow:none; }
 .workbench-settings-toggle:focus-visible,
-.workbench-settings-panel :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible,
 .settings-shell :focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 @container (max-width:719px) {
     .settings-shell .settings-field, .settings-shell .dashboard-settings-row { grid-template-columns:minmax(0,1fr); row-gap:12px; }
-    .settings-shell .settings-field > :is(input,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:1; grid-row:auto; }
+    .settings-shell .settings-field > :is(input,select,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:1; grid-row:auto; }
     .settings-shell .settings-field-description { grid-row:auto; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -253,7 +252,6 @@
 .settings-slack-setup input { min-width:0; max-width:100%; }
 @container (max-width:719px) {
     .settings-shell .dashboard-settings-row-control { grid-column:1; justify-content:flex-start; }
-    .settings-shell .settings-sidebar-item { padding:6px 10px; }
 }
 
 .settings-shell .settings-active-channel-options { display:flex; flex-wrap:wrap; gap:12px; }
@@ -261,4 +259,22 @@
 .settings-shell input:is([type=checkbox],[type=radio]) { width:16px; height:16px; min-height:0; margin:0; justify-self:start; }
 .settings-shell fieldset.settings-field { min-width:0; }
 .settings-shell fieldset.settings-field > legend { margin-bottom:8px; }
-.settings-sidebar-item { justify-content:flex-start; }
+
+/* Section cards and divided rows, shared by Instance and Manager save owners. */
+.settings-shell :is(.settings-section-body, .dashboard-settings-field-list) { border: 1px solid var(--settings-border); border-radius: 12px; background: var(--settings-card); gap: 0; }
+.settings-shell :is(.settings-section-body, .dashboard-settings-field-list) > :first-child { border-top: 0; }
+.settings-shell :is(.settings-section-body, .dashboard-settings-field-list) > :first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.settings-shell :is(.settings-section-body, .dashboard-settings-field-list) > :last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.settings-page-form > .settings-field { border: 1px solid var(--settings-border); border-radius: 12px; background: var(--settings-card); }
+.settings-shell .dashboard-settings-section { display: flex; flex-direction: column; gap: 12px; }
+.settings-shell .dashboard-settings-row-control { justify-content: flex-end; }
+.settings-shell .settings-field > :is(input,select,textarea,button) { max-width: 100%; }
+.settings-shell .settings-field > select { width: 100%; min-height: 32px; border: 1px solid var(--settings-border); border-radius: 8px; background: var(--settings-card); color: var(--text-primary); }
+.settings-shell .settings-field :is(input:not([type=checkbox]):not([type=radio]),textarea), .settings-shell .settings-select-trigger { min-height: 32px; padding: 6px 10px; border-radius: 8px; }
+@container settings (min-width: 1200px) { .settings-shell .settings-field, .settings-shell .dashboard-settings-row { grid-template-columns: minmax(0,1fr) 280px; } }
+
+.settings-shell .settings-agent-runtime-grid { display: flex; flex-direction: column; gap: 0; align-items: stretch; }
+.settings-shell .settings-agent-runtime-grid > .settings-field:first-child { border-top: 0; }
+.settings-shell .settings-agent-note { padding: 0 16px 12px; }
+.settings-page-heading, .settings-section-header { color: var(--text-primary); }
+.settings-shell .settings-field > :is(.settings-field-label,.settings-field-hint,.settings-field-description) { min-width: 0; overflow-wrap: anywhere; }

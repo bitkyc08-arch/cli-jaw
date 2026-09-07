@@ -195,6 +195,7 @@
                 <button class="chat-search-trigger" id="chatSearchTrigger" type="button" aria-label="Search messages" title="Search (⌘F)">&#x1F50D;</button>
                 <button class="help-trigger" type="button" data-help-topic="diagrams"
                     data-i18n-aria="help.diagrams.aria" aria-label="다이어그램 도움말">?</button>
+                <button type="button" id="btnSettings" class="header-icon-btn" aria-label="Instance settings" title="Instance settings" aria-pressed="false" aria-controls="settingsPage"><span data-icon="settings"></span></button>
                 <button class="theme-switch" id="toggleTheme" title="Toggle Theme" aria-label="Toggle dark/light mode">
                     <span class="theme-switch-knob"></span>
                 </button>
@@ -275,12 +276,15 @@
     </div>
 
     <!-- Right Sidebar (Tabbed) -->
+    <section id="settingsPage" class="settings-page" aria-label="Instance settings" hidden>
+        <iframe src="dist/settings/index.html" title="Instance settings" loading="lazy"></iframe>
+    </section>
+
     <aside class="sidebar-right" role="complementary" aria-label="Settings panel">
         <button class="sidebar-toggle" id="toggleRight" title="Collapse" aria-label="Collapse settings">▶</button>
         <div class="tab-bar" role="tablist">
             <button class="tab-btn active" id="tabBtnAgents" role="tab" aria-selected="true" aria-controls="tabAgents" data-i18n="tab.agents">에이전트</button>
             <button class="tab-btn" id="tabBtnSkills" role="tab" aria-selected="false" aria-controls="tabSkills" data-i18n="tab.skills">스킬</button>
-            <button class="tab-btn" id="tabBtnSettings" role="tab" aria-selected="false" aria-controls="tabSettings" data-i18n="tab.settings">설정</button>
         </div>
         <div class="sidebar-save-bar">
             <button class="btn-save" data-i18n="btn.saveSettings">저장</button>
@@ -443,10 +447,6 @@
             <div id="skillsList"></div>
         </div>
 
-        <!-- Settings Tab -->
-        <div id="tabSettings" class="tab-content" role="tabpanel" aria-labelledby="tabBtnSettings">
-            <iframe class="settings-frame" src="dist/settings/index.html" title="Instance settings" loading="lazy"></iframe>
-        </div>
     </aside>
 
     <!-- Prompt Modal -->

@@ -26,7 +26,7 @@ const DesignPanel = lazy(() => import('./design-panel/DesignPanel').then(m => ({
 import { FileFolderSplitPanel } from './panels/FileFolderSplitPanel';
 import { InstancePreview, type PreviewInsertTextRequest, type PreviewInsertTextResult } from './InstancePreview';
 import { type DashboardSettingsSection } from './dashboard-settings/DashboardSettingsSidebar';
-import { SettingsShell } from './settings/SettingsShell';
+import { SettingsPage } from './settings/SettingsPage';
 import { DashboardSettingsWorkspace } from './dashboard-settings/DashboardSettingsWorkspace';
 import { NotesSidebar, type NotesSidebarMode } from './notes/NotesSidebar';
 import { NotesWorkspace } from './notes/NotesWorkspace';
@@ -279,7 +279,20 @@ export function SidebarRailRouter(props: Props) {
     const selected = props.selectedInstance;
     const settingsTarget = selected ? { port: selected.port, instanceUrl: selected.url } : {};
     const managerSettings = { ui: props.dashboardSettingsUi, titleSupport: props.titleSupport, onUiPatch: props.onDashboardSettingsPatch };
-    const panelSettings = <SettingsShell key={selected?.port ?? 'manager-only'} {...settingsTarget}
+    const settingsVisible = props.sidebarMode === 'settings' || (props.sidebarMode === 'instances' && props.instanceSettingsOpen);
+    const returnToOverview = useRef(false);
+    const closeInstanceSettings = () => {
+        returnToOverview.current = true;
+        props.onInstanceSettingsOpenChange(false);
+    };
+    useEffect(() => {
+        // A declined dirty guard keeps settings open and leaves the workspace intact.
+        if (!props.instanceSettingsOpen && returnToOverview.current) {
+            returnToOverview.current = false;
+            props.onDetailTabChange('overview');
+        }
+    }, [props.instanceSettingsOpen, props.onDetailTabChange]);
+    const panelSettings = <SettingsPage onBack={closeInstanceSettings} key={selected?.port ?? 'manager-only'} {...settingsTarget}
         manager={managerSettings} scopes={selected ? ['instance', 'manager'] : ['manager']}
         onDirtyChange={panelDirty} {...(props.onSettingsSaved ? { onSaved: props.onSettingsSaved } : {})} />;
     const panelLayout = usePanelLayout();
@@ -480,9 +493,13 @@ export function SidebarRailRouter(props: Props) {
     return (
         <NotesCommandProvider>
         {props.jawCeoVoiceOverlay}
+        <WorkbenchSettingsToggle open={settingsVisible} onToggle={() => {
+            if (props.sidebarMode === 'settings') props.onSidebarModeChange('instances');
+            else props.onInstanceSettingsOpenChange(!props.instanceSettingsOpen);
+        }} />
         <WorkspaceLayout
             navigatorLabel={props.viewMode === 'code' && props.sidebarMode === 'instances' ? 'Code sessions' : undefined}
-            sidebarCollapsed={props.sidebarCollapsed}
+            sidebarCollapsed={settingsVisible || props.sidebarCollapsed}
             sidebarWidth={sidebar.width}
             onSidebarWidthDelta={sidebar.addDelta}
             onSidebarWidthEnd={sidebar.persist}
@@ -522,7 +539,7 @@ export function SidebarRailRouter(props: Props) {
                 <>
                     <SidebarRail
                         onlineCount={props.onlineCount}
-                        collapsed={props.sidebarCollapsed}
+                        collapsed={settingsVisible || props.sidebarCollapsed}
                         mode={props.sidebarMode}
                         scheduleWorkspaceEnabled={props.scheduleWorkspaceEnabled}
                         remindersWorkspaceEnabled={props.remindersWorkspaceEnabled}
@@ -531,8 +548,8 @@ export function SidebarRailRouter(props: Props) {
                         helpOpen={props.helpOpen}
                         onToggleHelp={props.onToggleHelp}
                     />
-                    <ModeSwitch codeMode={props.viewMode === 'code'} onChange={code => { props.onViewModeChange(code ? 'code' : 'jaw'); if (code && props.sidebarMode !== 'instances') props.onSidebarModeChange('instances'); }} />
-                    <div id="manager-sidebar-list" className="manager-sidebar-list">
+                    {!settingsVisible && <ModeSwitch codeMode={props.viewMode === 'code'} onChange={code => { props.onViewModeChange(code ? 'code' : 'jaw'); if (code && props.sidebarMode !== 'instances') props.onSidebarModeChange('instances'); }} />}
+                    <div id="manager-sidebar-list" className="manager-sidebar-list" hidden={settingsVisible}>
                         {props.sidebarMode === 'settings' ? (
                             null
                         ) : props.sidebarMode === 'notes' ? (
@@ -583,8 +600,8 @@ export function SidebarRailRouter(props: Props) {
                     )}
                     <div className="workspace-surface-layer">
                         <WorkspaceSurface active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'}>
-                            <Workbench mode={props.activeDetailTab} onModeChange={props.onDetailTabChange} header={props.workbenchHeader} modeActions={<>{props.jawCeoWorkbenchButton}<WorkbenchSettingsToggle open={props.instanceSettingsOpen} onToggle={() => props.onInstanceSettingsOpenChange(!props.instanceSettingsOpen)} /></>} active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'} settingsOpen={props.instanceSettingsOpen} onSettingsClose={() => props.onInstanceSettingsOpenChange(false)} overview={props.detailContent('overview')} preview={(
-                                <InstancePreview instance={props.selectedInstance} data={props.data} enabled={props.previewEnabled} active={props.sidebarMode === 'instances' && props.activeDetailTab === 'preview'} refreshKey={props.previewRefreshKey} theme={props.previewTheme} {...(props.onOpenNotesFromPreview ? { onOpenNotesFromPreview: props.onOpenNotesFromPreview } : {})} onOpenDocFromPreview={handleRightPreviewFile} onPreviewDroppedFiles={handlePreviewDroppedFiles} docPanelCapable={desktopPanelsAvailable} previewInsertTextRequest={previewInsertTextRequest} onPreviewInsertTextResult={handlePreviewInsertTextResult} />
+                            <Workbench mode={props.activeDetailTab} onModeChange={props.onDetailTabChange} header={props.workbenchHeader} modeActions={props.jawCeoWorkbenchButton} active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'} settingsOpen={props.instanceSettingsOpen} onSettingsClose={() => props.onInstanceSettingsOpenChange(false)} overview={props.detailContent('overview')} preview={(
+                                <InstancePreview instance={props.selectedInstance} data={props.data} enabled={props.previewEnabled} active={props.sidebarMode === 'instances' && !props.instanceSettingsOpen && props.activeDetailTab === 'preview'} refreshKey={props.previewRefreshKey} theme={props.previewTheme} {...(props.onOpenNotesFromPreview ? { onOpenNotesFromPreview: props.onOpenNotesFromPreview } : {})} onOpenDocFromPreview={handleRightPreviewFile} onPreviewDroppedFiles={handlePreviewDroppedFiles} docPanelCapable={desktopPanelsAvailable} previewInsertTextRequest={previewInsertTextRequest} onPreviewInsertTextResult={handlePreviewInsertTextResult} />
                             )} logs={props.detailContent('logs')} settings={panelSettings} />
                         </WorkspaceSurface>
                         {props.viewMode === 'code' && props.sidebarMode === 'instances' ? (
@@ -598,9 +615,11 @@ export function SidebarRailRouter(props: Props) {
                             <NotesWorkspace active={props.sidebarMode === 'notes'} selectedPath={props.notesSelectedPath} selectedNote={props.notesSelectedNote} vaultIndex={props.notesModel.index} viewMode={props.notesViewMode} authoringMode={props.notesAuthoringMode} wordWrap={props.notesWordWrap} vimMode={props.notesVimMode} treeWidth={props.notesTreeWidth} notesGraphSettings={props.notesGraphSettings} tagFilter={props.notesModel.tagFilter} onOpenSidebarSearch={props.onOpenNotesSearch} onSelectedPathChange={props.onNotesSelectedPathChange} onDirtyPathChange={props.onNotesDirtyPathChange} onViewModeChange={props.onNotesViewModeChange} onAuthoringModeChange={props.onNotesAuthoringModeChange} onWordWrapChange={props.onNotesWordWrapChange} onVimModeChange={props.onNotesVimModeChange} onTreeWidthChange={props.onNotesTreeWidthChange} onNotesGraphSettingsChange={props.onNotesGraphSettingsChange} onTagSelect={props.notesModel.setTagFilter} onWikiLinkNavigate={props.onNotesSelectedPathChange} />
                         </WorkspaceSurface>
                         <WorkspaceSurface active={props.sidebarMode === 'settings'}>
-                            <DashboardSettingsWorkspace key={selected?.port ?? 'manager-only'} {...settingsTarget}
-                                activeSection={props.settingsSection} {...managerSettings} onDirtyChange={dashboardDirty}
-                                onOpenHelpTopic={props.onOpenHelpTopic} {...(props.onSettingsSaved ? { onSaved: props.onSettingsSaved } : {})} />
+                            {props.sidebarMode === 'settings' && <SettingsPage key={selected?.port ?? 'manager-only'} {...settingsTarget}
+                                onBack={() => props.onSidebarModeChange('instances')} title="Dashboard settings"
+                                initialId={({ display: 'manager-display', activity: 'manager-activity', developer: 'manager-developer', embedding: 'manager-embedding', telegramHub: 'telegram-hub' } as const)[props.settingsSection]}
+                                manager={managerSettings} scopes={selected ? ['instance', 'manager'] : ['manager']} onDirtyChange={dashboardDirty}
+                                {...(props.onSettingsSaved ? { onSaved: props.onSettingsSaved } : {})} />}
                         </WorkspaceSurface>
                         <WorkspaceSurface active={props.sidebarMode === 'board'}>
                             <DashboardBoardWorkspace active={props.sidebarMode === 'board'} view={props.boardView} onViewChange={props.onBoardViewChange} instances={props.instances} selectedPort={props.selectedInstance?.port ?? null} titlesByPort={props.titlesByPort} busyPorts={props.busyPorts} onOpenHelpTopic={props.onOpenHelpTopic} />

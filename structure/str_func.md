@@ -503,7 +503,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 593 files source/assets, ~103516L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 595 files source/assets, ~103516L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── settings/ ← standalone instance settings entry
 │   │   └── index.html ← Classic settings iframe HTML (13L)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (682L)
@@ -513,8 +513,10 @@ cli-jaw/
 │   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2527L)
 │   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
 │   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (265L)
-│   ├── manager/src/settings-standalone.tsx ← shared instance settings root (78L)
+│   ├── manager/src/settings-standalone.tsx ← shared instance settings root (92L)
 │   ├── manager/src/settings/ ← unified instance and Manager settings
+│   │   ├── SettingsPage.tsx ← full workspace Back/navigation layout (21L)
+│   │   ├── settings-icons.ts ← category glyph mapping (15L)
 │   │   ├── settings-registry.ts ← scope-filtered page registry (35L)
 │   │   ├── pages/components/SlackSetup.tsx ← native Slack setup dialog (119L)
 │   │   ├── pages/manager/shared.tsx ← Manager locale copy and row controls (517L)

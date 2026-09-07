@@ -660,8 +660,6 @@ textarea.prompt-editor {
 }
 
 /* Shared instance settings entry. */
-#tabSettings { flex: 1; min-height: 0; padding: 0; gap: 0; }
-.settings-frame { display: block; width: 100%; height: 100%; flex: 1; min-height: 0; border: 0; }
 
 /* Classic shell rows; preserve language select inline padding. */
 .sidebar-left .section-title { color: var(--text-muted-60); font-family: var(--font-ui); }

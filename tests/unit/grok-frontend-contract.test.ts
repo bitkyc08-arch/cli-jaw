@@ -1,3 +1,4 @@
+import { JSDOM } from 'jsdom';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -98,7 +99,8 @@ test('LEGACY-FE-001: classic active/flush selector exposes every canonical CLI; 
     }
     // The classic per-CLI settings rows were replaced by the standalone SettingsShell iframe (260908 wp4);
     // the React Agent page owns per-CLI provider/model rows and hides claude-e from the active runtime list.
-    assert.match(html, /<iframe class="settings-frame" src="dist\/settings\/index.html"/);
+    const { document } = new JSDOM(html).window;
+    assert.equal(document.querySelector('#settingsPage > iframe')?.getAttribute('src'), 'dist/settings/index.html');
     assert.match(agent, /perCli\[next\]\?\.provider \|\| nextMeta\.defaultProvider/);
 });
 

@@ -136,7 +136,7 @@ test('manager frontend exposes one-instance preview controls', () => {
     assert.ok(app.includes('fetchInstanceStatus(port)'), 'selected refresh must use the single-instance status endpoint');
     assert.equal(workbench.includes('contentByMode'), false, 'workbench must not unmount preview through contentByMode switching');
     assert.ok(workbench.includes('workbench-panel-preview'), 'workbench must render preview in a dedicated panel');
-    assert.ok(workbench.includes("hidden={props.mode !== 'preview'}"), 'preview panel must hide without unmounting across tab changes');
+    assert.ok(workbench.includes("hidden={props.settingsOpen || props.mode !== 'preview'}"), 'preview panel must hide without unmounting across tab changes');
     assert.ok(workbench.includes('data-preview-host="persistent"'), 'preview host must be explicitly persistent');
     assert.ok(workbench.includes('{props.preview}'), 'persistent preview panel must render the preview slot');
     assert.ok(header.includes('role="switch"'), 'workbench header must expose a compact preview on/off switch');
@@ -387,8 +387,8 @@ test('manager workbench modes remain instance-only while Notes renders outside W
             onModeChange() {}, header: null, overview: null, logs: null, preview: React.createElement('iframe'),
             settings: 'settings form', settingsOpen: true, onSettingsClose() {} })));
         assert.deepEqual([...dom.window.document.querySelectorAll('[role="tab"]')].map(el => el.textContent), ['Overview', 'Preview', 'Logs']);
-        assert.equal(dom.window.document.querySelector('aside[aria-label="Instance settings"]')?.textContent?.includes('settings form'), true);
-        assert.equal(dom.window.document.querySelector('[data-preview-host]')?.hasAttribute('hidden'), false);
+        assert.equal(dom.window.document.querySelector('.workbench-body > .workbench-settings-page')?.textContent?.includes('settings form'), true);
+        assert.equal(dom.window.document.querySelector('[data-preview-host]')?.hasAttribute('hidden'), true);
         dom.window.close();
     } finally { globals['React'] = previous; }
     assert.equal(workbench.includes("'notes'"), false, 'Workbench must not add Notes as a detail tab');
