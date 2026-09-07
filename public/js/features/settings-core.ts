@@ -19,7 +19,7 @@ import { formatProjectLabel } from './project-label.js';
 import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from './project-git-status.js';
 import { applyPresentationSettings, beginPresentationRead } from './presentation-preference.js';
 
-let activeSettingsSave: Promise<void> | null = null;
+const activeSettingsSaves = new Set<Promise<void>>();
 let configuredPermission: unknown;
 let permissionSavePending = false;
 let permissionRevision = 0;
@@ -156,15 +156,14 @@ function cliDisplayLabel(cli: string): string {
 
 function trackSettingsSave(promise: Promise<void>): Promise<void> {
     const tracked = promise.finally(() => {
-        if (activeSettingsSave === tracked) activeSettingsSave = null;
+        activeSettingsSaves.delete(tracked);
     });
-    activeSettingsSave = tracked;
+    activeSettingsSaves.add(tracked);
     return tracked;
 }
 
 export async function waitForSettingsSaveIdle(): Promise<void> {
-    const pending = activeSettingsSave;
-    if (pending) await pending;
+    while (activeSettingsSaves.size) await Promise.all(activeSettingsSaves);
 }
 
 function toDomSuffix(cli: string): string {
