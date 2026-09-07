@@ -143,6 +143,16 @@ a later tool-only boundary does not erase progress, but an explicit empty text
 block remains empty. This applies only to Stop/error and an unclaimed candidate;
 successful final selection and already claimed results never borrow that fallback.
 
+An unleased `ClaudeAcquireFailure.cleanup` belongs to its captured main or worker
+control even after logical settlement removes the process-map entry. Logical
+answer delivery does not wait for this receipt; physical accounting ends only
+when it fulfills. Rejection retains the fence, and late completion never repeats
+lifecycle delivery. Instruction-directory cleanup remains worker-only.
+`waitForMainProcessEnd` counts main controls, including this retained cleanup,
+but excludes surviving workers during all three steer entrypoints. The existing
+`waitForProcessEnd` and global shutdown wait remain inclusive. Their bounded
+deadline returning is not evidence that physical cleanup succeeded.
+
 Native Claude main and workers support tools, live approvals/questions, bounded image input and foreground child activity. Auto/safe profiles preserve their existing meanings; deny/unknown profiles fail before prompt/directory/query work, so the output-only memory extractor still requires print. Workers use a dedicated query, real process handle and unique owned instruction directory; cancellation/completion registration outlives process-map removal until cleanup settles. Claude print and claude-e remain unchanged. Foreground-only hooks do not promise an OS sandbox. SDK authentication follows the official API/cloud setup; no claude.ai login flow, credential copying or subscription entitlement is added. Qualification distinguishes actual pinned SDK/owned simulated CLI from real-provider and rendered UI evidence; these are not interchangeable.
 
 `claude-sdk-permissions.ts` snapshots original input and binds callbacks to declared tool IDs. Questions return original full-question keys and comma-separated selected labels; neither auto mode nor a display item can bypass explicit ask rules. Missing/unreviewable operations deny, no future permission grant is created, and Stop/expiry cancels exactly the captured request. Images are in-memory validated PNG/JPEG/GIF/WebP, at most4,5MiB each/10MiB aggregate; the adapter never fetches arbitrary URLs/paths. Existing staged-file references remain prompt/tool access, not automatic image conversion.
