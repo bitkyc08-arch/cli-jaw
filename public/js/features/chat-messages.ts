@@ -98,7 +98,10 @@ export function formatUserPrompt(text: string): string {
     return text;
 }
 
-export function addMessage(role: string, text: string, cli?: string | null): HTMLDivElement {
+/** Optional receipt metadata for an appended message. Kept as a named alias so the
+ *  perf-processblock source guard still reads the function body as the first brace. */
+export type AddMessageMetadata = { steered?: boolean };
+export function addMessage(role: string, text: string, cli?: string | null, metadata?: AddMessageMetadata): HTMLDivElement {
     const container = document.getElementById('chatMessages');
     const vs = getVirtualScroll();
     hideEmptyState();
@@ -117,6 +120,7 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
     const actions = renderMessageActionsHtml();
     if (role === 'agent') {
         div.className = 'msg msg-agent';
+        if (metadata?.steered === true) div.dataset['steered'] = 'true';
         div.innerHTML = `<div class="agent-icon" aria-hidden="true">${getAgentIcon(cli)}</div><div class="agent-body"><div class="msg-content">${rendered}</div>${actions}</div>`;
     } else {
         // Goal-continuation boundary rows stay .msg-user (the class is the

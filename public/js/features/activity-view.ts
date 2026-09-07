@@ -2,6 +2,7 @@ import {
     activityEntryLabel, activityEntryText, activityStatus, type ActivityState,
 } from '../../../src/shared/activity-state.js';
 import type { RuntimeItemStatus } from '../../../src/shared/runtime-contract.js';
+import { hydrateIcons } from '../icons.js';
 
 export interface ActivityChoices {
     open: boolean;
@@ -27,6 +28,7 @@ export interface ActivityDisplayStatus {
     status?: RuntimeItemStatus | 'finished';
     degraded?: boolean;
     connectionUnavailable?: boolean;
+    steered?: boolean;
 }
 
 export function createActivityView(
@@ -52,12 +54,24 @@ export function createActivityView(
 
     const root = element('section', 'activity-turn');
     root.setAttribute('aria-label', 'Turn activity');
-    const status = element('p', 'activity-status');
+    const status = element('p', 'activity-status sr-only');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     status.setAttribute('aria-atomic', 'true');
     const disclosure = element('details', 'activity-disclosure');
     const summary = element('summary', 'activity-summary');
+    const chevron = element('span', 'activity-chevron');
+    chevron.dataset['icon'] = 'chevronRight'; chevron.setAttribute('aria-hidden', 'true');
+    const statusLabel = element('span', 'activity-status-label');
+    const summaryText = element('span', 'activity-summary-text');
+    const steerPill = element('span', 'activity-steer-pill'); steerPill.hidden = true;
+    const steerArrow = element('span', 'pending-steer-arrow');
+    steerArrow.textContent = '↳'; steerArrow.setAttribute('aria-hidden', 'true');
+    const steerLabel = element('span', 'pending-steer-label'); steerLabel.textContent = 'steered';
+    steerPill.append(steerArrow, doc.createTextNode(' '), steerLabel);
+    const accessory = element('span', 'activity-accessory');
+    summary.append(chevron, statusLabel, summaryText, steerPill, accessory);
+    hydrateIcons(summary);
     const list = element('div', 'activity-list');
     const empty = element('p', 'activity-empty');
     empty.textContent = 'No activity recorded';
@@ -76,11 +90,13 @@ export function createActivityView(
     choiceNotice.setAttribute('role', 'status');
     const requests = element('p', 'activity-requests');
     for (const notice of [error, degraded, omitted, choiceNotice, requests]) notice.hidden = true;
-    root.append(status, error, disclosure, degraded, connection, omitted, choiceNotice, requests);
-    const historyButton = inspectHistory ? button('Inspect retained activity', 'activity-trace') : null;
+    disclosure.append(degraded, connection, omitted, choiceNotice, requests);
+    root.append(status, error, disclosure);
+    const historyButton = inspectHistory ? button('Open in Trace', 'activity-trace') : null;
     if (historyButton) {
         historyButton.setAttribute('aria-label', 'Inspect retained activity in Trace');
-        root.append(historyButton);
+        const footer = element('footer', 'activity-footer');
+        footer.append(historyButton); disclosure.append(footer);
     }
     // The existing message and its copy/widget actions retain full answer ownership.
     host.insertBefore(root, host.querySelector(':scope > .msg-content'));
@@ -144,8 +160,14 @@ export function createActivityView(
         const errorSummary = phase === 'error' && model.end?.status === 'error' ? model.end.error ?? '' : '';
         text(error, errorSummary);
         error.hidden = !errorSummary;
-        const count = `${model.entries.size} retained preview${model.entries.size === 1 ? '' : 's'}`;
-        text(summary, model.latestAction ? `Activity: ${model.latestAction} (${count})` : `Activity (${count})`);
+        const count = `${model.entries.size} step${model.entries.size === 1 ? '' : 's'}`;
+        text(statusLabel, label);
+        text(summaryText, model.latestAction || count);
+        text(accessory, String(model.entries.size));
+        accessory.dataset['unit'] = model.entries.size === 1 ? ' step' : ' steps';
+        accessory.hidden = !model.latestAction;
+        summary.setAttribute('aria-label', `${label} · ${model.latestAction ? `${model.latestAction} · ` : ''}${count}${display.steered ? ' · steered' : ''}`);
+        steerPill.hidden = display.steered !== true;
         text(degraded, display.degraded ? 'Activity is incomplete. Some runtime updates were not received.' : '');
         degraded.hidden = !display.degraded;
         text(connection, display.connectionUnavailable ? 'Live activity updates are unavailable. Retained activity can be refreshed separately.' : '');

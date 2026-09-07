@@ -100,7 +100,15 @@ function render(turn: LiveActivityTurn): void {
     turn.degraded = turn.recordingGap || (!turn.model.end && !turn.canonicalTerminal && !!turn.terminalStatus);
     turn.message.dataset['activityLive'] = status || turn.message.dataset['activitySaved'] === 'true' ? 'false' : 'true';
     turn.view.render(turn.model, { ...(status ? { status } : {}), degraded: turn.degraded,
-        connectionUnavailable: !status && (!transportHealthy || turn.model.identity.scope !== identity?.scope) });
+        connectionUnavailable: !status && (!transportHealthy || turn.model.identity.scope !== identity?.scope),
+        steered: turn.message.dataset['steered'] === 'true' });
+}
+
+export function markLiveActivitySteered(receipt: ActivityIdentity & { runId: string }): boolean {
+    const turn = findLiveActivity(receipt.runId);
+    if (!turn || identity?.sessionId !== receipt.sessionId
+        || turn.model.identity.sessionId !== receipt.sessionId || turn.model.identity.scope !== receipt.scope) return false;
+    turn.message.dataset['steered'] = 'true'; render(turn); return true;
 }
 
 function makeRoom(): boolean {
@@ -280,6 +288,7 @@ export function rebindLiveActivity(runId: string, message: HTMLElement): void {
     message.dataset['traceRunId'] = runId;
     message.dataset['activitySession'] = turn.model.identity.sessionId;
     message.dataset['messageSessionId'] = turn.model.identity.sessionId;
+    if (turn.message.dataset['steered'] === 'true') message.dataset['steered'] = 'true';
     turn.message = message;
     turn.view = createActivityView(body, turn.choices, model => {
         host.inspectTrace(runId, model.identity.sessionId);
@@ -311,10 +320,10 @@ export function setActivityReadHealth(runId: string, incomplete: boolean): void 
 
 /** Virtual scroll recreates DOM; reconnect retained disclosure choices to its rows. */
 export function remountLiveActivity(root: ParentNode): void {
-    for (const message of root.querySelectorAll<HTMLElement>('.msg-agent[data-activity-key], .activity-recorded-run[data-activity-key]')) {
+    for (const message of root.querySelectorAll<HTMLElement>('.msg-agent[data-activity-key]')) {
         // Transcript markup is not a host registry. A copied key inside an
         // answer must never transfer the retained view away from its real row.
-        if (message.parentElement?.closest('.msg-agent, .activity-recorded-run')) continue;
+        if (message.parentElement?.closest('.msg-agent')) continue;
         const turn = turns.get(message.dataset['activityKey']!);
         if (!turn) {
             message.querySelector('.activity-turn')?.remove();

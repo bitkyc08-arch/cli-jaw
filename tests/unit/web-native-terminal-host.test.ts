@@ -240,6 +240,18 @@ function compatibility(runId: string, status: 'done' | 'error' | 'stopped', text
         runtimeFinality: status === 'done' ? 'present' : 'absent', text, ...(status === 'error' ? { error: true } : {}) });
 }
 
+test('scoped steer receipt decorates its run without changing finality', () => {
+    const f0 = start(), turn0 = activity.findLiveActivity(f0.runId)!;
+    const before = turn0.model.end;
+    dispatch({ event: 'steer_started', mode: 'native-input', ...identity });
+    assert.equal(turn0.message.dataset['steered'], undefined, 'a receipt without traceRunId never decorates a turn');
+    dispatch({ event: 'steer_started', mode: 'native-input', ...identity, traceRunId: f0.runId });
+    assert.equal(turn0.message.dataset['steered'], 'true');
+    assert.equal(turn0.model.end, before, 'a steer receipt is not finality');
+    assert.equal(turn0.message.querySelector<HTMLElement>('.activity-steer-pill')!.hidden, false);
+    assert.equal(httpAudit.requests.some(r => r.path === '/api/traces/activity-runs'), false);
+});
+
 test('fresh first-user VS bootstrap mounts setup-error terminal without incidental resize/scroll', () => {
     const f = start(), diagnostic = 'Cursor native setup failed: fixture session/new error';
     compatibility(f.runId, 'error', diagnostic);
@@ -343,9 +355,8 @@ test('real gap semantics stay visible through valid incomplete journal replay an
     assert.equal(state.activityIdentity?.scope, selectedScope);
     assert.equal(visible(f)!.querySelector('.msg-content')?.getAttribute('data-raw'), 'STALE TRANSCRIPT BEFORE EXACT LOOKUP');
     const requestStart = httpAudit.requests.length;
-    await history.discoverActivityHistory();
-    assert.equal(chat.querySelectorAll('.activity-recorded-run').length, 0, 'discovery must not copy a run already in this transcript');
-    assert.equal(document.getElementById('activityDiscovery')?.hidden, true);
+    assert.equal(chat.querySelectorAll('.activity-recorded-run').length, 0);
+    assert.equal(document.getElementById('activityDiscovery'), null);
     const readsBefore = historyReads, answersBefore = answerReads;
     await history.hydrateActivityHost(visible(f)!, f.runId, true);
     assert.equal(answerReads, answersBefore + 1, 'exact saved MESSAGE is read independently of the journal');
@@ -353,12 +364,11 @@ test('real gap semantics stay visible through valid incomplete journal replay an
     assert.equal(state.activityIdentity?.scope, selectedScope, 'history cannot rewrite live admission');
     assert.equal(historyReads, readsBefore + 3, 'two fixed-through seed pages and one suffix');
     assert.deepEqual(httpAudit.requests.slice(requestStart).map(({ method, path, query }) => [method, path, query]), [
-        ['GET', '/api/traces/activity-runs', '?session=fixture-native-terminal&after='],
         ['GET', `/api/traces/${f.runId}/activity`, '?session=fixture-native-terminal&after=0&limit=40'],
         ['GET', `/api/traces/${f.runId}/activity`, '?session=fixture-native-terminal&after=41&limit=40&through=42'],
         ['GET', `/api/traces/${f.runId}/activity`, '?session=fixture-native-terminal&after=42&limit=40'],
         ['GET', `/api/messages/by-trace/${f.runId}`, '?session=fixture-native-terminal'],
-    ], 'original session, exact discovery/seed/pinned page/suffix/MESSAGE sequence');
+    ], 'original session, exact seed/pinned page/suffix/MESSAGE sequence');
     assert.equal(activity.findLiveActivity(f.runId)?.model.seq, 60);
     assert.equal(activity.findLiveActivity(f.runId)?.model.entries.size, 41);
     assert.equal(activity.findLiveActivity(f.runId)?.model.entries.get('seed-39')?.kind, 'tool');

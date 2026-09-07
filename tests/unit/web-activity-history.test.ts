@@ -189,20 +189,15 @@ test('interrupted histories release capacity through metadata without fabricated
     assert.ok(next);assert.equal(next.model.end,null);
 });
 
-test('repeated orphan discovery is bounded and exposes paging and discovery truncation',{timeout:10000},async()=>{
-    let count=40;
-    serve=async url=>{
-        const after=url.searchParams.get('after')??'';
-        const offset=after?Number(after.slice(3))+1:0;
-        const rows=Array.from({length:Math.min(40,Math.max(0,count-offset))},(_,i)=>({id:`tr_${String(offset+i).padStart(16,'0')}`,messageId:null,status:'done',startedAt:offset+i}));
-        return response({runs:rows,pageSize:40});
-    };
-    for(let i=0;i<4;i++)await history.discoverActivityHistory();
-    assert.ok(document.querySelectorAll('[data-activity-discovered]').length<=16);
-    document.querySelector<HTMLButtonElement>('#activityDiscovery [data-discovery-action="next"]')!.click();
-    assert.equal(document.querySelectorAll('[data-activity-discovered]').length,16);
-    assert.match(document.getElementById('activityDiscovery')!.textContent!,/Page 2 \/ 3/);
-    count=300;await history.discoverActivityHistory();
-    assert.ok(document.querySelectorAll('[data-activity-discovered]').length<=16);
-    assert.match(document.getElementById('activityDiscovery')!.textContent!,/Discovery is limited/);
+test('transcript inspection never discovers extra runs',{timeout:10000},async()=>{
+    const calls: string[] = [];
+    serve=async url=>{ calls.push(url.pathname); return response(page(Number(url.searchParams.get('after')??0))); };
+    const host=message();
+    await history.hydrateActivityHost(host,base.runId,true);
+    history.setActivityHistoryReadReady(false); history.setActivityHistoryReadReady(true);
+    assert.equal(document.getElementById('activityDiscovery'),null);
+    assert.equal(document.querySelector('[data-activity-discovered]'),null);
+    assert.equal(calls.includes('/api/traces/activity-runs'),false);
+    assert.equal(host.querySelectorAll('.activity-turn').length,1);
+    assert.equal(host.querySelector('.msg-content')?.textContent,'SAVED ANSWER');
 });

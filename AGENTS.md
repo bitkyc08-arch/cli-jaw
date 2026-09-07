@@ -241,8 +241,11 @@ payload only after actual scrollback flush; raw/simple paths receive no new read
 Sync commands/frontend/stream/tui-scrollback docs; broader visual/cross-runtime and
 final integrated Electron QA have separate owners and are not implied by TUI tests.
 
-Classic retained Activity uses `activity-history.ts`/`activity-discovery.ts` and the
-shared fixed-through reader. Preserve original stored scope, bounded per-run replay,
+Classic retained Activity uses `activity-history.ts` and the shared fixed-through
+reader; the turn header is one `summary` row (chevron · status · latest action/steps ·
+optional steer pill · count) with notices and the `Open in Trace` footer inside the
+disclosure body. The recorded-run discovery disclosure was removed (260908 wp1).
+Preserve original stored scope, bounded per-run replay,
 focus-aware eviction and rejection of nested copied host keys. MESSAGE loading opts
 into `withSession=1`; `/api/messages/by-trace/:runId?session=...` returns a unique
 exact saved answer (16MiB,409 ambiguity), never grants source Trace access to forks.

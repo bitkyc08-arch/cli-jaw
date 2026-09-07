@@ -7,7 +7,6 @@ import { findLiveActivity, mountHistoryActivity, recycleActivityHost, remountLiv
     restoreLiveActivity, setActivityReadHealth, settleLiveActivity, closeActivityTrace,
     isCurrentActivityMessage, reconcileSavedActivityAnswer } from './activity-live.js';
 import { getMessageScope } from './idb-cache.js';
-import { createActivityDiscovery } from './activity-discovery.js';
 
 export type RecoveredAnswer = { kind: 'saved'; message: SavedActivityAnswer } | { kind: 'absent' } | { kind: 'unavailable' };
 export interface RecoveredActivityTerminal {
@@ -23,7 +22,7 @@ type Host = {
     box: HTMLElement; status: HTMLElement; retry: HTMLButtonElement;
     pending: boolean; loaded: boolean; promise: Promise<void> | null; resolve: (() => void) | null;
 };
-const SELECTOR = '.msg-agent[data-trace-run-id], .activity-recorded-run[data-trace-run-id]';
+const SELECTOR = '.msg-agent[data-trace-run-id]';
 const MAX_HOSTS = 64, MAX_QUEUED = 16, READ_DEADLINE_MS = 30_000;
 let identity: ActivityIdentity | null = null;
 let callbacks: Callbacks | null = null;
@@ -38,22 +37,15 @@ const mode = () => document.documentElement.dataset['presentationMode'] !== 'leg
 const chat = () => document.getElementById('chatMessages');
 const locationKey = () => `${window.location.pathname}${window.location.search}`;
 
-function mutate(anchor: HTMLElement, action: () => void): void {
-    if (window.__jawProcessBlockLayoutMutation) window.__jawProcessBlockLayoutMutation(anchor, action);
-    else action();
-}
-const discovery = createActivityDiscovery({ root: chat, inspect: root => observeActivityHistory(root),
-    recycle: root => recycleActivityHistory(root), mutate });
-
 function messageRoot(message: HTMLElement): boolean {
     const root = chat(), parent = message.parentElement;
-    return discovery.owns(message) || !!root && (parent === root
+    return !!root && (parent === root
         || parent?.classList.contains('vs-inner') === true && parent.parentElement === root);
 }
 function owns(message: HTMLElement, runId: string, sessionId: string): boolean {
     return messageRoot(message) && message.dataset['traceRunId'] === runId
         && message.dataset['messageSessionId'] === sessionId
-        && (discovery.owns(message) || loadedSession === sessionId && loadedRuns.has(runId)
+        && (loadedSession === sessionId && loadedRuns.has(runId)
             || findLiveActivity(runId)?.message === message || message.dataset['activitySession'] === sessionId
             || message.hasAttribute('data-active-run-hydrated'));
 }
@@ -293,11 +285,9 @@ export function observeActivityHistory(root: ParentNode): void {
 export function prepareActivityTranscript(): void {
     loadingTranscript = true; ++generation;
     for (const host of hosts.values()) if (host.pending) cancel(host, false);
-    discovery.setEnabled(false);
 }
 export function setActivityTranscript(sessionId: string | null, runIds: ReadonlySet<string>): void {
     loadingTranscript = false; loadedSession = sessionId; loadedRuns = new Set(runIds);
-    discovery.setTranscript(sessionId, runIds); discovery.setEnabled(automaticReads && mode());
     if (identity && sessionId && identity.sessionId !== sessionId && callbacks) {
         const key = `${locationKey()}:${sessionId}`;
         if (identityRefreshKey !== key) { identityRefreshKey = key; void callbacks.refreshIdentity().catch(() => {}); }
@@ -310,10 +300,9 @@ export function setActivityHistoryIdentity(next: ActivityIdentity | null, handle
         ++generation; for (const host of hosts.values()) cancel(host, true);
         observer?.disconnect(); observer = null; closeActivityTrace(); identityRefreshKey = '';
     }
-    identity = next ? { ...next } : null; discovery.setIdentity(identity);
+    identity = next ? { ...next } : null;
     if (!modeObserver) {
         modeObserver = new MutationObserver(() => {
-            discovery.setEnabled(automaticReads && mode());
             if (!mode()) for (const host of hosts.values()) if (host.pending) cancel(host, false);
             const root = chat(); if (root) observeActivityHistory(root);
         });
@@ -321,14 +310,13 @@ export function setActivityHistoryIdentity(next: ActivityIdentity | null, handle
     }
 }
 export function setActivityHistoryReadReady(ready: boolean): void {
-    automaticReads = ready; discovery.setEnabled(ready && mode());
+    automaticReads = ready;
     if (!ready) {
         for (const host of hosts.values()) if (host.pending) cancel(host, false);
     } else { const root = chat(); if (root) observeActivityHistory(root); }
 }
-export function discoverActivityHistory(): Promise<void> { return discovery.refresh(); }
 export function disposeActivityHistory(): void {
     ++generation; for (const host of hosts.values()) cancel(host, true);
     observer?.disconnect(); observer = null; modeObserver?.disconnect(); modeObserver = null;
-    discovery.dispose(); identity = null; loadedSession = null; loadedRuns.clear(); callbacks = null;
+    identity = null; loadedSession = null; loadedRuns.clear(); callbacks = null;
 }

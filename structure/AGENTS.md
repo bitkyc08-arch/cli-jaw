@@ -20,8 +20,9 @@
 
 ## Current sync hotspots (2026-06)
 
-- Classic retained Activity: keep `activity-history.ts`/`activity-discovery.ts`, shared
-  fixed-through reads, MESSAGE `withSession=1` and exact saved-answer lookup in sync.
+- Classic retained Activity: keep `activity-history.ts` (discovery disclosure removed
+  260908), the one-row `activity-view.ts` summary header, shared fixed-through reads,
+  MESSAGE `withSession=1` and exact saved-answer lookup in sync.
   Preserve stored scope, unrelated live progress, namespace/ID separation, bounded
   queue/eviction and80-row raw paging. Old metadata-free cache is not chat authority;
   fork answers never acquire original Trace access. See frontend/API/runtime docs.
