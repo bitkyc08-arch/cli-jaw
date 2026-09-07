@@ -315,6 +315,8 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 
 ### `/api/quota`
 
+- OpenCode Go reads canonical `usage.rolling/weekly/monthly` directly from `/zen/go/v1/usage`, retaining legacy window shapes. A successful usage response needs no models preflight; unavailable usage may probe model authentication without treating transient failure as invalid credentials.
+
 - Native Claude/Codex readers normalize upstream windows with `quota-native-window.ts` and bounded JSON from `quota-wire.ts`. Codex honors `CODEX_HOME`, declared short/monthly durations, Spark weekly limits and additive read-only `resetCredits`; missing readings do not create a zero bar. Claude supports Fable and weekly-scoped model limits; its 30-second fresh and 5-minute 429 fallback caches are credential-scoped. A 429 without a measured same-credential snapshot returns an error with no fabricated quota bar.
 
 - 응답 키: `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` (`CLI_KEYS` 순서).
