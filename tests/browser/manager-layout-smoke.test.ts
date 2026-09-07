@@ -46,18 +46,22 @@ function isDefaultMissingCdp(error: unknown): boolean {
 }
 
 async function pageForManager(t: TestContext): Promise<Page | null> {
-    let browser: Browser;
-    try {
-        browser = await chromium.connectOverCDP(CDP_URL);
-    } catch (error) {
-        if (isDefaultMissingCdp(error)) {
-            t.skip(`manager CDP browser is not running at ${CDP_URL}`);
-            return null;
+    // One CDP owner: parallel connections auto-dismiss each other's JS dialogs.
+    let browser = browsers[0];
+    if (!browser) {
+        try {
+            browser = await chromium.connectOverCDP(CDP_URL);
+        } catch (error) {
+            if (isDefaultMissingCdp(error)) {
+                t.skip(`manager CDP browser is not running at ${CDP_URL}`);
+                return null;
+            }
+            throw error;
         }
-        throw error;
+        browsers.push(browser);
     }
-    browsers.push(browser);
     const context = await browser.newContext();
+    t.after(() => context.close());
     return context.newPage();
 }
 
@@ -207,6 +211,7 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
 
     assert.equal(during.hostHidden, false, 'opening settings must leave Preview visible');
     assert.equal(during.sameFrame, true, 'preview iframe must stay mounted beside settings');
+    assert.equal(during.src, before.src, 'opening settings must keep the preview source');
 
     await page.getByRole('button', { name: 'Close instance settings' }).click();
 
@@ -353,6 +358,12 @@ test('instance settings panel has bounded layout and guarded keyboard close', as
     const toggle = page.getByRole('button', { name: 'Instance settings', exact: true });
     await toggle.click();
     const panel = page.locator('aside.workbench-settings-panel');
+    await panel.waitFor({ state: 'visible' });
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+    assert.equal(await toggle.getAttribute('aria-controls'), await panel.getAttribute('id'));
+    assert.equal(await panel.getAttribute('aria-label'), 'Instance settings');
+    assert.equal(await panel.getAttribute('aria-modal'), null);
+    assert.equal(await panel.locator('.settings-shell-host').evaluate(el => getComputedStyle(el).containerType), 'inline-size');
     assert.equal(await page.getByRole('tab', { name: 'Settings', exact: true }).count(), 0);
     for (const width of [1440, 1280, 1024, 1023, 390]) {
         await page.setViewportSize({ width, height: 900 });
@@ -362,9 +373,20 @@ test('instance settings panel has bounded layout and guarded keyboard close', as
         const expected = width >= 1440 ? 480 : width >= 1024 ? 420 : Math.min(width * .92, 420);
         assert.ok(Math.abs(metrics.width - expected) <= 1); assert.ok(metrics.right <= width + 1);
         assert.equal(metrics.documentWidth, width); assert.equal(metrics.position === 'fixed', width < 1024);
+        assert.equal(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        assert.equal(await panel.evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+        assert.equal(await page.locator('.workbench').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
+        mkdirSync(SCREENSHOT_DIR, { recursive: true });
+        await page.screenshot({ path: join(SCREENSHOT_DIR, `060_settings-panel-${width}x900.png`) });
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
     }
-    await panel.getByRole('button', { name: 'Display', exact: true }).click();
-    assert.equal(await panel.getByRole('button', { name: 'Display', exact: true }).getAttribute('aria-current'), 'page');
+    const display = panel.getByRole('button', { name: 'Display', exact: true });
+    assert.equal(await display.count(), 1);
+    assert.equal(await panel.getByRole('tab', { name: 'Display', exact: true }).count(), 0);
+    await display.click();
+    assert.equal(await display.getAttribute('aria-current'), 'page');
+    assert.equal(await panel.locator('.settings-sidebar-item[aria-current="page"]').count(), 1);
     assert.equal(await panel.locator('.settings-sidebar [role=tab]').count(), 0);
     const field = panel.locator('#display-pasteCollapseLines');
     const initial = Number(await field.inputValue()); await field.fill(String(initial + 1));
@@ -373,6 +395,7 @@ test('instance settings panel has bounded layout and guarded keyboard close', as
     assert.equal(await panel.count(), 1); assert.equal(await field.inputValue(), String(initial + 1));
     page.once('dialog', dialog => dialog.accept()); await page.keyboard.press('Escape');
     await panel.waitFor({ state: 'detached' });
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
     assert.equal(await toggle.evaluate(el => el === document.activeElement), true);
     await page.keyboard.press('Meta+,'); await panel.waitFor({ state: 'visible' });
     assert.equal(await toggle.getAttribute('aria-pressed'), 'true');

@@ -56,7 +56,7 @@ no diagnostic still has a generic status notice; it never becomes a final answer
 
 ### Display preference plumbing
 
-`presentation.mode` is Activity by default for fresh/upgraded settings without a choice, or explicitly Legacy. Manager Display places this before TUI appearance using the existing SelectField/SettingsSection skin. It has current-instance singleflight, disabled/guarded editing, failed-save draft retention and captured dirty-entry acknowledgement; A→B→A cannot accept an old completion. Existing SettingsShell is keyed by port and is not rewritten.
+`presentation.mode` is Activity by default for fresh/upgraded settings without a choice, or explicitly Legacy. Manager Display places this before TUI appearance using the existing SelectField/SettingsSection skin. It has current-instance singleflight, disabled/guarded editing, failed-save draft retention and captured dirty-entry acknowledgement; A→B→A cannot accept an old completion. SettingsShell remains keyed by port across the shared navigation.
 
 Classic `presentation-preference.ts` shares initial-load/event generations, coalesces queued changes and reads settings with the existing4MiB/15s bounded helper. It accepts direct settings or successful ok/data, retains last mode on latest failure, and never invokes loadSettings/runtime migration from settings_change. The native request bridge still owns snapshot identity, outage/manual freshness and original execution-ID responses.
 
@@ -231,7 +231,7 @@ public/
 | `features/settings-channel.ts` | — | active channel + fallback order |
 | `features/settings-cli-status.ts` | 482L | CLI availability/quota/status, kiro-code quota, generic auth/status badge |
 | `features/settings-cli-status-render.ts` | 161L | CLI status row rendering helpers |
-| `features/settings-core.ts` | 644L | settings load/update, per-CLI model/effort, locale sync, `postPreviewInvalidate` on active CLI change, projectDirs 변경 시 header git summary refresh |
+| `features/settings-core.ts` | 588L | Classic Agents settings load/save, per-CLI model/effort/permissions, flush-agent controls, locale/header sync and `postPreviewInvalidate`; shared Settings pages retain their own save owners |
 | `features/settings-discord.ts` | — | Discord settings save/load/toggles |
 | `features/settings-slack.ts` | — | Slack settings save/load/toggles (bot+app token, mentionOnly/replyInThread default ON) |
 | `features/settings-mcp.ts` | 561L | MCP server list/sync/install + registry browse/install (`/api/mcp/registry`) |
@@ -372,6 +372,12 @@ settings.ts (barrel)
 | `manager/src/dashboard-settings/` | Developer tools settings (diff defaults, embedding) |
 
 ### Manager Settings — Runtime transport and embedded Classic
+
+Workbench has Overview/Preview/Logs modes. The Settings tab is removed: `WorkbenchSettingsToggle` opens a non-modal instance settings side panel with Meta+, in web and Electron. Opening/closing leaves the Preview iframe node and src intact; the existing dirty guard owns close and instance changes. `ui.instanceSettingsOpen` is a Manager registry preference, while page saves still target the selected instance API.
+
+`settings/settings-registry.ts` supplies Instance/Manager scopes to `SettingsShell` and its button-based sidebar (`aria-current="page"`). Each page retains its save owner. `public/settings/index.html` and `settings-standalone.tsx` build to `public/dist/settings/index.html`; Classic's 설정 tab loads this entry in a titled iframe with Instance scope only, sharing theme and dirty-state messages with its host.
+
+Classic's t3 shell uses system UI/mono fonts, alpha surface/border tokens, a 44px header and segmented sidebar tabs, with explicit dark/light values. Classic focus uses the box-shadow token `--focus-ring-shadow` plus a forced-colors outline; Manager and standalone Settings use `--focus-ring` as an outline. `activity.css`, `layout.css`, `manager-layout.css` and `settings-controls.css` disable scoped transitions/animations (including pseudo-elements) at reduced motion without changing expanded visibility or chevron rotation. Activity's polite status stays outside details; Legacy Stopped/Failed remains visible and Requests/final answers retain their owners.
 
 Model defaults uses `ModelProvider.tsx` → `PerCliRow.tsx` →
 `runtime-transport-field.tsx` for explicit Cursor/Grok/Claude native opt-in or

@@ -40,13 +40,24 @@ export function Workbench(props: WorkbenchProps) {
             <div className="workbench-header">
                 {props.header}
                 <div className="workbench-mode-bar">
-                    <div className="workbench-mode-tabs" role="tablist" aria-label="Workbench modes">
+                    <div className="workbench-mode-tabs" role="tablist" aria-label="Workbench modes"
+                        onKeyDown={(event) => {
+                            if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                            const index = MODES.indexOf(props.mode);
+                            const next = MODES[(index + (event.key === 'ArrowRight' ? 1 : MODES.length - 1)) % MODES.length]!;
+                            event.preventDefault(); props.onModeChange(next);
+                            (event.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`))?.focus();
+                        }}>
                         {MODES.map(mode => (
                             <button
                                 key={mode}
                                 type="button"
                                 role="tab"
+                                id={`workbench-tab-${mode}`}
+                                data-mode={mode}
                                 aria-selected={props.mode === mode}
+                                aria-controls={`workbench-panel-${mode}`}
+                                tabIndex={props.mode === mode ? 0 : -1}
                                 className={props.mode === mode ? 'is-active' : ''}
                                 onClick={() => props.onModeChange(mode)}
                             >
@@ -59,10 +70,13 @@ export function Workbench(props: WorkbenchProps) {
             </div>
             <div className="workbench-body">
                 {props.mode === 'overview' && (
-                    <div key="overview" className="workbench-panel workbench-panel-overview">{props.overview}</div>
+                    <div key="overview" id="workbench-panel-overview" role="tabpanel" aria-labelledby="workbench-tab-overview" className="workbench-panel workbench-panel-overview">{props.overview}</div>
                 )}
                 <div
                     key="preview"
+                    id="workbench-panel-preview"
+                    role="tabpanel"
+                    aria-labelledby="workbench-tab-preview"
                     className="workbench-panel workbench-panel-preview"
                     hidden={props.mode !== 'preview'}
                     aria-hidden={props.mode !== 'preview'}
@@ -71,7 +85,7 @@ export function Workbench(props: WorkbenchProps) {
                     {props.preview}
                 </div>
                 {props.mode === 'logs' && (
-                    <div key="logs" className="workbench-panel workbench-panel-logs">{props.logs}</div>
+                    <div key="logs" id="workbench-panel-logs" role="tabpanel" aria-labelledby="workbench-tab-logs" className="workbench-panel workbench-panel-logs">{props.logs}</div>
                 )}
             </div>
             {props.settingsOpen && (
