@@ -415,6 +415,8 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 | Manager events/logs | `GET /api/manager/events` `GET /api/manager/events/stream` (SSE) `GET /api/manager/health-history/:port` `GET /api/manager/instance-logs/:port` |
 | Runtime monitors | `GET /api/manager/runtime-status` `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` |
 | Registry | `GET /api/dashboard/registry` `PATCH /api/dashboard/registry` |
+
+`PATCH /api/dashboard/registry` `ui` is whitelisted by `normalizeUi` (`src/manager/registry.ts`); `ui.instanceSettingsOpen` (boolean, default `false`, 260908 wp3) persists whether the Workbench instance-settings side panel is open, and `ui.selectedTab` still accepts the legacy `'settings'` value, which hydrates as `overview` with the panel open.
 | Lifecycle | `POST /api/dashboard/lifecycle/:action` (start/stop/restart/perm/unperm) |
 | Process control | `GET /api/dashboard/process-control` `POST /api/dashboard/process-control/adopt` `POST /api/dashboard/process-control/stop-managed` `POST /api/dashboard/process-control/force-release` |
 | Desktop/Electron | `GET /api/dashboard/desktop-status` `GET/POST /api/dashboard/electron-metrics` |

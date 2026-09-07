@@ -130,6 +130,7 @@
 .activity-turn .activity-row-message .activity-item-text { font-family: var(--font-ui); }
 .activity-turn .activity-row-reasoning .activity-row-label { color: var(--activity-muted); }
 .activity-turn .activity-group-body:focus-visible, .activity-turn .activity-item-text:focus-visible {
+    box-shadow: var(--focus-ring-shadow);
     outline: 2px solid var(--accent); outline-offset: -2px;
 }
 
@@ -168,6 +169,7 @@
 
 .activity-turn summary:focus-visible,
 .activity-turn button:focus-visible {
+    box-shadow: var(--focus-ring-shadow);
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
@@ -196,10 +198,12 @@
 
 @media (prefers-reduced-motion: reduce) {
     .activity-turn,
-    .activity-turn * {
-        animation: none;
-        transition: none;
-        scroll-behavior: auto;
+    .activity-turn *,
+    .activity-turn *::before,
+    .activity-turn *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
     }
 }
 

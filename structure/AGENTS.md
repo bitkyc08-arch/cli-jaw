@@ -16,14 +16,16 @@
 
 ## Current sync hotspots (2026-06)
 
+- Recent non-strict hotspots: Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by an instance settings side panel (Meta+,), backed by Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and shares the standalone `dist/settings` entry with the Classic 설정 tab; Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `frontend.md`.
+
 - Classic retained Activity: keep `activity-history.ts` (discovery disclosure removed
   260908), the one-row `activity-view.ts` summary header, shared fixed-through reads,
-  MESSAGE `withSession=1` and exact saved-answer lookup in sync.
+  MESSAGE `withSession=1` and exact saved-answer lookup in sync. TUI retains its discovery reader.
   Preserve stored scope, unrelated live progress, namespace/ID separation, bounded
   queue/eviction and80-row raw paging. Old metadata-free cache is not chat authority;
   fork answers never acquire original Trace access. See frontend/API/runtime docs.
 
-- Classic live Activity: `activity-state.ts`/`activity-replay.ts` own bounded preview state; `activity-view.ts` owns disclosure, `activity-live.ts` uses injected host actions to avoid the legacy renderer SCC. Preserve original snapshot/request bridge ownership, shared bounded pre-admission event/gap queue, native-absent diagnostic separation, late canonical/public final reconciliation and captured-scope cache correction. Additive VS hooks must not replace existing lazy/post callbacks. Cold history has a separate bounded reader/discovery owner; live remounting alone does not restore it. Keep frontend/stream/root notes aligned.
+- Classic live Activity: `activity-state.ts`/`activity-replay.ts` own bounded preview state; `activity-view.ts` owns disclosure, `activity-live.ts` uses injected host actions to avoid the legacy renderer SCC. Preserve original snapshot/request bridge ownership, shared bounded pre-admission event/gap queue, native-absent diagnostic separation, late canonical/public final reconciliation and captured-scope cache correction. Additive VS hooks must not replace existing lazy/post callbacks. Cold transcript history has a separate bounded reader owner; live remounting alone does not restore it. Keep frontend/stream/root notes aligned.
 
 - `presentation.mode` defaults/activity and Legacy opt-in share `src/shared/presentation.ts` with the existing identity parser. Explicit known mode and/or eligible transport-only API patches preserve admitted ownership and captured completion buckets; mixed execution changes and external-file transport edits retain invalidation. Keep legacy presentation-subtree side-effect skips separate from this strict exception. Keep config/ingress/runtime-settings side-effect boundaries, Classic preference generation/bounded reads, Manager Display draft/instance guards and Classic, retained history, Manager and TUI ownership synchronized in frontend/API/runtime docs. No transport-default migration or messaging restart is implied.
 

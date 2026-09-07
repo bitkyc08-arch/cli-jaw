@@ -312,4 +312,9 @@
 
 @media (prefers-reduced-motion: reduce) {
     .manager-workspace, .manager-sidebar { transition: none !important; }
+    .workbench, .workbench *, .workbench *::before, .workbench *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+    }
 }
