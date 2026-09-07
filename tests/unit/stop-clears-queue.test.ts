@@ -63,24 +63,8 @@ test('Fix B: steer route does not call submitMessage (avoids double insert+broad
     assert.ok(!block.includes('submitMessage('), 'steer route must NOT call submitMessage — that path re-inserts and re-broadcasts the user message');
 });
 
-test('Fix B: steer route accepts/removes/responds before background kill wait', () => {
-    const block = getSteerHandlerBlock();
-    const peekIdx = block.indexOf('messageQueue.find');
-    const removeIdx = block.indexOf('removeQueuedMessage');
-    const responseIdx = block.indexOf('res.json({ ok: true');
-    const backgroundIdx = block.indexOf('void (async () =>');
-    const killIdx = block.indexOf("killActiveAgent(scope, 'steer')", backgroundIdx);
-    const waitIdx = block.indexOf('waitForProcessEnd', backgroundIdx);
-    assert.ok(peekIdx > 0 && removeIdx > peekIdx, 'must peek before accepting/removing the queued item');
-    assert.ok(responseIdx > removeIdx, 'must return the button response after queue removal');
-    assert.ok(backgroundIdx > responseIdx, 'old-process kill/wait must run in background after response');
-    assert.ok(killIdx > backgroundIdx, 'background task must kill the previous busy path');
-    assert.ok(waitIdx > killIdx, 'background task must wait for process end after kill');
-    assert.ok(
-        block.slice(0, responseIdx).indexOf('waitForProcessEnd') === -1,
-        'button response path must not wait for the old process',
-    );
-});
+// ACK-before-background-wait is exercised through the actual registered handler
+// in queue-steer-main-wait.test.ts, with independently held main/exit gates.
 
 test('Fix B: steer route inserts the user message exactly once and orchestrates with _skipInsert', () => {
     const block = getSteerHandlerBlock();
