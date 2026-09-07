@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setupWebUiDom, resetWebUiDom } from './web-ui-test-dom.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const wsPathTs = join(__dirname, '../../public/js/ws.ts');
@@ -146,7 +147,7 @@ test('WRS-006: reconnect snapshot reapplies bottom anchor without stale near-bot
     assert.ok(openBlock.includes("reconcileChatBottomAfterRestore('reconnect')"), 'reconnect should run guarded restore bottom reconciliation after hydration');
 });
 
-test('WRS-007: ui exposes guarded restore helper used by restore and reconnect paths', { skip: !hasUi && 'public/js/ui source not found' }, () => {
+test('WRS-007: ui exposes guarded restore helper used by restore and reconnect paths', { skip: !hasUi && 'public/js/ui source not found', timeout: 5000 }, async t => {
     const uiSrc = readFileSync(uiPath, 'utf8');
     const scrollSrc = readFileSync(join(__dirname, '../../public/js/features/chat-scroll.ts'), 'utf8');
     const historySrc = readFileSync(join(__dirname, '../../public/js/features/message-history.ts'), 'utf8');
@@ -171,8 +172,8 @@ test('WRS-007: ui exposes guarded restore helper used by restore and reconnect p
     assert.ok(historySrc.includes('export function buildMessageLocationKey'), 'message scope should include a reusable location key helper');
     assert.ok(historySrc.includes('export function buildMessageScopeIdentity'), 'message scope should include a reusable identity helper');
     assert.ok(historySrc.includes('window.location.pathname'), 'legacy manager preview path must distinguish same-origin instance switches');
-    assert.ok(historySrc.includes('const locationKey = readCurrentMessageLocationKey();'), 'location identity must be computed independently from settings success');
-    assert.ok(historySrc.indexOf('const locationKey = readCurrentMessageLocationKey();') < historySrc.indexOf("const settings = await api<{ workingDir?: string }>('/api/settings')"), 'location identity should be read before settings fetch can fail');
+    // Location/settings failure ordering is executed below through loadMessages,
+    // not inferred from the old direct-api assignment spelling.
     assert.ok(historySrc.includes('const scopeChanged = nextScope !== previousScope'), 'loadMessages should explicitly detect message source changes');
     assert.ok(historySrc.includes('const shouldForceBottom = scopeChanged || !hadRenderedHistory'), 'scope changes should force bottom even when old DOM exists');
     assert.ok(historySrc.includes('const hadRenderedHistory = Boolean(chatEl?.querySelector(\'.msg\')) || vs.active'), 'loadMessages should distinguish initial load from reconnect refresh');
@@ -182,6 +183,92 @@ test('WRS-007: ui exposes guarded restore helper used by restore and reconnect p
     assert.ok(historySrc.includes('settleChatBottomAfterInitialLoad();'), 'successful initial load paths should settle again after lazy render/layout growth');
     assert.ok(historySrc.includes('if (shouldForceBottom) settleChatBottomAfterInitialLoad();'), 'small fresh or changed-scope history should also settle to bottom without yanking same-scope reconnect readers');
     assert.ok(!scrollSrc.includes('userNearBottom = true;\\n    const vs = getVirtualScroll();\\n    if (vs.active)'), 'restore helper should not reset near-bottom intent before guarded restore');
+
+    const names = ['window', 'document', 'HTMLElement', 'HTMLAnchorElement', 'Element', 'Node',
+        'NodeFilter', 'navigator', 'localStorage', 'MutationObserver', 'getComputedStyle',
+        'requestAnimationFrame', 'cancelAnimationFrame', 'IntersectionObserver', 'ResizeObserver',
+        'atob', 'btoa', 'indexedDB'] as const;
+    const globals = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+    const unexpected: string[] = [], ledger: string[] = [], warnings: string[] = [];
+    let rejectSettings!: (error: Error) => void;
+    const settings = new Promise<Response>((_resolve, reject) => { rejectSettings = reject; });
+    let settingsEntered!: () => void;
+    const entered = new Promise<void>(resolve => { settingsEntered = resolve; });
+    let loading: Promise<void> | undefined;
+    let rendering: typeof import('../../public/js/render.ts') | undefined;
+    let vs: ReturnType<typeof import('../../public/js/virtual-scroll.ts')['getVirtualScroll']> | undefined;
+    try {
+        setupWebUiDom();
+        window.history.replaceState(null, '', '/i/24577/');
+        // Observe actual location reads without replacing the location value.
+        const realWindow = window;
+        Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: new Proxy(realWindow, {
+            get(target, key) {
+                if (key === 'location') ledger.push('location');
+                return Reflect.get(target, key, target);
+            },
+        }) });
+        t.mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); });
+        t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+            const url = new URL(input instanceof Request ? input.url : String(input), 'http://127.0.0.1');
+            const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+            if (method === 'GET' && url.origin === 'http://127.0.0.1') {
+                if (url.pathname === '/i/24577/api/auth/token' && !url.search)
+                    return Response.json({ token: 'wp37-location' });
+                if (url.pathname === '/i/24577/api/settings' && !url.search) {
+                    ledger.push('settings:start'); settingsEntered();
+                    return settings;
+                }
+                if (url.pathname === '/i/24577/api/messages' && url.search === '?limit=3000&withSession=1') {
+                    ledger.push('messages');
+                    return Response.json({ ok: true, data: { sessionId: 'location-chat', messages: [] } });
+                }
+            }
+            unexpected.push(`${method} ${url.href}`);
+            throw new Error(`Unexpected fixture HTTP: ${method} ${url.href}`);
+        });
+        const cache = await import('../../public/js/features/idb-cache.ts');
+        t.mock.module('../../public/js/features/idb-cache.js', { namedExports: {
+            ...cache,
+            getMessageScope() { ledger.push('scope:read'); return cache.getMessageScope(); },
+        } });
+        const history = await import('../../public/js/features/message-history.ts');
+        rendering = await import('../../public/js/render.ts');
+        vs = (await import('../../public/js/virtual-scroll.ts')).getVirtualScroll();
+        await (await import('../../public/js/api.ts')).getAuthToken();
+        const oldScope = 'http://127.0.0.1/i/24576/::/work/original';
+        cache.setMessageScope(oldScope); ledger.length = 0;
+        loading = history.loadMessages();
+        await entered;
+        assert.equal(history.historyReloadInFlight(), true);
+        assert.equal(cache.getMessageScope(), oldScope, 'pending settings must not prematurely publish a new scope');
+        const scopeRead = ledger.indexOf('scope:read');
+        const capturedLocation = ledger.indexOf('location', scopeRead + 1);
+        assert.ok(scopeRead >= 0 && capturedLocation > scopeRead && capturedLocation < ledger.indexOf('settings:start'),
+            'the loader must capture location after reading the previous scope and before starting settings, not only read its outer admission key');
+        assert.equal(ledger.includes('messages'), false, 'message read must wait for settings settlement');
+        ledger.push('settings:reject'); rejectSettings(new Error('wp37 settings offline'));
+        await loading;
+        assert.equal(history.historyReloadInFlight(), false);
+        assert.equal(cache.getMessageScope(), 'http://127.0.0.1/i/24577/::/work/original',
+            'failed settings retain the working directory but use the new location, never the old instance scope');
+        assert.ok(ledger.indexOf('messages') > ledger.indexOf('settings:reject'));
+        assert.ok(warnings.some(warning => warning === '[api] /api/settings failed: wp37 settings offline'),
+            'the real asynchronous API failure path must execute');
+        assert.deepEqual(unexpected, [], 'unknown HTTP cannot be swallowed into a successful recovery');
+    } finally {
+        try {
+            rejectSettings(new Error('fixture cleanup'));
+            await loading;
+        } finally {
+            rendering?.cancelPostRender(); vs?.clear(); resetWebUiDom();
+            t.mock.restoreAll();
+            for (const [name, descriptor] of globals) {
+                if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+                else Reflect.deleteProperty(globalThis, name);
+            }
+        }
+    }
 });
 
 test('WRS-008: channel-down toast waits out micro-drops (grace period)', () => {
