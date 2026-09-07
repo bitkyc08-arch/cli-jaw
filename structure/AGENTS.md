@@ -18,6 +18,8 @@
 - When a command, API, UI, memory, or orchestration surface changes, sync the relevant doc(s) in this directory in the same change.
 - Route refactors belong in `INDEX.md`, `server_api.md`, `infra.md`, and `str_func.md`. CLI handler splits and auth helper changes belong in `commands.md`, `memory_architecture.md`, `telegram.md`, and `str_func.md`.
 
+- Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `frontend.md`.
+
 ## Current sync hotspots (2026-06)
 
 - Recent non-strict hotspots: Workbench modernization uses a one-row Activity header with Codex-style expanded rows/groups; the Workbench Settings tab is replaced by an full settings page from the command-bar gear (Meta+,), backed by Manager registry `ui.instanceSettingsOpen`. A unified settings registry separates Instance/Manager scopes and shares the standalone `dist/settings` entry with the Classic header-gear settings page; Classic uses the t3 token shell. Preserve per-page save owners, dirty guards, Preview iframe identity and independent live Requests; see `frontend.md`.

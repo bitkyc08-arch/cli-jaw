@@ -101,8 +101,8 @@ export function handleInstanceListKeyDown(event: KeyboardEvent, root: ParentNode
     if (buttons.length === 0) return;
     const ports = buttons.map(el => Number(el.dataset['instancePort']));
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const currentEl = active?.closest('[data-instance-port]');
-    const currentPort = currentEl instanceof HTMLElement ? Number(currentEl.dataset['instancePort']) : null;
+    if (!active || !buttons.includes(active) || event.target !== active) return;
+    const currentPort = Number(active.dataset['instancePort']);
     let next: number | null = null;
     if (event.key === 'ArrowDown') next = resolveAdjacentPort(ports, currentPort, 'next');
     else if (event.key === 'ArrowUp') next = resolveAdjacentPort(ports, currentPort, 'previous');

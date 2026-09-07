@@ -169,7 +169,7 @@
     font-size: 12px;
 }
 
-.manager-sidebar .instance-row-title span {
+.manager-sidebar .instance-row-title .instance-row-secondary {
     display: none;
 }
 

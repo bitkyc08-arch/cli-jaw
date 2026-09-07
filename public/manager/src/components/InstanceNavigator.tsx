@@ -47,11 +47,8 @@ export function InstanceNavigator(props: InstanceNavigatorProps) {
     return (
         <section className="instance-navigator" aria-label="Instance navigator">
             <header className="instance-navigator-header">
-                <div>
-                    <p className="eyebrow">Navigator</p>
-                    <strong>{props.active ? `:${props.active.port}` : 'No active target'}</strong>
-                </div>
-                <span>{props.hiddenCount} hidden</span>
+                <strong>Instances</strong>
+                {props.hiddenCount > 0 ? <span>{props.hiddenCount} hidden</span> : null}
                 <label className="instance-navigator-search">
                     <span className="visually-hidden">Search instances</span>
                     <input

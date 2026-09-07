@@ -90,7 +90,7 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
     for (const group of userGroups.values()) group.sort((a, b) => comparePinnedThenLabel(a, b, labelOf));
 
     const groups: DashboardInstanceGroup[] = [
-        { id: 'active', label: 'Active', instances: selected },
+        { id: 'active', label: 'Selected', instances: selected },
         { id: 'favorites', label: 'Pinned', instances: favorites },
         ...Array.from(userGroups.entries()).map(([label, group]) => ({
             id: `group-${label}`,
@@ -210,7 +210,11 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
                         jumpHint,
                     );
                 })}
-                {group.id === 'active' && visible[0]?.ok ? props.renderActiveSessionList?.(visible[0].port) : null}
+                {group.id === 'active' && visible[0]?.ok ? (
+                    <div id={`instance-sessions-${visible[0].port}`}>
+                        {props.renderActiveSessionList?.(visible[0].port)}
+                    </div>
+                ) : null}
                 {group.id === 'settled' && settledExpanded && hiddenSettled > 0 ? (
                     <button
                         type="button"

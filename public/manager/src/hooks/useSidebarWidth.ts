@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 
 export const SIDEBAR_WIDTH_STORAGE_KEY = 'jaw.sidebarWidth';
 export const SIDEBAR_WIDTH_DEFAULT = 300;
@@ -30,19 +30,31 @@ export function resolveSidebarWidth(stored: number | null, bounds: SidebarWidthB
 }
 
 export function readStoredSidebarWidth(): number | null {
-    if (typeof localStorage === 'undefined') return null;
-    const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
-    if (raw == null || raw === '') return null;
-    const n = Number(raw);
-    return Number.isFinite(n) ? n : null;
+    try {
+        if (typeof localStorage === 'undefined') return null;
+        const raw = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+        if (raw == null || raw.trim() === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+    } catch {
+        return null;
+    }
 }
 
 export function writeStoredSidebarWidth(width: number): void {
-    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+    try {
+        localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+    } catch {
+        // Storage can be unavailable; keep the in-memory preference usable.
+    }
 }
 
 export function clearStoredSidebarWidth(): void {
-    localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    try {
+        localStorage.removeItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    } catch {
+        // Reset still applies in memory when storage is unavailable.
+    }
 }
 
 function subscribeViewport(onStoreChange: () => void): () => void {
@@ -61,28 +73,29 @@ export function useSidebarWidth(args: { rightPanelOpen: boolean; rightPanelWidth
         rightPanelOpen: args.rightPanelOpen,
         rightPanelWidth: args.rightPanelWidth,
     };
-    const [width, setWidth] = useState(() => resolveSidebarWidth(readStoredSidebarWidth(), bounds));
-
-    useEffect(() => {
-        setWidth(current => clampSidebarWidth(current, bounds));
-    }, [bounds.viewportWidth, bounds.rightPanelOpen, bounds.rightPanelWidth]);
+    const [preferredWidth, setPreferredWidth] = useState(() =>
+        Math.max(SIDEBAR_WIDTH_MIN, readStoredSidebarWidth() ?? SIDEBAR_WIDTH_DEFAULT));
+    const preferredWidthRef = useRef(preferredWidth);
+    const width = clampSidebarWidth(preferredWidth, bounds);
 
     const addDelta = useCallback((delta: number) => {
-        setWidth(current => clampSidebarWidth(current + delta, bounds));
+        // Begin at the displayed width, even while space temporarily clamps it.
+        const displayed = clampSidebarWidth(preferredWidthRef.current, bounds);
+        const next = clampSidebarWidth(displayed + delta, bounds);
+        preferredWidthRef.current = next;
+        setPreferredWidth(next);
     }, [bounds.viewportWidth, bounds.rightPanelOpen, bounds.rightPanelWidth]);
 
     const persist = useCallback(() => {
-        setWidth(current => {
-            const next = clampSidebarWidth(current, bounds);
-            writeStoredSidebarWidth(next);
-            return next;
-        });
-    }, [bounds.viewportWidth, bounds.rightPanelOpen, bounds.rightPanelWidth]);
+        // onDelta and onEnd can run in one event before React renders again.
+        writeStoredSidebarWidth(preferredWidthRef.current);
+    }, []);
 
     const reset = useCallback(() => {
         clearStoredSidebarWidth();
-        setWidth(resolveSidebarWidth(null, bounds));
-    }, [bounds.viewportWidth, bounds.rightPanelOpen, bounds.rightPanelWidth]);
+        preferredWidthRef.current = SIDEBAR_WIDTH_DEFAULT;
+        setPreferredWidth(SIDEBAR_WIDTH_DEFAULT);
+    }, []);
 
     return { width, addDelta, persist, reset, viewportWidth };
 }

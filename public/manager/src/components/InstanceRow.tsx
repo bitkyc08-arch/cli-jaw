@@ -133,96 +133,95 @@ export function InstanceRow(props: InstanceRowProps) {
             title={composeInstanceRowTitle(props.instance)}
             aria-current={props.selected ? 'true' : undefined}
         >
-            <button
-                className="instance-row-select"
-                type="button"
-                data-instance-port={props.instance.port}
-                aria-pressed={props.selected}
-                onClick={() => {
-                    props.onSelect(props.instance);
-                }}
-            >
-                <div className="instance-row-main">
-                    <span className={dotClass} aria-label={props.instance.status} />
-                    <div className="instance-row-title">
-                        {!hideStatusLine ? (
-                            <div className="instance-row-status-line" data-status={rowStatus}>
-                                <span className={`instance-row-status-pill is-${rowStatus} health-${props.instance.status}`}>
-                                    {statusLabel}
-                                </span>
-                                {rowStatus === 'working' ? <WorkingDuration startedAtMs={startedAtRef.current} /> : null}
-                            </div>
-                        ) : null}
-                        <div className="instance-row-title-line">
-                            <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
-                            {props.activityUnreadCount ? (
-                                <span className="instance-unread-badge" aria-label={`${props.activityUnreadCount} unread activity`}>
-                                    ({props.activityUnreadCount > 99 ? '99+' : props.activityUnreadCount})
+            <div className="instance-row-body">
+                <button
+                    className="instance-row-select"
+                    type="button"
+                    data-instance-port={props.instance.port}
+                    aria-pressed={props.selected}
+                    onClick={() => {
+                        props.onSelect(props.instance);
+                    }}
+                >
+                    <span className="instance-row-main">
+                        <span className={dotClass} aria-label={props.instance.status} />
+                        <span className="instance-row-title">
+                            {!hideStatusLine ? (
+                                <span className="instance-row-status-line" data-status={rowStatus}>
+                                    <span className={`instance-row-status-pill is-${rowStatus} health-${props.instance.status}`}>
+                                        {statusLabel}
+                                    </span>
+                                    {rowStatus === 'working' ? <WorkingDuration startedAtMs={startedAtRef.current} /> : null}
                                 </span>
                             ) : null}
-                        </div>
-                        {transitionLabel && <span><em className="instance-row-transition">{transitionLabel}</em></span>}
-                    </div>
-                    <div className="instance-row-quick" onClick={stopAction}>
-                        {props.priority === 'active' && props.instance.ok && (props.sessionCount ?? 0) >= 1 && props.onToggleSessions ? (
-                            // Same nested-interactive debt as the stop/open
-                            // controls beside it (audit Med#2): aria-expanded +
-                            // label only, no aria-controls, restructure tracked
-                            // as a follow-up unit.
-                            <button
-                                type="button"
-                                className="quick-btn action-sessions"
-                                aria-expanded={props.sessionsOpen === true}
-                                aria-label={`Sessions (${props.sessionCount})`}
-                                title={`Sessions (${props.sessionCount})`}
-                                onClick={(event) => {
-                                    stopAction(event);
-                                    props.onToggleSessions?.(props.instance.port);
-                                }}
-                            >
-                                <ChevronIcon open={props.sessionsOpen === true} />
-                            </button>
-                        ) : null}
+                            <span className="instance-row-title-line">
+                                <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
+                                {props.activityUnreadCount ? (
+                                    <span className="instance-unread-badge" aria-label={`${props.activityUnreadCount} unread activity`}>
+                                        ({props.activityUnreadCount > 99 ? '99+' : props.activityUnreadCount})
+                                    </span>
+                                ) : null}
+                            </span>
+                            {transitionLabel && <span className="instance-row-secondary"><em className="instance-row-transition">{transitionLabel}</em></span>}
+                        </span>
+                    </span>
+                    <span className="instance-row-meta">
+                        {props.priority !== 'active' && props.showLatestActivityTitle !== false && props.latestActivityTitle && <span className="instance-row-activity-title">{props.latestActivityTitle}</span>}
+                        {props.showRuntimeLine !== false && <span className="instance-row-runtime">{props.instance.currentCli || 'cli n/a'} / {props.instance.currentModel || 'model n/a'}</span>}
+                        {props.priority !== 'active' && <span className="instance-row-version">v{props.instance.version || 'n/a'} · {props.uptime}</span>}
+                        {props.priority !== 'active' && <span className="instance-row-reason">{new Date(props.instance.lastCheckedAt).toLocaleTimeString()} · {reason}</span>}
+                    </span>
+                </button>
+                <div className="instance-row-quick" onClick={stopAction}>
+                    {props.priority === 'active' && props.instance.ok && (props.sessionCount ?? 0) >= 1 && props.onToggleSessions ? (
                         <button
                             type="button"
-                            className="quick-btn action-stop"
+                            className="quick-btn action-sessions"
+                            aria-controls={`instance-sessions-${props.instance.port}`}
+                            aria-expanded={props.sessionsOpen === true}
+                            aria-label={`Sessions (${props.sessionCount})`}
+                            title={`Sessions (${props.sessionCount})`}
                             onClick={(event) => {
                                 stopAction(event);
-                                props.onLifecycle('stop', props.instance);
+                                props.onToggleSessions?.(props.instance.port);
                             }}
-                            disabled={!lifecycle?.canStop || props.busy}
-                            title="Stop"
-                            aria-label="Stop"
                         >
-                            <StopIcon />
+                            <ChevronIcon open={props.sessionsOpen === true} />
                         </button>
-                        <a
-                            className={`quick-btn action-open${!props.instance.ok ? ' is-disabled' : ''}`}
-                            href={props.instance.ok ? props.instance.url : undefined}
-                            target={props.instance.ok ? '_blank' : undefined}
-                            rel={props.instance.ok ? 'noreferrer' : undefined}
-                            title="Open in new tab"
-                            aria-label="Open"
-                            aria-disabled={!props.instance.ok || undefined}
-                            tabIndex={props.instance.ok ? undefined : -1}
-                            onClick={(event) => {
-                                if (!props.instance.ok) { event.preventDefault(); return; }
-                                stopAction(event);
-                                props.onMarkActivitySeen(props.instance.port);
-                            }}
-                        >
-                            <OpenIcon />
-                        </a>
-                        <span className="port">:{props.instance.port}</span>
-                    </div>
+                    ) : null}
+                    <button
+                        type="button"
+                        className="quick-btn action-stop"
+                        onClick={(event) => {
+                            stopAction(event);
+                            props.onLifecycle('stop', props.instance);
+                        }}
+                        disabled={!lifecycle?.canStop || props.busy}
+                        title="Stop"
+                        aria-label="Stop"
+                    >
+                        <StopIcon />
+                    </button>
+                    <a
+                        className={`quick-btn action-open${!props.instance.ok ? ' is-disabled' : ''}`}
+                        href={props.instance.ok ? props.instance.url : undefined}
+                        target={props.instance.ok ? '_blank' : undefined}
+                        rel={props.instance.ok ? 'noreferrer' : undefined}
+                        title="Open in new tab"
+                        aria-label="Open"
+                        aria-disabled={!props.instance.ok || undefined}
+                        tabIndex={props.instance.ok ? undefined : -1}
+                        onClick={(event) => {
+                            if (!props.instance.ok) { event.preventDefault(); return; }
+                            stopAction(event);
+                            props.onMarkActivitySeen(props.instance.port);
+                        }}
+                    >
+                        <OpenIcon />
+                    </a>
+                    <span className="port">:{props.instance.port}</span>
                 </div>
-                <div className="instance-row-meta">
-                    {props.priority !== 'active' && props.showLatestActivityTitle !== false && props.latestActivityTitle && <span className="instance-row-activity-title">{props.latestActivityTitle}</span>}
-                    {props.showRuntimeLine !== false && <span className="instance-row-runtime">{props.instance.currentCli || 'cli n/a'} / {props.instance.currentModel || 'model n/a'}</span>}
-                    {props.priority !== 'active' && <span className="instance-row-version">v{props.instance.version || 'n/a'} · {props.uptime}</span>}
-                    {props.priority !== 'active' && <span className="instance-row-reason">{new Date(props.instance.lastCheckedAt).toLocaleTimeString()} · {reason}</span>}
-                </div>
-            </button>
+            </div>
             {props.showInlineLabelEditor !== false && editing ? (
                 <form className="instance-label-edit-form" onSubmit={(event) => void submitLabel(event)} onClick={stopAction}>
                     <input
