@@ -144,10 +144,19 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
         if (!vs.active && !isStreamingPlaceholder && container) {
             const msgCount = container.querySelectorAll('.msg').length;
             if (msgCount >= VS_THRESHOLD) {
-                container.querySelectorAll('.msg').forEach(el => {
-                    if (el.classList.contains('msg-agent')) normalizeAgentToolBlocks(el as HTMLElement);
-                    vs.addItem(generateId(), el.outerHTML);
-                });
+                // A server event can create the live row before the user's echo.
+                // Bootstrap only settled history: keep the exact owned live DOM
+                // and its stream/Activity references outside VS until finalization.
+                const live = state.currentAgentDiv?.parentElement === container ? state.currentAgentDiv : null;
+                live?.remove();
+                try {
+                    container.querySelectorAll('.msg').forEach(el => {
+                        if (el.classList.contains('msg-agent')) normalizeAgentToolBlocks(el as HTMLElement);
+                        vs.addItem(generateId(), el.outerHTML);
+                    });
+                } finally {
+                    if (live) container.appendChild(live);
+                }
                 vs.onPostRender = (viewport: HTMLElement) => {
                     activateWidgets(viewport);
                     hydrateElicitationBlocks(viewport);

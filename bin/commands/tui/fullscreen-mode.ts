@@ -23,8 +23,15 @@ import type { TuiContext } from './types.js';
 import { c, getRows, ESC_WAIT_MS } from './types.js';
 import { handleKeyInput, flushPendingEscape } from './input-handler.js';
 import { handleWsMessage } from './ws-handler.js';
-import { redrawInputWithAutocomplete } from './overlays.js';
+import { redrawInputWithAutocomplete, dismissOverlay, closeAutocompleteForCtx } from './overlays.js';
 import { rebuildFooter } from './renderer.js';
+import { renderActivityAnswer } from '../../../src/cli/tui/activity-answer.js';
+import { wrapActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
+import { renderActivityItem, toggleLatestActivity } from '../../../src/cli/tui/activity.js';
+import { presentationMode } from '../../../src/shared/presentation.js';
+import { renderActivityHistory } from '../../../src/cli/tui/activity-history.js';
+import { handleActivityHistoryKey, routeActivityHistoryInput } from './activity-history.js';
+import { restoreActiveActivity, releaseCommittedActivity, invalidateActivityContext } from './activity-replay.js';
 
 const LEADING_TOOL_GLYPH = /^\s*(?:[\p{Extended_Pictographic}\u2600-\u27bf]\ufe0f?)\s+/u;
 const READABLE_TEXT = '\x1b[97m';
@@ -63,12 +70,23 @@ function renderUserBlock(item: Extract<TranscriptItem, { type: 'user' }>, width:
 }
 
 export function renderTranscriptItem(item: TranscriptItem, width: number): string[] {
+    if ((item.type === 'assistant' || item.type === 'thinking') && item.activityPreviewKey) {
+        if (item.activityPreviewSettled) return [];
+        const rows = wrapActivityTerminalText(item.text, width);
+        const label = item.type === 'thinking' ? 'Provisional reasoning' : 'Provisional output';
+        return [...wrapActivityTerminalText(label, width),
+            ...(rows.length > 12 ? wrapActivityTerminalText('Earlier provisional output omitted.', width) : []), ...rows.slice(-12)];
+    }
     const gutter = '  ';
     const w = Math.max(20, width - gutter.length);
     switch (item.type) {
+        case 'activity': return renderActivityItem(item, width);
         case 'user':
             return renderUserBlock(item, width, gutter);
         case 'assistant': {
+            if (item.activityKey) {
+                return renderActivityAnswer(item, width);
+            }
             const agentLabel = item.agentId ? `${c.dim}[${item.agentId}]${c.reset} ` : '';
             if (item.streaming && !item.text) {
                 return [`${gutter}${agentLabel}${c.cyan}▍${c.reset}`];
@@ -162,6 +180,8 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
 export function computeStablePrefixIndex(items: TranscriptItem[]): number {
     for (let i = 0; i < items.length; i++) {
         const item = items[i]!;
+        if ((item.type === 'activity' || item.type === 'assistant') && item.answerReadState === 'pending') return i;
+        if (item.type === 'activity' && !item.terminalStatus && !item.retired) return i;
         if (item.type === 'assistant' && item.streaming) return i;
         if (item.type === 'thinking' && item.streaming) return i;
         if (item.type === 'tool' && item.status === 'running') return i;
@@ -186,7 +206,7 @@ function currentRegions(ctx: TuiContext): Regions {
 
 function overlayBlocksScroll(ctx: TuiContext): boolean {
     const ov = ctx.store.overlay;
-    return ov.helpOpen || ov.paletteOpen || ov.selector.open || ov.bgtaskOpen || ov.settingsOpen;
+    return ov.helpOpen || ov.paletteOpen || ov.selector.open || ov.bgtaskOpen || ov.settingsOpen || ov.activityHistory.open;
 }
 
 function isMouseTrackingEnabled(ctx: TuiContext): boolean {
@@ -266,6 +286,7 @@ function renderWelcomePrelude(ctx: TuiContext, cols: number): string[] {
 }
 
 function renderChatRegion(ctx: TuiContext, viewport: Viewport, regions: Regions, cols: number, liveRows: string[] = []): string[] {
+    if (ctx.store.overlay.activityHistory.open) return renderActivityHistory(ctx.store.overlay.activityHistory, cols, regions.transcript.height);
     if (ctx.store.overlay.settingsOpen) {
         return composeSettingsScreenLines({
             settings: ctx.settingsSnapshot,
@@ -295,7 +316,9 @@ function renderChatRegion(ctx: TuiContext, viewport: Viewport, regions: Regions,
 }
 
 function renderHelpLine(cols: number): string {
-    return clipTextToCols(`${c.gray}? for shortcuts · /help · /model · /settings${c.reset}`, cols);
+    const help = cols < 30 ? 'F6 · ? shortcuts' : cols < 45 ? 'F6 history · ? shortcuts · Ctrl+O'
+        : 'F6 history · ? shortcuts · Ctrl+O details · /help · /model · /settings';
+    return clipTextToCols(`${c.gray}${help}${c.reset}`, cols);
 }
 
 function expandFrameRows(rows: string[], height: number): string[] {
@@ -304,6 +327,23 @@ function expandFrameRows(rows: string[], height: number): string[] {
     const out = [...rows];
     out.splice(idx, 1, ...blankLines(height - (rows.length - 1)));
     return out;
+}
+
+/** Refresh cell identity/content before either native commit selection or painting. */
+export function syncTranscriptViewport(ctx: TuiContext, viewport: Viewport, height: number, cols: number): void {
+    viewport.setWidth(cols);
+    viewport.setPrelude(renderWelcomePrelude(ctx, cols));
+    const transcriptItems = ctx.store.transcript.items;
+    const presentation = presentationMode(ctx.settingsSnapshot);
+    for (let i = viewport.currentFrontier().itemIndex; i < transcriptItems.length; i++) {
+        const item = transcriptItems[i];
+        if (item?.type === 'activity' && item.presentation !== presentation) {
+            item.presentation = presentation;
+            item.revision++;
+        }
+    }
+    viewport.setItems(transcriptItems,
+        (item, width) => renderTranscriptItemWithSpacing(item, width, transcriptItems[transcriptItems.indexOf(item) - 1]), height);
 }
 
 export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
@@ -322,18 +362,12 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
     viewport.setWidth(cols);
 
     const ov = ctx.store.overlay;
-    const liveRows = ov.helpOpen || ov.paletteOpen || ov.selector.open || ov.bgtaskOpen || ov.settingsOpen
+    const liveRows = overlayBlocksScroll(ctx)
         ? []
         : renderLiveToolRows(ctx, cols, Math.min(4, Math.max(0, regions.transcript.height - 1)));
     const hasItemsForLane = ctx.store.transcript.items.length > 0;
     const transcriptHeight = Math.max(1, regions.transcript.height - liveRows.length - (hasItemsForLane ? 5 : 0));
-    viewport.setPrelude(renderWelcomePrelude(ctx, cols));
-    const transcriptItems = ctx.store.transcript.items;
-    viewport.setItems(
-        transcriptItems,
-        (item, width) => renderTranscriptItemWithSpacing(item, width, transcriptItems[transcriptItems.indexOf(item) - 1]),
-        transcriptHeight,
-    );
+    syncTranscriptViewport(ctx, viewport, transcriptHeight, cols);
 
     const chatRows = renderChatRegion(ctx, viewport, regions, cols, liveRows);
     const commandRows = slashRows
@@ -344,6 +378,7 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
     const needsOverlay = ov.helpOpen || ov.paletteOpen || ov.selector.open || ov.bgtaskOpen;
     const anchorLaunchPrelude = !needsOverlay
         && !ov.settingsOpen
+        && !ov.activityHistory.open
         && ctx.store.transcript.items.length === 0
         && viewport.hasUncommittedPreludeRows();
     const frameRows: string[] = anchorLaunchPrelude
@@ -417,7 +452,7 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
     }
 
     // Calculate cursor position for the input box
-    const showCursor = ctx.inputActive && !needsOverlay && !ov.settingsOpen && !ctx.commandRunning;
+    const showCursor = ctx.inputActive && !needsOverlay && !ov.settingsOpen && !ov.activityHistory.open && !ctx.commandRunning;
     let cursorPos: Frame['cursorPos'];
     if (showCursor) {
         cursorPos = {
@@ -440,15 +475,17 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
     const scheduler = createScheduler(() => {
         rebuildFooter(ctx);
         const regions = currentRegions(ctx);
-        const liveRows = ctx.store.overlay.helpOpen || ctx.store.overlay.paletteOpen || ctx.store.overlay.selector.open || ctx.store.overlay.bgtaskOpen || ctx.store.overlay.settingsOpen
+        const liveRows = overlayBlocksScroll(ctx)
             ? []
             : renderLiveToolRows(ctx, process.stdout.columns || 80, Math.min(4, Math.max(0, regions.transcript.height - 1)));
         const hasTranscriptItems = ctx.store.transcript.items.length > 0;
-        const overlayOpen = ctx.store.overlay.helpOpen || ctx.store.overlay.paletteOpen
-            || ctx.store.overlay.selector.open || ctx.store.overlay.bgtaskOpen
-            || ctx.store.overlay.settingsOpen;
+        const overlayOpen = overlayBlocksScroll(ctx);
         const MIN_HISTORY_LANE = 5;
         const transcriptHeight = Math.max(1, regions.transcript.height - liveRows.length - (hasTranscriptItems && !overlayOpen ? MIN_HISTORY_LANE : 0));
+
+        // Status removal and final insertion can reuse indices. Selecting a
+        // commit from last frame's cells would hide an answer never printed.
+        syncTranscriptViewport(ctx, viewport, transcriptHeight, process.stdout.columns || 80);
 
         const stablePrefixIndex = hasTranscriptItems
             ? computeStablePrefixIndex(ctx.store.transcript.items) : 0;
@@ -482,6 +519,7 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const flushed = screen.lastCommitFlushedCount();
         if (flushed > 0 && commit) {
             viewport.markCommittedFrontier(commit.frontier);
+            releaseCommittedActivity(ctx, commit.frontier.itemIndex);
         } else if (queued && screen.lastCommitDeferredByStaleRows()) {
             // Flush was deferred because the top rows still held last-frame
             // pixels (e.g. the anchor-release frame). The repaint that just
@@ -523,6 +561,9 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
 
     process.stdin.on('data', (rawKey) => {
         let incoming = rawKey as unknown as string;
+        if (routeActivityHistoryInput(ctx, incoming, token => handleKeyInput(ctx, token), {
+            columns: process.stdout.columns || 80, height: currentRegions(ctx).transcript.height,
+        })) { scheduler.request(); return; }
         const mouseTrackingEnabled = isMouseTrackingEnabled(ctx);
         if (mouseTrackingEnabled && isMouseSequence(incoming)) {
             const parsed = parseSgrMouse(incoming);
@@ -568,6 +609,12 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const regions = currentRegions(ctx);
         for (const token of tokens.flatMap(splitKeyInput)) {
             const action = classifyKeyAction(token);
+            if (action === 'activity-history' && (ctx.store.pasteCapture.active || ctx.store.pasteCapture.carry || beforeDisplay !== afterDisplay)) continue;
+            if (action === 'activity-history' && !ctx.store.overlay.activityHistory.open) {
+                dismissOverlay(ctx);
+                closeAutocompleteForCtx(ctx);
+            }
+            if (handleActivityHistoryKey(ctx, action, token, { columns: process.stdout.columns || 80, height: regions.transcript.height })) continue;
             if (action === 'ctrl-o') {
                 // Committed items' pixels are frozen in native scrollback —
                 // scope the toggle to the uncommitted tail (jawcode parity).
@@ -583,6 +630,11 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
                 // Verbose render mode: toggleToolExpansion returns false (fold
                 // toggles are commit-mode-only, jawcode 753ea63 parity), so
                 // ctrl+o falls through to the bgtask-overlay binding below.
+                if (!ctx.store.overlay.bgtaskOpen
+                    && toggleLatestActivity(ctx.store.transcript.items, viewport.currentFrontier().itemIndex)) {
+                    scheduler.request();
+                    continue;
+                }
                 if (!ctx.store.overlay.bgtaskOpen
                     && toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) {
                     scheduler.request();
@@ -641,12 +693,15 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         // region height (no live-tool/history-lane reserve) caused scroll jitter.
         scheduler.request();
     });
+    ctx.ws.onReconnect?.(() => { void restoreActiveActivity(ctx); });
+    if (!ctx.isRaw) void restoreActiveActivity(ctx);
 
     ctx.inputActive = true;
     scheduler.request();
 
     return new Promise<void>((resolve) => {
         ctx.ws.on('close', () => {
+            invalidateActivityContext(ctx);
             scheduler.dispose();
             screen.disableMouse();
             screen.exit();

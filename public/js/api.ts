@@ -17,10 +17,10 @@ interface ApiResponse<T = unknown> {
 
 // Auth token cache (fetched once from same-origin endpoint)
 let _authToken: string | null = null;
-export async function getAuthToken(): Promise<string> {
+export async function getAuthToken(signal?: AbortSignal): Promise<string> {
     if (_authToken) return _authToken;
     try {
-        const res = await fetch(`${API_BASE}/api/auth/token`);
+        const res = await fetch(`${API_BASE}/api/auth/token`, signal ? { signal } : undefined);
         if (res.ok) {
             const json = await res.json();
             _authToken = json.token || '';

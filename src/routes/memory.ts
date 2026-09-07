@@ -10,7 +10,7 @@ import * as memoryModule from '../memory/memory.js';
 import { bootstrapMemory, getMemoryStatus, getLastReflectedAt, hasSoulFile, loadSoulSummary, listMemoryFiles, reindexMemory, syncKvShadowImport } from '../memory/runtime.js';
 import { getFlushStatus } from '../agent/memory-flush-controller.js';
 import { getMigrationLockPath, hashText, safeReadFile, readMeta } from '../memory/shared.js';
-import { activeProcesses, memoryFlushCounter } from '../agent/spawn.js';
+import { hasActiveAgent, memoryFlushCounter } from '../agent/spawn.js';
 import { assertMemoryRelPath, assertFilename, safeResolveUnder } from '../security/path-guards.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 
@@ -19,7 +19,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
         const base = getMemoryStatus();
         const lockPath = getMigrationLockPath();
         const migrationLocked = fs.existsSync(lockPath);
-        const flushRunning = activeProcesses.has('memory-flush');
+        const flushRunning = hasActiveAgent('memory-flush');
         const lastReflectedAt = getLastReflectedAt();
 
         let profileFresh = true;

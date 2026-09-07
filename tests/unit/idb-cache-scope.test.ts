@@ -39,9 +39,48 @@ test('ICS-003: appendCachedMessage is not an unscoped writer', () => {
         'append writer must stamp the scope or scoped reads will never see its rows');
 });
 
-test('ICS-004: upsertMessage stays scoped', () => {
-    const block = exportedBlock('upsertMessage');
-    assert.ok(block.includes('scope: currentScope'), 'upsert writer must keep stamping the scope');
+test('ICS-004: upsertMessage captures its scope before a pending database open', async () => {
+    // Same browser-port seam as web-activity-cache-settlement; no source-shape oracle.
+    const rows: Record<string, unknown>[] = [];
+    const names = ['indexedDB', 'localStorage'] as const;
+    const originals = new Map(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
+    const values = new Map<string, string>();
+    const database = { transaction() {
+        const tx = { oncomplete: null as (() => void) | null, onerror: null as (() => void) | null,
+            objectStore: () => ({ add(row: Record<string, unknown>) {
+                rows.push(structuredClone(row));
+                queueMicrotask(() => tx.oncomplete?.());
+            } }),
+        };
+        return tx;
+    } };
+    const open = { result: database, onsuccess: null as (() => void) | null };
+    Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: { open: () => open } });
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+    } });
+    try {
+        const cache = await import('../../public/js/features/idb-cache.ts');
+        cache.setMessageScope('before-open');
+        const pending = cache.upsertMessage({ role: 'assistant', content: 'answer', timestamp: 1 });
+        const explicit = cache.upsertMessage({ role: 'assistant', content: 'explicit', timestamp: 2, scope: 'caller-captured' });
+        cache.setMessageScope('after-open');
+        assert.deepEqual(rows, [], 'the open request is still pending');
+        assert.ok(open.onsuccess);
+        open.onsuccess();
+        await Promise.all([pending, explicit]);
+        assert.deepEqual(rows.map(row => [row['content'], row['scope']]), [
+            ['answer', 'before-open'], ['explicit', 'caller-captured'],
+        ]);
+        assert.ok(rows.every(row => !Object.hasOwn(row, 'session_id')));
+    } finally {
+        for (const name of names) {
+            const descriptor = originals.get(name);
+            if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+            else Reflect.deleteProperty(globalThis, name);
+        }
+    }
 });
 
 test('ICS-005: clearCache remains the only deliberate full reset', () => {

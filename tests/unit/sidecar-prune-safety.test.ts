@@ -9,7 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -61,17 +62,43 @@ test('adding a server dependency back to the list fails the checker', () => {
     const mutated = original.replace('  "d3" "dompurify"', '  "d3" "dompurify" "node-fetch"');
     assert.notEqual(mutated, original, 'the prune list moved; this mutation no longer applies');
 
+    // The checker's CLI identity compares import.meta.url with argv[1]; macOS
+    // /var aliases must use the same canonical path as the imported module.
+    const owned = realpathSync(mkdtempSync(join(tmpdir(), 'jaw-prune-owned-')));
     try {
-        writeFileSync(bundleScript, mutated);
-        const r = runChecker();
+        mkdirSync(join(owned, 'scripts'));
+        mkdirSync(join(owned, 'src/telegram'), { recursive: true });
+        copyFileSync(checker, join(owned, 'scripts/check-sidecar-prune-safety.mjs'));
+        copyFileSync(join(projectRoot, 'src/telegram/bot.ts'), join(owned, 'src/telegram/bot.ts'));
+        // Keep the actual dependency edges needed by the historical transitive case.
+        for (const name of ['node-fetch', 'fetch-blob', 'web-streams-polyfill']) {
+            mkdirSync(join(owned, 'node_modules', name), { recursive: true });
+            copyFileSync(join(projectRoot, 'node_modules', name, 'package.json'),
+                join(owned, 'node_modules', name, 'package.json'));
+        }
+        const runOwned = () => spawnSync(process.execPath,
+            [join(owned, 'scripts/check-sidecar-prune-safety.mjs')], {
+                cwd: owned, encoding: 'utf8', timeout: 10_000, maxBuffer: 256 * 1024,
+            });
+        writeFileSync(join(owned, 'scripts/bundle-sidecar.sh'), mutated);
+        const r = runOwned();
+        assert.equal(r.error, undefined);
         assert.notEqual(r.status, 0, 'a pruned runtime dependency must fail the checker');
         assert.match(r.stderr, /node-fetch/);
         assert.match(r.stderr, /imported directly by server source/);
+        writeFileSync(join(owned, 'scripts/bundle-sidecar.sh'), original +
+            '\nrm -rf "$SIDECAR_DIR/node_modules/web-streams-polyfill"\n');
+        const transitive = runOwned();
+        assert.equal(transitive.error, undefined);
+        assert.equal(transitive.status, 1);
+        assert.match(transitive.stderr, /web-streams-polyfill.*required transitively/);
+        writeFileSync(join(owned, 'scripts/bundle-sidecar.sh'), original);
+        assert.equal(runOwned().status, 0, 'owned control must return to passing');
     } finally {
-        writeFileSync(bundleScript, original);
+        rmSync(owned, { recursive: true, force: true });
     }
 
-    // Leave no doubt the tree was restored.
+    // The shared source was never a mutation target.
     assert.equal(readFileSync(bundleScript, 'utf8'), original);
     assert.equal(runChecker().status, 0, 'the checker did not return to passing');
 });

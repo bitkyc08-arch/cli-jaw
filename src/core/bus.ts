@@ -55,6 +55,15 @@ export function inferTopic(type: string): EventTopic {
 }
 
 export function broadcast(type: string, data: Record<string, any>, audience: 'public' | 'internal' = 'public') {
+    // Canonical presentation never feeds collectors, ACKs or messaging. Require
+    // the producer's original identity before any ambient-scope fallback.
+    if (type === 'agent_runtime' || type === 'agent_runtime_gap') {
+        if (audience === 'public' && ['runId', 'sessionId', 'scope'].every(key =>
+            typeof data[key] === 'string' && data[key].trim().length > 0)) {
+            ssePublish('agent', type, data);
+        }
+        return;
+    }
     const captured = currentSessionScope();
     const scopedData = captured && settings["multiSession"]?.enabled === true
         ? { ...data, scope: data["scope"] ?? captured.scope, sessionId: data["sessionId"] ?? captured.chatSessionId }

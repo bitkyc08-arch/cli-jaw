@@ -33,6 +33,8 @@
     <link rel="stylesheet" href="/css/variables.css">
     <link rel="stylesheet" href="/css/layout.css">
     <link rel="stylesheet" href="/css/chat.css">
+    <link rel="stylesheet" href="/css/native-requests.css">
+    <link rel="stylesheet" href="/css/activity.css">
     <link rel="stylesheet" href="/css/chat-search.css">
     <link rel="stylesheet" href="/css/orc-state.css">
     <link rel="stylesheet" href="/css/workflow-cockpit.css">
@@ -344,7 +346,7 @@
                         data-i18n-aria="help.permissions.aria" aria-label="권한 도움말">?</button>
                 </label>
                 <div class="perm-toggle">
-                    <span class="perm-btn active perm-auto" ><span data-icon="exec"></span> Auto</span>
+                    <span class="perm-btn" id="configuredPerm"><span data-icon="exec"></span> <span id="configuredPermText">Configured policy: Not provided</span></span>
                 </div>
             </div>
 

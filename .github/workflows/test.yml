@@ -310,7 +310,7 @@ jobs:
         run: node scripts/ensure-native-modules.cjs
 
       - name: Run Windows-relevant unit tests
-        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/windows-service-esm.test.ts tests/unit/service-windows-branch.test.ts tests/unit/windows-service-lifecycle-honesty.test.ts tests/unit/windows-installer-shims.test.ts tests/unit/windows-spawn-primitives.test.ts tests/unit/manager-browser-open.test.ts tests/unit/eaddrinuse-diagnostics-contract.test.ts tests/unit/tui-env-flags.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/service-lifecycle-cli.test.ts
+        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/windows-service-esm.test.ts tests/unit/service-windows-branch.test.ts tests/unit/windows-service-lifecycle-honesty.test.ts tests/unit/windows-installer-shims.test.ts tests/unit/windows-spawn-primitives.test.ts tests/unit/manager-browser-open.test.ts tests/unit/eaddrinuse-diagnostics-contract.test.ts tests/unit/tui-env-flags.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/service-lifecycle-cli.test.ts tests/unit/claude-sdk-windows-launch.test.ts tests/unit/claude-sdk-session.test.ts tests/unit/claude-sdk-control.test.ts tests/unit/claude-sdk-core-hardening.test.ts tests/unit/claude-sdk-deferred-core.test.ts
 
   # The check name is the job `name:` below and is load-bearing: the branch
   # ruleset and the publish gate both match on the literal string

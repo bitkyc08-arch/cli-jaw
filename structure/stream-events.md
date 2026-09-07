@@ -13,6 +13,8 @@ aliases: [CLI Stream Event Reference, stream events, SSE event channel, NDJSON p
 
 ## 1. 전체 흐름
 
+Print providers also feed the canonical journal through accepted parser hooks and `runtime/print-activity.ts`. This observer does not replace `agent_output`, `agent_tool` or lifecycle-selected `agent_done`. Unknown text remains unknown; only explicit provider phase tags or the lifecycle's application-final establish their respective meanings. Synthetic narration/thought cards are not observed twice. Trace failure produces degradation without another send/inference. Exact-pointer tool recovery and `merge-tool-log.ts` converge terminal details; only print opts into explicit terminal-to-terminal updates. Native terminal defaults and messaging listeners remain unchanged. See `runtime-integration.md` for storage and omission semantics.
+
 ```text
 CLI spawn / ACP session
   → raw stdout/stderr lines
@@ -77,6 +79,15 @@ SSE behavior:
 
 ### Canonical runtime side channel
 
+Classic history catch-up uses fixed-through HTTP pages and a per-run replay barrier;
+unrelated live runs continue rendering. Restore keeps stored scope separate from
+current live admission. Snapshot revision fencing prevents an older A read from
+rehydrating over newer live B. Saved MESSAGE owns final text; recovery metadata is
+local UI state, never a fabricated stream terminal. SSE outage state stays distinct
+from successful manual reads. Historical requests remain non-actionable.
+
+Grok native main supplies the passive usage mapper through the existing runtime-session hook. It accepts only the original prompt response's aggregate `_meta.usage`; cached-read tokens are reported separately, missing counts stay absent and invalid optional counters suppress only telemetry. It does not infer cost or substitute top-level last-call totals. Core tool/message projection and final selection remain independent. Optional Grok completion notifications cannot emit a terminal or settle a cancellation; unsupported executable extensions are refused.
+
 Cursor native main sends tool/message/reasoning previews through the same canonical emitter, never provisional `agent_output`. Its raw authoritative result is claimed before application persistence; `onRuntimeEnd` finalizes the captured turn after output policy/stop precedence. A private `SpawnLifecycle.onActivity` identity callback connects owned native I/O to its collector independently of journal success. It carries no text, is not an SSE/messaging event, cannot refresh another request or a completed collector, and retains explicit mention-watch scope/chat ownership with multi-session off.
 
 Cursor cancel-reprompt keeps that same logical run/turn identity while native prompt attempts change. Intermediate cancellation drains old updates and callbacks without emitting another logical `turn-end` or assistant MESSAGE. The existing `steer_started` receipt reports `mode: cancel-reprompt` and `localDispatch: true`; it is a local-write fact, not a model ACK. User input is committed once before the final lifecycle, with current main/canonical ownership rechecked. No-start may queue, fatal failure does not. Input context is application-reinjected and bounded; anonymous frames after the next attempt starts still rely on ACP v1 ordering.
@@ -87,11 +98,25 @@ Pi RPC also feeds this channel: prompt-owned raw callbacks provide tool start/up
 
 Codex app-server's accepted owner-scoped notifications also feed `src/agent/runtime/codex-projection.ts`. Bounded/redacted snapshots are stored as immutable `source=runtime` trace rows before `agent_runtime` is published directly on the SSE agent topic. This side channel deliberately bypasses `addBroadcastListener`, so it does not send Slack/Telegram/Discord progress messages. `agent_runtime_gap` marks the first projection failure and stops further canonical writes in that run; legacy lifecycle delivery remains independent. TUI already uses SSE through its channel adapter; no new WebSocket server path is required.
 
-The version1 envelope carries jaw `sessionId`, routing `scope`, `runId`, logical `turnId`, committed noncontiguous `seq`, and an allowlisted body. Provider IDs are private. Finality comes from lifecycle, not the last tool/text event. Optional native compatibility fields `runtimeFinality: present|absent` and `runtimeStatus: done|error|stopped` retain model-final meaning without broadcasting `runtimeOutcome` or `partialText`. Empty native terminals still perform web/TUI cleanup, but cannot fall back to streamed previews. Canonical Activity rendering/preferences and journal history reads are separate follow-on slices.
+The version1 envelope carries jaw `sessionId`, routing `scope`, `runId`, logical `turnId`, committed noncontiguous `seq`, and an allowlisted body. Provider IDs are private. Finality comes from lifecycle, not the last tool/text event. Optional native compatibility fields `runtimeFinality: present|absent` and `runtimeStatus: done|error|stopped` retain model-final meaning without broadcasting `runtimeOutcome` or `partialText`. Empty native terminals still perform web/TUI cleanup, but cannot fall back to streamed previews.
+
+Classic's live Activity dispatcher admits against the existing snapshot bridge's captured session/scope, with independently suspended stream admission. Pre-admission runtime events and projection-gap notices share a256-entry/1MiB queue; gaps retain their original identity. The bridge's live non-replayed terminal schedules its existing request GET to recover a missed settlement notice, never a POST. Closed Activity does not hide live decision controls.
+
+The journal's canonical terminal is redacted; a later owned public native-present or print answer can correct the same rendered/cache row without repeating lifecycle or notification. Native-absent diagnostics remain separate from that answer. Missing journal frames never disable compatibility final delivery. Same-turn native-input and same-session cancel-reprompt steer receipts do not terminate the current Activity; JWC's pre-acceptance receipt remains pre-acceptance despite its mechanism label. Cold journal hydration and TUI display are separate from this Classic live consumer.
+
+Owner-bound `activity-journal.ts` now persists immutable canonical events before SSE publication. Internal append is allowed without public replay. Storage/budget loss stops canonical append and remains visible on bounded history reads; finals and interrupted salvage stay independent. Runtime/gap broadcasts bypass all messaging listeners and require original nonempty run/session/scope before ambient-scope stamping. Discovery/replay use explicit-session trace routes and fixed sparse high-water cursors; no old event can re-open a live decision. Private control metadata and whole-prefix retention are documented in `runtime-integration.md`.
 
 `src/core/bus.ts`의 `broadcast(type, data, audience = 'public')`가 단일 fan-out 지점이다. Current server의 public Web delivery는 SSE-only이며, `src/routes/events.ts`의 `formatSse()`가 `{ ...entry.data, topic, event }`를 `data:` JSON payload로 쓴다. 내부 listener(`addBroadcastListener`)는 public/internal 여부와 무관하게 호출된다. Legacy WebSocket payload shape `{ type, ...payload }`는 client/TUI fallback이 pre-X-01 server에 붙을 때만 의미가 있다.
 
 ### `broadcast()` public events
+
+Interactive TUI consumes the same canonical side channel with snapshot-owned
+identity. Unknown foreign compatibility frames are rejected before legacy input/
+clock/IDE mutation. Canonical terminal status does not promote journal text into
+an answer: the exact chat/run MESSAGE read refines an admitted compatibility
+receipt, including missing-journal runs. Snapshot-owned newer runs retain lifecycle
+ownership even without a canonical model. F6 records are read-only; inspecting an
+approval never answers it. Raw pipe retains existing NDJSON/agent_done termination.
 
 아래 표는 2026-07-06 code read 기준 `broadcast(type, data)` 또는 `broadcast(..., 'public')`로 public SSE bus에 들어갈 수 있는 event inventory다. Hard count는 Phase 2 generated hook으로 대체 예정이라 여기서는 수동 숫자를 고정하지 않는다.
 
@@ -179,6 +204,12 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 
 현재 Web UI는 `public/js/event-channel.ts`를 통해 SSE payload를 받고, topic/event subscription을 `public/js/ws.ts`의 기존 handler path로 연결한다. legacy WebSocket fallback도 같은 handler set을 사용하므로 UI event 처리 코드는 transport와 분리되어 있다.
 
+An opened channel's disconnect clears the current tool presentation synchronously
+inside `handleChannelDown`, using the existing UI import. It must not schedule an
+unowned import callback that can later clear a restored/new turn. Initial
+never-open failure still takes the separate unavailable/fallback path; reconnect
+hydration remains owned by `snapshotReady`, and the disconnect-toast grace is unchanged.
+
 ### 백엔드 emit은 있으나 Web UI 직접 분기는 없는 이벤트
 
 | Type | 현재 처리 경로 |
@@ -196,6 +227,12 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 ---
 
 ## 3. Claude Code CLI
+
+### Internal native SDK projection
+
+Native SDK objects are normalized once by `runtime/claude-sdk-events.ts`; they do not pass through the print parser. Text deltas and completed block snapshots replace the same canonical message item. A successful result alone supplies final text; missing/null stays absent and explicit empty remains empty. Parent partial text is retained independently for error/Stop, never inferred from tool output, reasoning or child narration. Provider plaintext reasoning has separate items; signatures and encrypted payloads are not decoded or published. Tool-input JSON is parsed only after bounded completion and sanitized before preview clipping. Existing RuntimeProjection owns item IDs, committed trace sequence and one terminal; incomplete previews do not authorize another inference or successful final. Native Claude main/workers defer final publication until shared-host claim and lifecycle completion. Foreground children retain parentItemId without becoming parent finals; completed child ID history survives until retirement while permission eligibility ends. Full visual Activity remains a separate rollout. External messaging retains its existing final/ACK/queue owners.
+
+`agent_runtime_requests_changed` is a transient SSE-only hint, not a canonical runtime event or journal row. Its payload is `{version:1,sessionId,scope}` where scope is server-resolved presentation delivery scope. Live GET entries and POST replies retain their original execution scope and other captured IDs. The request panel accepts same-chat live entries, distinguishes stream health from manual REST freshness and never replays a POST. Initial SSE-unavailable invalidates native form freshness even if legacy WebSocket fallback never opens; only SSE-open restores native stream health. Neither the hint nor a historical request display authorizes an operation.
 
 호출 플래그:
 

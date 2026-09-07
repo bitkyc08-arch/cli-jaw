@@ -294,6 +294,7 @@ test.mock.module('../../src/agent/runtime-pool.js', {
         acquirePiRuntime: async () => forbiddenProviderAcquire('Pi'),
         acquireCursorRuntime: async () => forbiddenProviderAcquire('Cursor'),
         acquireGrokRuntime: async () => forbiddenProviderAcquire('Grok'),
+        acquireClaudeRuntime: async () => forbiddenProviderAcquire('Claude'),
     },
 });
 
@@ -340,6 +341,7 @@ test.mock.module('../../src/trace/store.js', {
         appendTraceEvent: (entry: Record<string, unknown>) => { harness.traceEvents.push(entry); },
         stampTraceTool() {}, stampTraceToolEntries() {},
         updateTraceToolRow() {}, getTraceEvent: () => null, linkTraceRunToMessage() {},
+        getTraceToolEntry() { throw new Error('unexpected Claude tool lookup in Codex multiplex fixture'); },
         createTraceId: () => 'tr_multiplexfixture0001',
         startTraceRun: () => 'tr_multiplexfixture0001',
         finalizeTraceRun: (runId: string | null | undefined, status: string) => {

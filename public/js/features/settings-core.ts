@@ -17,6 +17,7 @@ import { providerIcon, providerLabel } from '../provider-icons.js';
 import { postPreviewInvalidate } from '../preview-parent-origin.js';
 import { formatProjectLabel } from './project-label.js';
 import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from './project-git-status.js';
+import { applyPresentationSettings, beginPresentationRead } from './presentation-preference.js';
 
 let activeSettingsSave: Promise<void> | null = null;
 
@@ -426,8 +427,10 @@ function syncCliProviderControl(settings: SettingsData | null, cli: string): str
 
 export async function loadSettings(): Promise<void> {
     await loadCliRegistry();
+    const presentationRead = beginPresentationRead();
     let s = await api<SettingsData>('/api/settings');
     if (!s) return;
+    applyPresentationSettings(s, presentationRead);
     s = await resolvePendingRuntimeMigration(s);
     // Runtime first, then sessions: which CLI runs is the earlier decision, and a v1
     // install has both pending at once. The second call takes the snapshot the first
@@ -537,7 +540,23 @@ export async function updateSettings(): Promise<void> {
     })());
 }
 
-export function setPerm(_p: string, save = true): void {
+function configuredPermLabel(value: unknown): string {
+    if (value === 'auto') return 'Auto';
+    if (value === 'safe') return 'Safe';
+    if (value === null || value === undefined) return 'Not provided';
+    if (Array.isArray(value) && value.every(entry => typeof entry === 'string'))
+        return `Custom (${value.length} ${value.length === 1 ? 'entry' : 'entries'})`;
+    return 'Unrecognized';
+}
+
+export function setPerm(p: unknown, save = true): void {
+    if (!save) {
+        const label = document.getElementById('configuredPermText');
+        if (label) label.textContent = `Configured policy: ${configuredPermLabel(p)}`;
+        const badge = document.getElementById('configuredPerm');
+        badge?.classList.toggle('active', p === 'auto');
+        badge?.classList.toggle('perm-auto', p === 'auto');
+    }
     if (save) apiFire('/api/settings', 'PUT', { permissions: 'auto' });
 }
 

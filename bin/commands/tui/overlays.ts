@@ -18,6 +18,7 @@ import { buildAppearanceRows, nextAppearancePatch } from '../../../src/cli/tui/s
 import { c, hrLine, getRows, type TuiContext } from './types.js';
 import { showPrompt, redrawPromptLine, rebuildFooter } from './renderer.js';
 import { refreshInfo, makeCliCommandCtx } from './api.js';
+import { closeTuiActivityHistory } from './activity-history.js';
 
 export function closeAutocompleteForCtx(ctx: TuiContext): void {
     const ac = ctx.store.autocomplete;
@@ -151,9 +152,9 @@ export async function applySettingsSelection(ctx: TuiContext): Promise<void> {
                 process.env['JAW_TUI_THEME'] = (tuiPatch as Record<string, string>)['theme'];
             }
         }
-        await refreshInfo(ctx);
+        const refreshed = await refreshInfo(ctx);
         rebuildFooter(ctx);
-        ov.settingsMessage = `Saved ${row.label}`;
+        ov.settingsMessage = refreshed ? `Saved ${row.label}` : `Saved ${row.label}; reopen settings to refresh`;
     } catch (error) {
         ov.settingsMessage = `Failed to save ${row.label}: ${error instanceof Error ? error.message : String(error)}`;
     }
@@ -244,7 +245,8 @@ export async function openBgtaskOverlay(ctx: TuiContext): Promise<void> {
 
 export function dismissOverlay(ctx: TuiContext): void {
     const ov = ctx.store.overlay;
-    if (!ov.helpOpen && !ov.paletteOpen && !ov.selector.open && !ov.bgtaskOpen && !ov.settingsOpen) return;
+    if (!ov.helpOpen && !ov.paletteOpen && !ov.selector.open && !ov.bgtaskOpen && !ov.settingsOpen && !ov.activityHistory.open) return;
+    if (ov.activityHistory.open) closeTuiActivityHistory(ctx);
     if (ctx.displayMode === 'fullscreen') {
         ov.helpOpen = false;
         ov.bgtaskOpen = false;

@@ -1,6 +1,7 @@
 // OpenCode CLI event adapter
 
 import { asCliEventRecord } from '../../types/cli-events.js';
+import { getTraceToolEntry, updateTraceToolRow } from '../../trace/store.js';
 import type { CliEventRecord } from './types.js';
 import type { SpawnContext, ToolEntry } from './types.js';
 import {
@@ -12,6 +13,51 @@ import {
     isOpencodeToolFailure,
     formatPostToolAssistantLead,
 } from './helpers.js';
+
+/** Refresh an existing OpenCode card, or consume a stale/duplicate update.
+ * Returns false only when the dispatcher must admit a new tool entry. */
+export function refreshOpenCodeTool(
+    ctx: SpawnContext,
+    agentLabel: string,
+    empTag: Record<string, unknown>,
+    toolLabel: ToolEntry,
+): boolean {
+    if (!toolLabel.stepRef) return false;
+    const index = ctx.toolLog.findIndex(t => t.stepRef === toolLabel.stepRef);
+    const pointer = ctx.toolTraceIndex?.get(toolLabel.stepRef);
+    let prior = ctx.toolLog[index];
+    if (!prior && pointer) {
+        prior = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq) ?? undefined;
+    }
+    if (prior || pointer) {
+        // OpenCode may omit running status; do not let that stale card
+        // overwrite terminal detail/icon while inheriting its old status.
+        if (['done', 'error', 'stopped'].includes(prior?.status || '')
+            && !['done', 'error', 'stopped'].includes(toolLabel.status || '')) return true;
+        const key = [toolLabel.icon, toolLabel.label, toolLabel.stepRef, toolLabel.status || ''].join(':');
+        const detail = toolLabel.detail ?? prior?.detail;
+        if (ctx.seenToolKeys?.has(key) && prior?.detail === detail) return true;
+        ctx.seenToolKeys?.add(key);
+        const refreshed: ToolEntry = { ...prior, ...toolLabel };
+        if (detail !== undefined) refreshed.detail = detail;
+        if (pointer) {
+            refreshed.traceRunId = pointer.traceRunId;
+            refreshed.traceSeq = pointer.traceSeq;
+            refreshed.detailAvailable = ctx.traceAudience !== 'internal';
+            if (ctx.traceAudience === 'internal') refreshed.rawRetentionStatus = 'internal';
+        }
+        if (index >= 0) ctx.toolLog[index] = refreshed;
+        else ctx.toolLog.push(refreshed);
+        if ((refreshed.status === 'done' || refreshed.status === 'error') && ctx.opencodePendingToolRefs) {
+            ctx.opencodePendingToolRefs = ctx.opencodePendingToolRefs.filter(ref => ref !== refreshed.stepRef);
+        }
+        syncLiveTools(ctx);
+        updateTraceToolRow(refreshed);
+        emitAgentTool(ctx, agentLabel, refreshed, empTag);
+        return true;
+    }
+    return false;
+}
 
 function flushOpenCodeStepText(
     ctx: SpawnContext,
@@ -67,13 +113,26 @@ function finalizeOpencodePendingTools(
     if (!pendingRefs.length) return;
     const failed = !!ctx.opencodeHadToolErrorInStep;
     for (const ref of pendingRefs) {
-        const existing = [...ctx.toolLog].reverse().find(
+        let existing = [...ctx.toolLog].reverse().find(
             (t: ToolEntry) => t.stepRef === ref && (!t.status || t.status === 'running')
         );
+        if (!existing) {
+            const pointer = ctx.toolTraceIndex?.get(ref);
+            if (pointer) {
+                const base = getTraceToolEntry(pointer.traceRunId, pointer.traceSeq);
+                existing = { icon: '🔧', label: 'tool', toolType: 'tool', ...base, stepRef: ref,
+                    traceRunId: pointer.traceRunId, traceSeq: pointer.traceSeq,
+                    detailAvailable: ctx.traceAudience !== 'internal',
+                    ...(ctx.traceAudience === 'internal' ? { rawRetentionStatus: 'internal' as const } : {}),
+                };
+            }
+        }
         if (!existing) continue;
+        if (existing.status && existing.status !== 'running') continue;
         existing.status = failed ? 'error' : 'done';
         existing.icon = failed ? '❌' : '✅';
         syncLiveTools(ctx);
+        updateTraceToolRow(existing);
         emitAgentTool(ctx, agentLabel, existing, empTag);
     }
 }
@@ -114,6 +173,7 @@ export function handleOpenCodeEvent(
         return;
     }
     if (evt.type === 'step_start') {
+        ctx.printActivity?.nextMessage();
         const model = evt.part?.model || evt.model;
         if (model) ctx.model = model;
         // LAST-STEP-WINS (NARRATION-BOUNDARY-01): a NEW step means the text the
@@ -139,6 +199,7 @@ export function handleOpenCodeEvent(
     if (evt.type === 'reasoning') {
         const text = String(evt.part?.text || evt.text || '').trim();
         if (text) {
+            ctx.printActivity?.reasoning(text, 'replace');
             const thinkingTool = {
                 icon: '💭',
                 label: buildPreview(text, 80) || 'thinking...',
@@ -153,6 +214,7 @@ export function handleOpenCodeEvent(
             pushTrace(ctx, `[${agentLabel}] opencode reasoning (${text.length} chars)`);
         }
     } else if (evt.type === 'text' && evt.part?.text) {
+        ctx.printActivity?.message(String(evt.part.text), 'append', 'unknown');
         if (ctx.opencodeSawToolInStep) {
             ctx.opencodePostToolText = (ctx.opencodePostToolText || '') + String(evt.part.text);
         } else {

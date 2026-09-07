@@ -224,6 +224,49 @@
     opacity: 1;
 }
 
+/* Pi's dialog owns this layer; the Memory viewer keeps its existing layout. */
+.settings-pi-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    padding: 16px;
+    background: var(--scrim-overlay);
+    color: var(--text-primary);
+}
+
+.settings-pi-modal > .settings-memory-modal-card {
+    width: min(560px, 100%);
+    margin: auto;
+    padding: 20px;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    min-width: 0;
+    flex-shrink: 0;
+}
+
+.settings-pi-modal .settings-memory-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.settings-pi-modal h3 { margin: 0; overflow-wrap: anywhere; }
+.settings-pi-modal .settings-page-form,
+.settings-pi-modal .settings-field { min-width: 0; }
+
+.settings-pi-modal .settings-field {
+    --border-subtle: var(--text-secondary);
+    --border-strong: var(--text-secondary);
+}
+.settings-pi-modal .settings-field-error { color: var(--error-text); }
+
 @media (max-width: 720px) {
     .settings-field-select,
     .settings-select-menu {

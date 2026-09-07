@@ -6,6 +6,7 @@ import {
     MAX_TOOL_LOG_RAW_INPUT_CHARS,
     MAX_TOOL_LOG_STRING_CHARS,
     parseToolLogBounded,
+    omittedCountOf,
     sanitizeToolLogForDurableStorage,
     serializeSanitizedToolLog,
 } from '../../src/shared/tool-log-sanitize.ts';
@@ -168,4 +169,37 @@ test('tool log sanitizer preserves trace pointers without preserving raw detail'
     assert.equal(parsed[0]!.rawRetentionStatus, 'spilled');
     assert.equal(parsed[0]!.isEmployee, true);
     assert.ok(!serialized!.includes(rawDetail.slice(0, 5000)));
+});
+
+test('snapshot known omissions survive partial reconstruction without double-counting overlap', () => {
+    const tools = Array.from({ length: 161 }, (_, i) => ({ icon: 'x', label: `tool-${i}`, toolType: 'tool' }));
+    for (const size of [0, 1, 159, 160, 161]) {
+        const result = sanitizeToolLogForDurableStorage(tools.slice(0, size), { knownOmitted: 2 });
+        assert.equal(omittedCountOf(result[0]), 2);
+        assert.equal(result.length, Math.min(size, 159) + 1);
+        assert.deepEqual(sanitizeToolLogForDurableStorage(result), result, 'ordinary re-sanitize keeps the recorded count');
+    }
+    const full = sanitizeToolLogForDurableStorage(tools);
+    assert.deepEqual(sanitizeToolLogForDurableStorage(tools, { knownOmitted: 2 }), full);
+    assert.equal(omittedCountOf(sanitizeToolLogForDurableStorage(full, { knownOmitted: 5 })[0]), 5);
+    assert.deepEqual(sanitizeToolLogForDurableStorage(null, { knownOmitted: 2 }), []);
+});
+
+test('known omission is opt-in and invalid values keep existing sanitizer output', () => {
+    for (const count of [0, 1, 159, 160, 161, 500]) {
+        const tools = Array.from({ length: count }, (_, i) => ({ icon: 'x', label: `tool-${i}`, detail: 'large'.repeat(1000) }));
+        const original = sanitizeToolLogForDurableStorage(tools);
+        for (const knownOmitted of [undefined, NaN, Infinity, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+            assert.deepEqual(sanitizeToolLogForDurableStorage(tools, { knownOmitted }), original);
+        }
+        const reconstructed = sanitizeToolLogForDurableStorage(tools, { knownOmitted: 12 });
+        assert.ok(reconstructed.length <= MAX_TOOL_LOG_ENTRIES);
+        assert.ok(JSON.stringify(reconstructed).length <= MAX_TOOL_LOG_JSON_CHARS);
+        assert.ok(omittedCountOf(reconstructed[0]) >= 12);
+        // Existing detail truncation notices can change on a second pass; this
+        // mode preserves count/order, not a new byte-idempotence contract.
+        const repeated = sanitizeToolLogForDurableStorage(reconstructed);
+        assert.deepEqual(repeated.map(tool => tool.label), reconstructed.map(tool => tool.label));
+        assert.ok(JSON.stringify(repeated).length <= MAX_TOOL_LOG_JSON_CHARS);
+    }
 });

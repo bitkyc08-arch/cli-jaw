@@ -69,7 +69,7 @@ function makeOverflowEntry(omitted: number): SanitizedToolLogEntry {
 /** Omitted count carried by an overflow marker from a prior sanitize pass; 0 for real entries.
  *  Live-run state re-sanitizes the same array on every append, so the marker must be
  *  absorbable or repeated passes drop every new entry (devlog 260609 doc 86). */
-function omittedCountOf(entry: unknown): number {
+export function omittedCountOf(entry: unknown): number {
     if (!entry || typeof entry !== 'object') return 0;
     const e = entry as SanitizableToolLogEntry;
     if (e.icon !== TRUNCATION_ICON) return 0;
@@ -130,8 +130,14 @@ export function sanitizeToolLogEntry(
     return sanitized;
 }
 
-export function sanitizeToolLogForDurableStorage(entries: unknown): SanitizedToolLogEntry[] {
-    if (!Array.isArray(entries) || entries.length === 0) return [];
+export function sanitizeToolLogForDurableStorage(
+    entries: unknown,
+    options: { knownOmitted?: number } = {},
+): SanitizedToolLogEntry[] {
+    if (!Array.isArray(entries)) return [];
+    const knownOmitted = Number.isSafeInteger(options.knownOmitted) && options.knownOmitted! >= 0
+        ? options.knownOmitted! : 0;
+    if (entries.length === 0 && knownOmitted === 0) return [];
     // Absorb a head overflow marker left by a prior pass so re-sanitizing an
     // append-only live log accumulates the omitted count instead of freezing
     // the list and dropping every new entry (doc 86).
@@ -141,12 +147,14 @@ export function sanitizeToolLogForDurableStorage(entries: unknown): SanitizedToo
     // Cap keeps the NEWEST entries: on navigate-back the user must see the most
     // recent tools, matching what the live SSE stream showed last.
     let dropped = 0;
-    if (priorOmitted > 0 || source.length > MAX_TOOL_LOG_ENTRIES) {
+    if (priorOmitted > 0 || knownOmitted > 0 || source.length > MAX_TOOL_LOG_ENTRIES) {
         const room = MAX_TOOL_LOG_ENTRIES - 1; // head marker takes one slot
         dropped = Math.max(0, source.length - room);
         if (dropped > 0) source = source.slice(dropped);
     }
-    const omittedTotal = priorOmitted + dropped;
+    // Reconstruction may overlap RAM history: retain its known loss without
+    // adding overlapping omission counts. Ordinary append callers still add.
+    const omittedTotal = Math.max(priorOmitted + dropped, knownOmitted);
     const normalized: SanitizableToolLogEntry[] = source.map((raw) =>
         (raw && typeof raw === 'object') ? raw as SanitizableToolLogEntry : { label: raw });
     // Allocate the shared detail budget NEWEST-first: the entry cap above keeps the

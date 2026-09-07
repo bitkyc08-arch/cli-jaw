@@ -1,8 +1,9 @@
 // Phase 2 — Model & Provider page: per-CLI rows + codex extras +
 // fallback chip list + active-overrides table with reset button.
 
-import { useCallback, useEffect, useState } from 'react';
-import type { SettingsPageProps, DirtyEntry } from '../types';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { SettingsPageProps, SettingsClient, DirtyEntry } from '../types';
+import { describeError } from '../components/error-normalize';
 import { ChipListField, NumberField } from '../fields';
 import {
     SettingsSection,
@@ -10,8 +11,9 @@ import {
     PageLoading,
     PageOffline,
     usePageSnapshot,
+    type SnapshotState,
 } from './page-shell';
-import { PerCliRow } from './components/PerCliRow';
+import { PerCliRow, type PiRegistration } from './components/PerCliRow';
 import { metaFor, normalizeCliMetaRegistry } from './components/agent/agent-meta';
 import type { CliMeta, PerCliEntry } from './components/agent/agent-meta';
 import type { PiSettingsView } from './components/pi-profile';
@@ -24,6 +26,15 @@ type ModelSnapshot = {
     pi?: PiSettingsView;
     [key: string]: unknown;
 };
+type ModelInstance = Pick<SettingsPageProps, 'client' | 'port' | 'dirty'>;
+type BoundSnapshot = { instance: ModelInstance; value: ModelSnapshot };
+const ownsModelKey = (key: string) => key === 'fallbackOrder' || key.startsWith('perCli.');
+
+function savedModelSnapshot(updated: unknown): ModelSnapshot {
+    const value = updated && typeof updated === 'object' && 'data' in updated ? updated.data : updated;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid settings response. Refresh before retrying.');
+    return value as ModelSnapshot;
+}
 
 export function orderModelCliKeys(keys: string[]): string[] {
     return [...keys].sort((a, b) => {
@@ -51,26 +62,53 @@ export function buildResetOverridesPatch(snapshot: ModelSnapshot): {
 }
 
 export default function ModelProvider({ port, client, dirty, registerSave }: SettingsPageProps) {
-    const { state, refresh, setData } = usePageSnapshot<ModelSnapshot>(client, '/api/settings');
+    const instance = useMemo<ModelInstance>(() => ({ client, port, dirty }), [client, port, dirty]);
+    const activeInstance = useRef<ModelInstance | null>(null);
+    const activeOperation = useRef<{ instance: ModelInstance; kind: 'save' | 'reset'; promise: Promise<void> } | null>(null);
+    const metadataGeneration = useRef(0);
+    // This private read adapter tags the helper's result, not the HTTP payload.
+    // It is never passed to controls or writes. Even a ready result batched with
+    // an instance change cannot be displayed as the new instance's settings.
+    const snapshotClient = useMemo<SettingsClient>(() => ({ ...client,
+        get: async <T,>(path: string, init?: RequestInit) => ({ instance,
+            value: await client.get<ModelSnapshot>(path, init) }) as T,
+    }), [client, instance]);
+    const { state: boundState, refresh, setData: setBoundData } = usePageSnapshot<BoundSnapshot>(snapshotClient, '/api/settings', [port]);
+    const state = useMemo<SnapshotState<ModelSnapshot>>(() => boundState.kind === 'ready'
+        ? boundState.data.instance === instance ? { kind: 'ready', data: boundState.data.value } : { kind: 'loading' }
+        : boundState, [boundState, instance]);
+    const setData = useCallback((value: ModelSnapshot) => setBoundData({ instance, value }), [instance, setBoundData]);
     const [perCliDraft, setPerCliDraft] = useState<Record<string, PerCliEntry>>({});
     const [piDraft, setPiDraft] = useState<PiSettingsView | undefined>(undefined);
     const [fallback, setFallback] = useState<string[]>([]);
     const [codexCtx, setCodexCtx] = useState<{ contextWindowSize?: number; contextWindowCompactLimit?: number }>({});
     const [resetting, setResetting] = useState(false);
     const [resetError, setResetError] = useState<string | null>(null);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
     const [cliMeta, setCliMeta] = useState<Record<string, CliMeta> | null>(null);
 
+    useLayoutEffect(() => {
+        activeInstance.current = instance; activeOperation.current = null; ++metadataGeneration.current;
+        setSaving(false); setResetting(false); setSaveError(null); setResetError(null); setCliMeta(null);
+        return () => { activeInstance.current = null; activeOperation.current = null; ++metadataGeneration.current; };
+    }, [instance]);
+    const canEdit = useCallback(() => activeInstance.current === instance && !activeOperation.current, [instance]);
+
     const loadCliMeta = useCallback(async () => {
+        if (activeInstance.current !== instance) return;
+        const generation = ++metadataGeneration.current;
         try {
             const response = await client.get<{ data?: unknown } | Record<string, unknown>>('/api/cli-registry');
+            if (activeInstance.current !== instance || generation !== metadataGeneration.current) return;
             const data = response && typeof response === 'object' && 'data' in response
                 ? (response as { data?: unknown }).data
                 : response;
             setCliMeta(normalizeCliMetaRegistry(data));
         } catch {
-            setCliMeta(null);
+            if (activeInstance.current === instance && generation === metadataGeneration.current) setCliMeta(null);
         }
-    }, [client]);
+    }, [client, instance]);
 
     useEffect(() => {
         void loadCliMeta();
@@ -78,10 +116,19 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
-        setPerCliDraft({ ...(state.data.perCli || {}) });
+        const nextPerCli = { ...(state.data.perCli || {}) };
+        const ownBundle = Object.fromEntries(Object.entries(dirty.saveBundle()).filter(([key]) => ownsModelKey(key)));
+        const pending = expandPatch(ownBundle)['perCli'];
+        if (pending && typeof pending === 'object' && !Array.isArray(pending)) {
+            for (const [cli, entry] of Object.entries(pending)) {
+                if (entry && typeof entry === 'object' && !Array.isArray(entry))
+                    nextPerCli[cli] = { ...nextPerCli[cli], ...entry };
+            }
+        }
+        setPerCliDraft(nextPerCli);
         setPiDraft(state.data.pi);
         setFallback([...(state.data.fallbackOrder || [])]);
-        const codex = state.data.perCli?.['codex'] || {};
+        const codex = nextPerCli['codex'] || {};
         const nextCodexCtx: typeof codexCtx = {};
         if (typeof codex.contextWindowSize === 'number') {
             nextCodexCtx.contextWindowSize = codex.contextWindowSize;
@@ -90,36 +137,61 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
             nextCodexCtx.contextWindowCompactLimit = codex.contextWindowCompactLimit;
         }
         setCodexCtx(nextCodexCtx);
-    }, [state]);
+    }, [state, dirty]);
+
+    const onPiRegistered = useCallback((next: PiRegistration) => {
+        if (activeInstance.current !== instance) return;
+        // This is completion of an already-admitted server mutation, not a new
+        // edit to admit while page input is locked. Keep newer entry identities.
+        const original = state.kind === 'ready' ? state.data.perCli?.['pi'] : undefined;
+        if (next.pi) setPiDraft(next.pi);
+        setPerCliDraft(current => ({ ...current, pi: { ...current['pi'], provider: next.provider, model: next.model } }));
+        dirty.set('perCli.pi.provider', { value: next.provider, original: original?.provider ?? 'progrok', valid: true });
+        dirty.set('perCli.pi.model', { value: next.model, original: original?.model ?? '', valid: true });
+    }, [dirty, instance, state]);
 
     useEffect(() => {
         return () => {
             for (const key of Array.from(dirty.pending.keys())) {
-                if (key === 'fallbackOrder' || key.startsWith('perCli.')) dirty.remove(key);
+                if (ownsModelKey(key)) dirty.remove(key);
             }
         };
-    }, [dirty]);
+    }, [dirty, instance]);
 
     const setEntry = useCallback(
-        (key: string, entry: DirtyEntry) => dirty.set(key, entry),
-        [dirty],
+        (key: string, entry: DirtyEntry) => { if (canEdit() && ownsModelKey(key)) dirty.set(key, entry); },
+        [dirty, canEdit],
     );
 
-    const onSave = useCallback(async () => {
-        const bundle = dirty.saveBundle();
-        if (Object.keys(bundle).length === 0) return;
+    const onSave = useCallback((): Promise<void> => {
+        if (activeInstance.current !== instance) return Promise.resolve();
+        const pending = activeOperation.current;
+        if (pending) return pending.kind === 'save' ? pending.promise
+            : Promise.reject(new Error('Wait for the active override reset before saving.'));
+        const bundle = Object.fromEntries(Object.entries(dirty.saveBundle()).filter(([key]) => ownsModelKey(key)));
+        if (Object.keys(bundle).length === 0) return Promise.resolve();
         const patch = expandPatch(bundle);
-        const updated = await client.put<ModelSnapshot>('/api/settings', patch);
-        const fresh = (updated && typeof updated === 'object' && 'data' in updated
-            ? (updated as { data: ModelSnapshot }).data
-            : updated) as ModelSnapshot;
-        dirty.clear();
-        setData(fresh);
-        setPerCliDraft({ ...(fresh.perCli || {}) });
-        setFallback([...(fresh.fallbackOrder || [])]);
-        await refresh();
-        await loadCliMeta();
-    }, [client, dirty, loadCliMeta, refresh, setData]);
+        const submitted = new Map([...dirty.pending].filter(([key]) => Object.hasOwn(bundle, key)));
+        setSaving(true); setSaveError(null);
+        const operation = { instance, kind: 'save' as const, promise: Promise.resolve() };
+        operation.promise = Promise.resolve().then(async () => {
+            if (activeInstance.current !== instance) return;
+            const updated = await client.put<ModelSnapshot>('/api/settings', patch);
+            if (activeInstance.current !== instance) return;
+            const fresh = savedModelSnapshot(updated);
+            for (const [key, entry] of submitted) if (dirty.pending.get(key) === entry) dirty.remove(key);
+            setData(fresh);
+            await refresh();
+            await loadCliMeta();
+        }).catch(error => {
+            if (activeInstance.current === instance) throw error;
+        }).finally(() => {
+            if (activeOperation.current === operation) activeOperation.current = null;
+            if (activeInstance.current === instance) setSaving(false);
+        });
+        activeOperation.current = operation;
+        return operation.promise;
+    }, [client, dirty, instance, loadCliMeta, refresh, setData]);
 
     useEffect(() => {
         if (!registerSave) return;
@@ -127,25 +199,29 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
         return () => registerSave(null);
     }, [registerSave, onSave]);
 
-    const onResetOverrides = useCallback(async () => {
-        if (state.kind !== 'ready') return;
+    const onResetOverrides = useCallback(() => {
+        if (!canEdit() || state.kind !== 'ready') return;
         if (!window.confirm('Reset all active overrides?')) return;
         setResetting(true);
         setResetError(null);
-        try {
-            const patch = buildResetOverridesPatch(state.data);
+        const patch = buildResetOverridesPatch(state.data);
+        const operation = { instance, kind: 'reset' as const, promise: Promise.resolve() };
+        operation.promise = Promise.resolve().then(async () => {
+            if (activeInstance.current !== instance) return;
             const updated = await client.put<ModelSnapshot>('/api/settings', patch);
-            const fresh = (updated && typeof updated === 'object' && 'data' in updated
-                ? (updated as { data: ModelSnapshot }).data
-                : updated) as ModelSnapshot;
+            if (activeInstance.current !== instance) return;
+            const fresh = savedModelSnapshot(updated);
             setData(fresh);
             await refresh();
-        } catch (err: unknown) {
-            setResetError(err instanceof Error ? err.message : String(err));
-        } finally {
-            setResetting(false);
-        }
-    }, [client, refresh, setData, state]);
+        }).catch((err: unknown) => {
+            if (activeInstance.current === instance) setResetError(describeError(err));
+        }).finally(() => {
+            if (activeOperation.current === operation) activeOperation.current = null;
+            if (activeInstance.current === instance) setResetting(false);
+        });
+        activeOperation.current = operation;
+        return operation.promise;
+    }, [canEdit, client, instance, refresh, setData, state]);
 
     if (state.kind === 'loading') return <PageLoading />;
     if (state.kind === 'offline') return <PageOffline port={port} />;
@@ -163,12 +239,15 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
             className="settings-page-form"
             onSubmit={(event) => {
                 event.preventDefault();
-                void onSave();
+                void onSave().catch((error: unknown) => {
+                    if (activeInstance.current === instance) setSaveError(describeError(error));
+                });
             }}
         >
+            {saveError ? <PageError message={saveError} /> : null}
             <SettingsSection
                 title="Model defaults"
-                hint="Per-CLI defaults applied when no active override is set on the Agent page."
+                hint="Per-CLI model and runtime defaults. Runtime transport applies to the next run; display and permissions stay separate."
             >
                 {cliKeys.length === 0 ? (
                     <p className="settings-empty">No CLIs registered for this instance.</p>
@@ -180,11 +259,14 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                             meta={metaFor(cli, cliMeta)}
                             original={perCliOriginal[cli] || {}}
                             value={perCliDraft[cli] || perCliOriginal[cli] || {}}
-                            setValue={(next) => setPerCliDraft({ ...perCliDraft, [cli]: next })}
+                            dirty={dirty}
+                            disabled={saving || resetting}
+                            setValue={(next) => { if (canEdit()) setPerCliDraft({ ...perCliDraft, [cli]: next }); }}
                             setEntry={setEntry}
                             client={client}
                             pi={piDraft}
-                            setPi={setPiDraft}
+                            setPi={(next) => { if (canEdit()) setPiDraft(next); }}
+                            onPiRegistered={onPiRegistered}
                         />
                     ))
                 )}
@@ -198,6 +280,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                     <NumberField
                         id="model-codex-ctx"
                         label="Context window size"
+                        disabled={saving || resetting}
                         value={
                             codexCtx.contextWindowSize
                             ?? (typeof codexOriginal.contextWindowSize === 'number'
@@ -207,6 +290,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                         min={0}
                         step={10_000}
                         onChange={(next) => {
+                            if (!canEdit()) return;
                             setCodexCtx({ ...codexCtx, contextWindowSize: next });
                             setEntry('perCli.codex.contextWindowSize', {
                                 value: next,
@@ -218,6 +302,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                     <NumberField
                         id="model-codex-compact"
                         label="Compact limit"
+                        disabled={saving || resetting}
                         value={
                             codexCtx.contextWindowCompactLimit
                             ?? (typeof codexOriginal.contextWindowCompactLimit === 'number'
@@ -227,6 +312,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                         min={0}
                         step={10_000}
                         onChange={(next) => {
+                            if (!canEdit()) return;
                             setCodexCtx({ ...codexCtx, contextWindowCompactLimit: next });
                             setEntry('perCli.codex.contextWindowCompactLimit', {
                                 value: next,
@@ -245,8 +331,10 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                 <ChipListField
                     id="model-fallbackOrder"
                     label="Fallback order"
+                    disabled={saving || resetting}
                     value={fallback}
                     onChange={(next) => {
+                        if (!canEdit()) return;
                         setFallback(next);
                         setEntry('fallbackOrder', {
                             value: next,
@@ -293,7 +381,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                         type="button"
                         className="settings-action settings-action-discard"
                         onClick={() => void onResetOverrides()}
-                        disabled={resetting || overrideRows.length === 0}
+                        disabled={saving || resetting || overrideRows.length === 0}
                     >
                         {resetting ? 'Resetting…' : 'Reset overrides'}
                     </button>

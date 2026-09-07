@@ -1,5 +1,6 @@
 ---
 created: 2026-06-15
+status: active
 tags: [cli-jaw, tui, scrollback, ghostty, architecture]
 ---
 
@@ -77,7 +78,7 @@ Logical frontier survives width reflow (unlike physical row counts).
 | Queue-gated preview | `withPreviewFrontier` applies only when `queueCommitLines` accepted the rows — refused lanes (zellij/dumb, resize) keep rows on the virtual lane |
 | `fillRows >= 2` | Sub-region requires DECSTBM minimum 2 rows |
 | `hasNativeCommit` | Ban CSI 3J after first commit (preserve scrollback) |
-| `overlayOpen` | Block commits during help/palette/settings |
+| `overlayOpen` | Block commits during help/palette/settings/F6 history |
 | `detectHistoryLaneMode` | Skip for TERM=dumb, Zellij |
 | Preview frontier | `withPreviewFrontier()` excludes committed rows from render frame |
 | Transactional mark | `markCommittedFrontier()` only after confirmed `lastCommitFlushedCount() > 0` |
@@ -93,9 +94,29 @@ Logical frontier survives width reflow (unlike physical row counts).
 ## Known Limitations
 
 - **5 fewer transcript rows**: MIN_HISTORY_LANE=5 reserves space for the history lane
-- **No streaming commits**: commits only fire when all items are stable (after full response); the growing answer stays in the live zone until the turn ends
+- **Stable prefix only**: earlier stable items may commit during streaming; unresolved Activity, pending saved-answer reads and streaming rows form a barrier
 - **Terminal compatibility**: designed for Ghostty 1.3+; unsupported terminals silently skip commits
-- **No commit during overlays**: help/palette/settings screens block commits
+- **No commit during overlays**: help/palette/settings/F6 history screens block commits
+
+## Activity and answer lifetime
+
+The scheduler refreshes viewport item identity/content before selecting a commit;
+same-index status removal/final insertion cannot reuse stale cached rows. An
+uncommitted welcome prelude must fit entirely before item rows advance the frontier.
+Queue admission is not delivery: `releaseCommittedActivity` runs only after actual
+native flush and keeps stable row/identity/digest receipts while dropping text and
+preview maps. Refused commits retain their payloads. Presentation changes and Ctrl+O
+affect only uncommitted rows; already emitted scrollback is never rewritten.
+Different saved bytes after delivered compatibility get an explicit Updated answer,
+while equal digests upgrade provenance without resurrecting released text.
+
+Coupled Activity regressions drive `computeStablePrefixIndex`, Viewport and Screen:
+TERM=dumb/Zellij refusal retains payload/frontier; accepted-but-deferred queue
+does not release; actual flush releases once; pending answer reads form barriers.
+Read-only old-scope F6 selection, live updates, presentation changes and resize keep
+the committed sentinel. Actual OS-PTY qualification separately exercises repeated
+turns, retained record/long-answer navigation and the Appearance → Legacy write.
+Terminal-model tests are not a substitute for that driven surface or font testing.
 
 ## Research
 

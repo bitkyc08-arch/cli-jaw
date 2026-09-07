@@ -14,6 +14,8 @@ aliases: [Prompt Injection Flow, CLI-JAW prompt flow, prompt pipeline]
 
 ## 전체 구조
 
+Print Activity observes accepted content before existing durable-text resets; it does not build a new prompt, infer a final, trigger another model call or change retries. Existing lifecycle selects the application-final and interrupted output policy. Generic print/legacy Copilot ACP startup failures and the existing single AGY stale-resume retry close the old observation once. Native steer, pending Claude worker cancellation and MESSAGE-before-exit settlement stay under their existing owners.
+
 ```mermaid
 graph TD
     A1["A-1.md<br/>시스템 규칙"] --> SYS["getSystemPrompt()"]
@@ -171,6 +173,15 @@ snapshot에 남는다고 명시한다.
 
 ### Mid-run 메시지 정책 (midRunPolicy)
 
+Claude native main keeps SDK input sequential: queued capability is not immediate steering. The existing `steer` policy hard-closes its query, persists interrupted partial output before the captured exit-settle barrier, and resumes with that context; explicit `followup`/`collect` uses the existing queue. No same-turn steer hook is registered. The shared host claims a deferred result once before lifecycle delivery, then publishes its captured canonical terminal. An already claimed final can remain present when a later Stop changes the lifecycle status; an unfinished partial cannot become final. Pre-acquisition Stop and setup failure establish their fallback start before compatibility completion. Stop acknowledgment is not proof of physical cleanup, and native worker/approval/image/child parity is not enabled by this main-only path.
+
+Main kill-steer, slash `/steer` fallback and queued steer use the main-only
+process wait before the existing captured exit-settle/salvage barrier. A native
+Claude worker intentionally left running in that scope cannot delay this main
+continuation. Inclusive scoped/global shutdown waits still count the worker;
+unleased main cleanup remains counted until its own physical receipt fulfills,
+even if its logical result and process-map removal already completed.
+
 실행 중인 agent에 새 메시지가 도착하면 (`isAgentBusy` && multiSession enabled)
 gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 요청 `meta.midRunPolicy` > 세션 `active_run_policy` > `settings.multiSession.midRunPolicy`
@@ -183,9 +194,10 @@ gateway가 정책을 적용한다 (src/orchestrator/gateway.ts). 결정 순서:
 | jwc | in-band (pi `session.prompt` streamingBehavior 'steer') | 완전 (같은 턴) |
 | codex-app | in-band (app-server `turn/steer` — `MainRunState.steerTurnInBand` 훅이 active-turn 동안만 설치됨) | 완전 (같은 턴) |
 | cursor native | `cancel-reprompt`: 원래 prompt 취소 응답·callback·업데이트 drain 뒤 같은 native session에 재요청. jaw 논리 run과 최종 정산은 하나 | 원래 요청·수락된 추가 지시·제한된 부분 출력과 현재 운영 지침을 복원 |
-| 그 외 (codex legacy exec, claude, cursor print, grok, opencode, pi, agy, copilot, kiro) | **kill-steer**: 진행 턴을 중단하고 새 run. `withSteerContext`가 제한된 부분 출력을 재주입 | 제한된 부분 출력 보존 |
+| grok native | 원래 prompt 취소 응답·drain·idle 뒤 같은 native session에 `cancel-reprompt`. jaw 논리 run과 최종 정산은 하나 | 애플리케이션 재주입 없이 native 문맥 사용. 검증된 버전의 관측이며 모든 버전의 보장을 뜻하지 않음 |
+| 그 외 (codex legacy exec, claude, cursor print, grok print, opencode, pi, agy, copilot, kiro) | **kill-steer**: 진행 턴을 중단하고 새 run. `withSteerContext`가 제한된 부분 출력을 재주입 | 제한된 부분 출력 보존 |
 
-기존 in-band 경로의 큐 처리는 유지한다. Native Cursor는 replacement가 진행 중이면
+기존 in-band 경로의 큐 처리는 유지한다. Native Cursor와 Grok은 replacement가 진행 중이면
 다음 입력을 큐로 보낼 수 있지만, 취소·전송·입력 기록 실패를 큐 재시도로 바꾸지 않는다.
 Stop으로 무효화된 미전송 지시는 별도 `cancelled` 결과로 끝내고 다시 제출하지 않는다.
 로컬 write 완료는 모델의 수락 ACK가 아니다. 입력 기록 직전에도 main 객체·세대·

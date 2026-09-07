@@ -37,6 +37,52 @@ test('exact binding is required and invalid answers remain correctable', async t
     assert.deepEqual(registry.list('chat'), []);
 });
 
+test('20 respond/cancel rounds remove owned requests while a different-run sentinel stays answerable', { timeout: 10_000 }, async t => {
+    const registry = fixture(t);
+    const before = registry.list('chat');
+    assert.deepEqual(before, []);
+    const notices: string[] = [];
+    registry.setChangeObserver(sessionId => { notices.push(sessionId); });
+    const sentinelBinding = { ...binding, runId: 'other', turnId: 'sentinel-turn', scope: 'sentinel-scope' };
+    const sentinel = registry.open(input(sentinelBinding));
+    const sentinelView = registry.list('chat');
+    let sentinelSettlements = 0;
+    void sentinel.answer.then(() => { sentinelSettlements++; });
+    const ids = new Set<string>();
+    try {
+        for (let round = 0; round < 20; round++) {
+            const ownedBinding = { ...binding, turnId: `cycle-turn-${round}` };
+            const startNotices = notices.length;
+            const pending = registry.open(input(ownedBinding));
+            assert.equal(ids.has(pending.requestId), false); ids.add(pending.requestId);
+            assert.equal(notices.length, startNotices + 1);
+            assert.equal(registry.list('chat').length, 2);
+            assert.throws(() => registry.respond(pending.requestId, sentinelBinding, 'foreign'), /request_not_current/);
+            let settlements = 0;
+            const answer = pending.answer.then(value => { settlements++; return value; });
+            const expected = round % 2 === 0 ? `answer-${round}` : cancelled;
+            if (round % 2 === 0) registry.respond(pending.requestId, ownedBinding, expected);
+            else pending.cancel();
+            assert.deepEqual(await answer, expected);
+            assert.equal(settlements, 1); assert.equal(notices.length, startNotices + 2);
+            pending.cancel(); registry.cancelRun('run');
+            assert.throws(() => registry.respond(pending.requestId, ownedBinding, 'late'), /request_not_current/);
+            assert.equal(notices.length, startNotices + 2, 'repeat cancellation must not publish another settlement');
+            assert.deepEqual(registry.list('chat'), sentinelView);
+            assert.equal(sentinelSettlements, 0);
+        }
+        registry.respond(sentinel.requestId, sentinelBinding, 'sentinel-answer');
+        assert.equal(await sentinel.answer, 'sentinel-answer');
+        assert.equal(sentinelSettlements, 1);
+        assert.equal(ids.size, 20);
+    } finally {
+        registry.cancelRun('run'); sentinel.cancel();
+        await sentinel.answer;
+        registry.setChangeObserver(undefined);
+        assert.deepEqual(registry.list('chat'), before);
+    }
+});
+
 test('128 entries fit, overflow rejects, and cancellation releases admission', async t => {
     const registry = fixture(t);
     const requests = Array.from({ length: 128 }, () => registry.open(input()));

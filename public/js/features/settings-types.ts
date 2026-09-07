@@ -1,6 +1,7 @@
 // ── Settings Type Definitions ──
 
 import type { RuntimeTransport } from '../../../src/shared/runtime-contract.js';
+import type { PresentationMode } from '../../../src/shared/presentation.js';
 
 export interface PerCliConfig { provider?: string; model?: string; effort?: string; transport?: RuntimeTransport; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
 export interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; mentionOnly?: boolean; }
@@ -123,6 +124,7 @@ export interface MessagingConfig {
 }
 
 export interface SettingsData {
+    presentation?: { mode?: PresentationMode };
     cli: string; workingDir: string; permissions: string; locale?: string; showReasoning?: boolean;
     perCli?: Record<string, PerCliConfig>;
     activeOverrides?: Record<string, PerCliConfig>;

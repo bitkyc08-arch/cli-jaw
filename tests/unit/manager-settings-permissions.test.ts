@@ -9,12 +9,29 @@ import { test } from 'node:test';
 
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
 import {
+    configuredPolicyLabel,
     isAllowlistValid,
     isPermissionsAuto,
     isPermissionToken,
     parsePermissionsValue,
     seedAutoAllowlist,
 } from '../../public/manager/src/settings/pages/Permissions';
+
+test('configuredPolicyLabel reports stored shape without changing parser or editor semantics', () => {
+    const cases: Array<[unknown, string]> = [
+        ['auto', 'Auto'], ['safe', 'Safe'], [[], 'Custom (0 entries)'], [['auto'], 'Custom (1 entry)'],
+        [[' read ', ''], 'Custom (2 entries)'], [null, 'Not provided'], [undefined, 'Not provided'],
+        ['AUTO', 'Unrecognized'], [' auto ', 'Unrecognized'], ['deny', 'Unrecognized'],
+        [42, 'Unrecognized'], [{ secret: 'not for display' }, 'Unrecognized'], [['read', false], 'Unrecognized'],
+    ];
+    for (const [value, expected] of cases) {
+        const before = structuredClone(value);
+        assert.equal(configuredPolicyLabel(value), expected);
+        assert.deepEqual(value, before);
+    }
+    assert.deepEqual(parsePermissionsValue('safe'), { mode: 'unknown' });
+    assert.deepEqual(parsePermissionsValue([' read ', '']), { mode: 'custom', tokens: ['read'] });
+});
 
 // ─── isPermissionsAuto + parsePermissionsValue ───────────────────────
 

@@ -1,5 +1,6 @@
 import { toGraphemes } from '../text-buffer.js';
 import { clipTextToCols, visualWidth } from '../renderers.js';
+import { fitCellGrapheme } from '../cell-width.js';
 
 export interface ComposerBorderChars {
     topLeft: string;
@@ -40,10 +41,6 @@ const DEFAULT_PROMPT_GLYPH = '>';
 const DEFAULT_PLACEHOLDER = 'Type your message...';
 const PREFIX_WIDTH = 4; // │ + space + prompt glyph + space
 
-function cellWidth(text: string): number {
-    return Math.max(0, visualWidth(text));
-}
-
 function wrapComposerText(displayText: string, cursorOffset: number, textWidth: number): WrappedComposerText {
     const width = Math.max(1, textWidth);
     const graphemes = toGraphemes(displayText);
@@ -55,28 +52,28 @@ function wrapComposerText(displayText: string, cursorOffset: number, textWidth: 
     let cursorCol = 0;
 
     for (let i = 0; i <= graphemes.length; i += 1) {
+        const ch = graphemes[i];
+        const newline = ch === '\n' || ch === '\r\n' || ch === '\r';
+        const fitted = ch === undefined || newline ? { text: '', width: 0 } : fitCellGrapheme(ch, width);
+        if (fitted.width > 0 && col > 0 && col + fitted.width > width) {
+            row += 1;
+            rows[row] = '';
+            col = 0;
+        }
         if (i === cursor) {
             cursorRow = row;
             cursorCol = col;
         }
         if (i === graphemes.length) break;
-        const ch = graphemes[i] ?? '';
-        if (ch === '\n') {
+        if (newline) {
             row += 1;
             rows[row] = '';
             col = 0;
             continue;
         }
 
-        const w = cellWidth(ch);
-        const safeW = w === 0 ? 0 : Math.max(1, w);
-        if (safeW > 0 && col > 0 && col + safeW > width) {
-            row += 1;
-            rows[row] = '';
-            col = 0;
-        }
-        rows[row] = `${rows[row] ?? ''}${ch}`;
-        col = Math.min(width, col + safeW);
+        rows[row] = `${rows[row] ?? ''}${fitted.text}`;
+        col = Math.min(width, col + fitted.width);
     }
 
     return { rows, cursor: { row: cursorRow, col: cursorCol } };

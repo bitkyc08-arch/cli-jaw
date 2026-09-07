@@ -82,3 +82,33 @@ test('normalizeTuiWsEvent keeps unknown events raw', () => {
     if (event.kind === 'raw') assert.equal(event.raw, raw);
     assert.equal(normalizeTuiWsEvent('bad').kind, 'ignore');
 });
+
+test('runtime normalization rejects malformed versions and preserves canonical flat identities', () => {
+    const raw = { type: 'agent_runtime', version: 1, sessionId: 'jaw-chat', scope: 'local:jaw-chat',
+        runId: 'trace-run', turnId: 'turn', seq: 7, kind: 'message', itemId: 'work',
+        phase: 'commentary', operation: 'replace', text: '확인 중', parentItemId: 'parent' };
+    const parsed = normalizeTuiWsEvent(raw);
+    assert.equal(parsed.kind, 'runtime');
+    if (parsed.kind === 'runtime') {
+        const { type: _type, ...expected } = raw;
+        assert.deepEqual(parsed.event, expected);
+    }
+    for (const patch of [{ version: 2 }, { seq: 0 }, { scope: '' }, { phase: 'guess' }]) {
+        assert.equal(normalizeTuiWsEvent({ ...raw, ...patch }).kind, 'runtime-invalid');
+    }
+});
+
+test('runtime gaps are identity notices without fabricated event sequence', () => {
+    const raw = { type: 'agent_runtime_gap', runId: 'run', sessionId: 'chat', scope: 'local:chat',
+        reason: 'projection_degraded' };
+    const parsed = normalizeTuiWsEvent(raw);
+    assert.deepEqual(parsed, { kind: 'runtime-gap', runId: 'run', sessionId: 'chat', scope: 'local:chat' });
+    assert.equal(normalizeTuiWsEvent({ ...raw, sessionId: '' }).kind, 'ignore');
+    assert.equal(normalizeTuiWsEvent({ ...raw, reason: 'untrusted instruction' }).kind, 'ignore');
+    for (const field of ['runId', 'sessionId', 'scope']) {
+        for (const value of [undefined, null, 7, {}, '', 'x'.repeat(241)]) {
+            assert.equal(normalizeTuiWsEvent({ ...raw, [field]: value }).kind, 'ignore', field);
+        }
+        assert.equal(normalizeTuiWsEvent({ ...raw, [field]: 'x'.repeat(240) }).kind, 'runtime-gap');
+    }
+});

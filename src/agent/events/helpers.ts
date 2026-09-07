@@ -50,10 +50,19 @@ export function emitAgentTool(
     tool: object,
     empTag: Record<string, unknown>,
 ): void {
+    // Legacy parser entries are already accepted ToolEntry projections. Keep this
+    // observation separate from their unchanged messaging/progress payload.
+    const entry = tool as Partial<ToolEntry>;
+    if (typeof entry.icon === 'string' && typeof entry.label === 'string' && typeof entry.toolType === 'string'
+        && entry.toolType !== 'thinking' && entry.icon !== '💭' && entry.icon !== '💬') {
+        ctx.printActivity?.tool({ ...entry, icon: entry.icon, label: entry.label, toolType: entry.toolType });
+    }
     const payload = {
         agentId: agentLabel,
         ...tool,
         ...empTag,
+        ...(ctx.traceRunId ? { traceRunId: ctx.traceRunId } : {}),
+        ...(ctx.activityIdentity ?? {}),
         startedAt: ctx.runStartedAt,
         // Who this event belongs to. A subscriber that cannot answer that question
         // has to take every agent_tool on the bus, which is how one channel's

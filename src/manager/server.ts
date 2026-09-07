@@ -20,10 +20,12 @@ import { createDashboardShutdown } from './shutdown.js';
 import { PLANNED_RESTART_CODE } from '../core/process-codes.js';
 import { killAllAgents } from '../agent/spawn.js';
 import { parsePositiveCount, parsePositivePort } from './security.js';
+import { readIsolatedQaPolicy, assertIsolatedQaScan } from '../shared/isolated-qa.js';
 import {
     applyDashboardRegistry,
     loadDashboardRegistry,
     patchDashboardRegistry,
+    dashboardRegistryPath,
 } from './registry.js';
 import { createHealthHistory, type HealthEvent } from './health-history.js';
 import { createObservability } from './observability.js';
@@ -86,26 +88,66 @@ const serverRoot = join(__dirname, '..', '..');
 const projectRoot = existsSync(join(serverRoot, 'package.json'))
     ? serverRoot
     : join(serverRoot, '..');
-const app = express();
-ensureDirs();
-loadSettings();
-
-const port = parsePositivePort(process.env["DASHBOARD_PORT"], Number(DASHBOARD_DEFAULT_PORT));
-const scanFrom = parsePositivePort(process.env["DASHBOARD_SCAN_FROM"], MANAGED_INSTANCE_PORT_FROM);
-const scanCount = parsePositiveCount(
+// Import-time DB isolation is the trusted supervisor's responsibility. Validate
+// supported runtime inputs here before body-level stores/watchers/proxies exist.
+const qaPolicy = readIsolatedQaPolicy(process.env, 'manager');
+const port = qaPolicy?.managerPort ?? parsePositivePort(process.env["DASHBOARD_PORT"], Number(DASHBOARD_DEFAULT_PORT));
+const scanFrom = qaPolicy?.workerPort ?? parsePositivePort(process.env["DASHBOARD_SCAN_FROM"], MANAGED_INSTANCE_PORT_FROM);
+const scanCount = qaPolicy ? 1 : parsePositiveCount(
     process.env["DASHBOARD_SCAN_COUNT"],
     MANAGED_INSTANCE_PORT_COUNT,
     MANAGED_INSTANCE_PORT_COUNT,
 );
-const previewFrom = parsePositivePort(
+const previewFrom = qaPolicy?.previewPort ?? parsePositivePort(
     process.env["DASHBOARD_PREVIEW_FROM"],
     defaultPreviewFromForManagerPort(port, scanCount),
 );
 const previewTimeoutMs = parsePositiveCount(process.env["DASHBOARD_PREVIEW_TIMEOUT_MS"], 30_000, 120_000);
+
+function assertQaRegistryScan(value: unknown): void {
+    if (!qaPolicy) return;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('isolated QA registry scan must be an object');
+    }
+    const scan = value as Record<string, unknown>;
+    const from = Object.hasOwn(scan, 'from') ? scan['from'] : scanFrom;
+    const count = Object.hasOwn(scan, 'count') ? scan['count'] : scanCount;
+    if (typeof from !== 'number' || typeof count !== 'number') {
+        throw new Error('isolated QA registry scan must contain numeric from/count');
+    }
+    assertIsolatedQaScan(qaPolicy, from, count);
+}
+
+function loadAdmittedRegistry(): ReturnType<typeof loadDashboardRegistry> {
+    if (qaPolicy) {
+        const path = dashboardRegistryPath();
+        // Validate the actual migration source too, before its normalizer writes.
+        const source = existsSync(path) ? path : join(qaPolicy.jawHome, basename(path));
+        if (existsSync(source)) {
+            let raw: unknown;
+            try { raw = JSON.parse(readFileSync(source, 'utf8')); }
+            catch { throw new Error('isolated QA registry must contain valid JSON'); }
+            if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                throw new Error('isolated QA registry must be an object');
+            }
+            if (Object.hasOwn(raw, 'scan')) assertQaRegistryScan((raw as Record<string, unknown>)['scan']);
+        }
+    }
+    const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+    assertIsolatedQaScan(qaPolicy, loaded.registry.scan.from, loaded.registry.scan.count);
+    return loaded;
+}
+
+if (qaPolicy) loadAdmittedRegistry();
+const app = express();
+ensureDirs();
+loadSettings();
 const lifecycle = new DashboardLifecycleManager({
     managerPort: port,
     from: scanFrom,
     count: scanCount,
+    // QA never resolves a global jaw binary, even for the disabled controls.
+    ...(qaPolicy ? { jawPath: join(projectRoot, 'dist', 'bin', 'cli-jaw.js'), nodePath: process.execPath } : {}),
 });
 const healthHistory = createHealthHistory();
 const observability = createObservability();
@@ -132,6 +174,10 @@ function managerPreviewMicPermissionPolicy(): string {
 const managerPermissionsPolicy = managerPreviewMicPermissionPolicy();
 
 async function serviceDetect(range: { from: number; to: number }): Promise<Map<number, DashboardServiceState>> {
+    if (qaPolicy) {
+        assertIsolatedQaScan(qaPolicy, range.from, range.to - range.from + 1);
+        return new Map();
+    }
     return detectAllServiceStates(range);
 }
 
@@ -194,7 +240,7 @@ function attachPreviewSnapshot(result: DashboardScanResult): DashboardScanResult
 // (:port) and git-router scans stay live for lifecycle pollUntilSettled freshness.
 const instanceRegistry = new InstanceRegistry({
     scan: async () => {
-        const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+        const loaded = loadAdmittedRegistry();
         return scanDashboardInstances({
             from: loaded.registry.scan.from,
             count: loaded.registry.scan.count,
@@ -210,6 +256,7 @@ const instanceRegistry = new InstanceRegistry({
 });
 
 async function cachedFullScan(): Promise<DashboardScanResult> {
+    if (qaPolicy) loadAdmittedRegistry();
     return instanceRegistry.isReady()
         ? instanceRegistry.snapshot()!
         : instanceRegistry.forceRefresh();
@@ -223,6 +270,7 @@ let peerCacheAt = 0;
 const PEER_CACHE_TTL_MS = 30_000;
 
 async function cachedPeerDashboards(): Promise<DashboardInstance[]> {
+    if (qaPolicy) return [];
     if (Date.now() - peerCacheAt < PEER_CACHE_TTL_MS) return peerCache;
     try {
         peerCache = await scanPeerDashboards(port);
@@ -374,7 +422,7 @@ let stopRemindersScheduler: (() => void) | null = null;
 app.use('/api/jaw-ceo', createJawCeoRouter({
     repoRoot: projectRoot,
     listInstances: async () => {
-        const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+        const loaded = loadAdmittedRegistry();
         // Phase 4a: cached registry instead of a fresh 150-fetch scan (09 P1)
         const result = await cachedFullScan();
         const serviceStates = await serviceDetect({
@@ -487,9 +535,19 @@ app.get('/api/dashboard/health', (_req, res) => {
 app.get('/api/dashboard/instances', async (req, res) => {
     try {
         const timer = createStageTimer();
-        const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+        const loaded = loadAdmittedRegistry();
+        if (qaPolicy) {
+            for (const [key, expected] of [['from', scanFrom], ['count', scanCount]] as const) {
+                const raw = req.query[key];
+                if (raw !== undefined && raw !== String(expected)) {
+                    res.status(400).json({ ok: false, error: `isolated QA query ${key} must match the admitted value` });
+                    return;
+                }
+            }
+        }
         const from = Number(req.query["from"] || loaded.registry.scan.from);
         const count = Number(req.query["count"] || loaded.registry.scan.count);
+        assertIsolatedQaScan(qaPolicy, from, count);
         const showHidden = req.query["showHidden"] === '1' || req.query["showHidden"] === 'true';
         const isDefaultRange = from === loaded.registry.scan.from && count === loaded.registry.scan.count;
         const wantsFresh = req.query["fresh"] === '1' || req.query["fresh"] === 'true';
@@ -550,7 +608,11 @@ app.get('/api/dashboard/instances', async (req, res) => {
 
 app.get('/api/dashboard/instances/:port', async (req, res) => {
     const portValue = Number(req.params.port);
-    const isPeerDashboard = lifecycle.isDashboardPort(portValue) && portValue !== port;
+    if (qaPolicy && req.params.port !== String(qaPolicy.workerPort)) {
+        res.status(400).json({ ok: false, error: 'isolated QA port is outside the admitted worker' });
+        return;
+    }
+    const isPeerDashboard = !qaPolicy && lifecycle.isDashboardPort(portValue) && portValue !== port;
     if (!isPeerDashboard && (!Number.isInteger(portValue) || portValue < scanFrom || portValue >= scanFrom + scanCount)) {
         res.status(400).json({ ok: false, error: 'port out of configured scan range' });
         return;
@@ -572,7 +634,7 @@ app.get('/api/dashboard/instances/:port', async (req, res) => {
             res.json({ ok: true, instance: lifecycle.decorateInstance(peer, null, true), platform: process.platform });
             return;
         }
-        const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+        const loaded = loadAdmittedRegistry();
         const instance = await scanSinglePort(portValue);
         if (instance.ok) await previewProxy.ensureTarget(instance.port);
         const serviceStates = await serviceDetect({ from: portValue, to: portValue });
@@ -730,7 +792,7 @@ app.get('/api/manager/instance-logs/:port', async (req, res) => {
 });
 
 app.get('/api/dashboard/registry', (_req, res) => {
-    const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
+    const loaded = loadAdmittedRegistry();
     res.json(loaded);
 });
 
@@ -739,6 +801,10 @@ app.patch('/api/dashboard/registry', (req, res) => {
         const patch = req.body && typeof req.body === 'object'
             ? req.body as DashboardRegistryPatch
             : {};
+        if (qaPolicy) {
+            loadAdmittedRegistry();
+            if (Object.hasOwn(patch, 'scan')) assertQaRegistryScan(patch.scan);
+        }
         res.json(patchDashboardRegistry(patch, { from: scanFrom, count: scanCount }));
     } catch (error) {
         res.status(500).json({
@@ -763,6 +829,9 @@ async function runDashboardLifecycleAction(
     portValue: number,
     home?: string,
 ): Promise<DashboardLifecycleResult> {
+    if (qaPolicy) {
+        return rejectedLifecycleResult(action, portValue, 'Lifecycle actions are disabled in isolated QA; the supervisor owns processes');
+    }
     if (!['start', 'stop', 'restart', 'perm', 'unperm'].includes(action)) {
         return rejectedLifecycleResult(action, portValue, `Unsupported lifecycle action: ${action}`);
     }
@@ -970,7 +1039,7 @@ process.on('SIGUSR2', () => {
 async function main(): Promise<void> {
     previewProxy.validate();
     try {
-        const hydrated = await lifecycle.hydrate();
+        const hydrated = qaPolicy ? { adopted: 0, pruned: 0 } : await lifecycle.hydrate();
         if (hydrated.adopted > 0 || hydrated.pruned > 0) {
             console.log(`[dashboard] adopted ${hydrated.adopted} child instance(s), pruned ${hydrated.pruned} stale entry(ies)`);
         }

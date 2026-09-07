@@ -19,6 +19,14 @@ aliases: [CLI-JAW Architecture Reference, cli-jaw 구조 허브, structure index
 
 ## 시스템 개요
 
+Display preference storage/editor now defaults `presentation.mode` to Activity with explicit Legacy reversal; runtime transport is separate. See `frontend.md`, `server_api.md` and `runtime-integration.md`. Preference plumbing does not itself certify the following Activity renderer/history rollout.
+
+Manager Model defaults exposes explicit Cursor/Grok/Claude native opt-in with absent transport remaining print. Its scoped saves/current-instance guards are documented in [runtime integration](runtime-integration.md#manager-runtime-preference-and-save-ownership); [frontend](frontend.md#manager-settings--runtime-transport-and-embedded-classic) documents the shared Classic embed owner. Runtime choice, Activity/Legacy presentation and preview HTTP routing remain independent; these settings changes do not certify embedded/Electron QA.
+
+Print observation and latest tool convergence are now shared runtime layers: see `agent_spawn.md`, `stream-events.md` and `runtime-integration.md`. They preserve existing final/channel behavior and do not enable Activity presentation defaults. Partial durable snapshot recovery keeps its known omission notice.
+
+Durable Activity storage and original-session ownership live in `src/trace/activity-{journal,control,retention}.ts`. Read [runtime integration](runtime-integration.md) for append/loss/retention, [server API](server_api.md) for bounded discovery/replay and exact saved-answer lookup, and [frontend](frontend.md) for Classic history restoration, bounded discovery and Trace paging. Dedicated Manager/Electron and TUI integration remain separate surfaces.
+
 ```mermaid
 graph LR
     CLI["bin/commands/*"] -->|HTTP| SRV["server.ts (glue)"]

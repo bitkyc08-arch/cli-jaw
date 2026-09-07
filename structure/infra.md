@@ -15,6 +15,10 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ## 실제 실행/배포 표면 — `package.json` · Docker · CLI
 
+Print observation reuses the existing journal; `merge-tool-log.ts` is a pure merge owner, not another store. `getTraceToolEntry` recovers only an exact existing tool row through the established decoder/safe path and contains read errors. Snapshot hydration's explicit `knownOmitted` sanitizer option reserves the warning slot and retains a conservative prior loss count without double-counting overlapping reconstructed rows; default sanitizer callers preserve their previous additive append semantics. Native terminal updates remain frozen unless the print-only caller explicitly opts in.
+
+Activity persistence uses the existing SQLite trace tables: nullable `trace_runs.session_id/scope_key`, a session index, a runtime-row partial index and one unique control row per run. `activity-journal.ts` owns transactional append/read, `activity-control.ts` is the DB-only control leaf, and `activity-retention.ts` prunes raw rows before whole canonical prefixes. `store.ts` uses control/retention without importing the journal, avoiding a new store/journal cycle. Startup migration backfills only original message owners; chat deletion removes owned trace headers transactionally. Completed events are immutable; late conditional finalization cannot rewrite completed control. Spill cleanup never follows symlinked roots/directories. See `runtime-integration.md` for budgets/loss and `server_api.md` for owner-bound reads.
+
 ### Package metadata
 
 | 항목 | 현재 값 |
@@ -45,7 +49,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `gate:gate-docs` | `node scripts/release-gates.mjs gate-docs` — `structure/INDEX.md` must list exactly the live gates, with the right count, and each must have its `gate:<name>` npm script |
 | `gate:sidecar-prune-safety` | `node scripts/release-gates.mjs sidecar-prune-safety` — the sidecar prune list must never delete a package the server imports (a packaged app died on `node-fetch`) |
 | `gate:native-load` | `node scripts/release-gates.mjs native-load` — `node-pty` must actually `dlopen` and `spawn-helper` must genuinely execute. Needs `electron/node_modules`, so it reports `SKIPPED` (exit 3) when absent and only hard-fails under `JAW_GATE_REQUIRE_NATIVE=1`, which `desktop-release.yml` sets after `npm ci --prefix electron` |
-| `gate:sidecar-smoke` | `node scripts/release-gates.mjs sidecar-smoke` — critical sidecar modules must import from the bundled tree, not merely resolve. Reports `SKIPPED` (exit 3) with no bundle; hard-fails under `JAW_GATE_REQUIRE_SIDECAR=1` or when a caller passes `--server-root` explicitly, as `scripts/bundle-sidecar.sh` does right after bundling |
+| `gate:sidecar-smoke` | `node scripts/release-gates.mjs sidecar-smoke` — target Node executes a byte-verified isolated artifact copy; finite imports and server import/listener/HTTP/stop/close have separate checks. Default absent bundle is `SKIPPED` (exit 3), never verified; explicit `--server-root` or `JAW_GATE_REQUIRE_SIDECAR=1` requires a real artifact. `--report NEW_FILE` selects retained evidence outside the artifact. |
 | `scripts/pick-gyp-python.sh` | prints a `python3` that can `import distutils`, which node-gyp still requires; wired into `electron:dist:mac` because Homebrew Python 3.12+ breaks the node-pty rebuild |
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
@@ -127,6 +131,13 @@ the cmd shim or direct Node entry point instead.
 
 ### Direct smoke utilities
 
+`test.yml`의 `windows-unit`은 기존 Windows 서비스·설치·실행 검사에 더해
+`claude-sdk-windows-launch`, `claude-sdk-session`, `claude-sdk-control`,
+`claude-sdk-core-hardening`, `claude-sdk-deferred-core`의 명시적 테스트 파일을 실행한다.
+SDK query와 프로세스 경계는 fixture로 격리하며, macOS에서 같은 파일을 실행한 결과는
+실제 Windows job의 성공 증거를 대신하지 않는다. 기존 10개 파일·Node 22·aggregate
+검증과 code-change skip 거부 조건은 유지한다.
+
 #### 테스트 격리는 프로세스 단위지 DB 단위가 아니다
 
 `tests/run.mts` 는 `isolation:'process'` 로 파일마다 자식 프로세스를 띄우지만, **모든
@@ -139,8 +150,9 @@ the cmd shim or direct Node entry point instead.
 - `src/core/db.ts` 의 `journal_mode = WAL` + `busy_timeout = 5000`. WAL 에서 리더는
   라이터를 막지 않으므로 평범한 동시 접근은 잠금이 되지 않는다.
 - 파일별 opt-in 격리 `tests/setup/isolated-home.ts`. 이건 좁고 구체적인 위험
-  — `isAlive` 를 스텁한 전역 파괴적 sweep 이 다른 프로세스의 행을 지우는 경우 —
-  에만 필요하며, DB 를 여는 파일 전부가 아니라 그런 sweep 을 하는 파일만 넣는다.
+  — `isAlive` 를 스텁한 전역 파괴적 sweep 이 다른 프로세스의 행을 지우거나,
+  session singleton을 sentinel로 교체·복원하는 검사가 다른 파일을 덮는 경우 —
+  에만 필요하며, DB 를 여는 파일 전부가 아니라 이런 공유 상태 위험이 있는 파일에 넣는다.
 
 로그에서 `database is locked` 를 봤다고 곧장 경합이라고 결론내지 말 것.
 `tests/unit/memory-search-provider.test.ts` 는 `BEGIN IMMEDIATE` 를 4.2초 잡는 자식을
@@ -152,6 +164,17 @@ the cmd shim or direct Node entry point instead.
 | Fullscreen TUI `/quit` PTY smoke | `JAW_TUI_SMOKE_TIMEOUT=15 COLUMNS=100 LINES=30 scripts/smoke/tui-quit-smoke.exp` | built `dist/bin/cli-jaw.js chat`가 raw-mode fullscreen composer에서 `/quit`로 정상 종료되는지 검증 |
 | Fullscreen TUI frame resize stress | `npx tsx --import ./tests/setup/test-home.ts scripts/smoke/tui-frame-resize-stress.ts` | live/committed/expanded tool rows + final answer가 resize 후에도 width-safe이고 bottom composer cluster가 고정되는지 검증 |
 | Fullscreen TUI WS sequence stress | `npx tsx --import ./tests/setup/test-home.ts scripts/smoke/tui-ws-sequence-stress.ts` | synthetic WS 이벤트로 live tool, final answer, Ctrl-O expansion, resize-safe frame을 서버/모델 없이 검증 |
+| Native Activity deterministic POSIX PTY | `node_modules/.bin/tsx tests/smoke/tui-activity-pty.mts --built-head <HEAD> --build-report <build-report.json> --evidence <owned-dir>` | 컴파일된 CLI·가짜 HTTP/SSE·실제 POSIX PTY로 제출/Stop, saved MESSAGE 복구, F6·resize·paste, raw NDJSON과 종료를 검증. 실제 provider/DB 영속성 증거는 아님 |
+
+PTY 도구는 설치된 Node/tsx/xterm과 Python 3 POSIX 표준 라이브러리를 사용하며,
+새 패키지를 설치하지 않는다. `--build-report`는 호출자가 실제 실행한
+`npm run build --ignore-scripts`의 `command`, `exitCode`, `timedOut`, `overflow`,
+`groupLive`, `rootRemoved` 결과를 가진 JSON이다. 성공 기록만으로 빌드 출처를
+추정하지 말고 해당 소스·dist와의 일치도 확인한다. 도구는 현재 HEAD와 소스/dist
+변경 여부를 추가 검사한다. `--ownership-self-test --evidence <owned-dir>`는
+실제 PID 재사용 없이 신호 권한·불확실한 정리 결과를 검증한다. 회수된 PID/PGID에는
+파괴적 신호를 보내지 않으며, 소유권이 불분명하면 실패와 임시 루트 보존으로 끝난다.
+이 보존을 무효화하는 상위 임시 디렉터리 자동 삭제 wrapper로 감싸지 않는다.
 
 ### 실행 모드
 
@@ -167,6 +190,89 @@ the cmd shim or direct Node entry point instead.
 | Docker npm image | `Dockerfile` | `npm install -g cli-jaw@${CLI_JAW_VERSION}` → `jaw serve --no-open` |
 | Docker local source | `Dockerfile.dev` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
 | Compose | `docker-compose.yml` | 단일 `jaw` service, `${PORT:-3457}:3457`, `.env`, named volume `jaw-data` |
+
+### Sidecar build and smoke ownership
+
+`scripts/bundle-sidecar.sh <platform> <arch>` is a matching-host runtime-verified
+build, not implicit cross-compilation or release. It validates target/lockfile
+and output provenance before work, takes an exclusive `.server-build.lock`, and
+uses a unique source/dependency snapshot plus staging tree. Root backend build
+skips global-link lifecycle hooks but runs the existing compiled-asset checker
+explicitly; locked dependencies, prune, native-load and no-JWC checks remain.
+Original `dist` is not rebuilt in place. Relative contained source links retain
+their text; external/absolute links and unrecognized output refuse adoption.
+
+The smoke parent `scripts/check-sidecar-smoke.mjs` and child
+`scripts/sidecar-smoke-probe.mjs` execute the artifact's Node against the three
+fixed critical targets. The execution copy lives outside checkout dependency
+ancestors so missing packages cannot borrow repository `node_modules`. Copied
+module/binary identity, private IPC, actual primary listener and HTTP identity,
+bounded errors/output and physical close are checked. Controlled metadata
+commands retain a scrubbed environment; provider/credential probes are not
+authentication evidence. A timeout, non-module exception, unexpected delegation
+or uncertain cleanup is failure, not successful import.
+
+Smoke reports are exclusive, outside the input artifact, and durable before
+payload-home deletion; paired cleanup is separate. Default report directories
+are intentionally retained evidence. The original artifact remains unchanged.
+The bundler binds its runtime candidate through smoke and sealing, then promotes
+only a completed, locally fingerprinted output. `.jaw-sidecar-build.json` is
+local provenance/integrity metadata, not a cryptographic signature.
+
+The smoke CLI exits `0` only for verified runtime success, `1` for a required
+missing artifact or operational failure, `2` for invalid arguments, and `3` for
+an optional absent default bundle (explicitly unverified). Sole help exits `0`
+without probing. CI alone does not require a bundle; an explicit `--server-root`
+or `JAW_GATE_REQUIRE_SIDECAR=1` does. The release wrapper may accept a skip as
+policy success but retains its SKIPPED/nothing-imported detail.
+
+Successful build snapshots/reports and actual previous-output backups remain
+available for inspection. Interrupted/failed work retains staging/extraction/
+lock when completion is uncertain; do not blindly remove a lock or signal old
+numeric PIDs. Cleanup failure after promotion is not a rollback. Final Electron
+QA must still test the builder-filtered `.app` resources and native UI; these
+gates alone do not certify live providers or every platform.
+
+### Isolated desktop QA
+
+`CLI_JAW_ISOLATED_QA_ROOT` is an explicit controlled-launch profile, not a normal
+user setting. Absence retains existing behavior; present-empty, malformed paths
+or conflicting ports reject rather than falling back. The supervisor must create
+canonical existing directories and scrub the environment **before** Node/CLI
+probes, application imports or Electron starts. `src/shared/isolated-qa.ts` is
+pure on import and owns validation/construction; it does not initialize stores.
+
+| Fixed layout below canonical root R | Environment / role |
+| --- | --- |
+| `home`, `tmp` | `HOME`, `TMPDIR`; constructed `USERPROFILE=home`, `TEMP=tmp`, `TMP=tmp` (Node on Windows uses TEMP/TMP) |
+| `xdg/config`, `xdg/cache`, `xdg/data`, `xdg/state` | Matching `XDG_*_HOME`; constructed `LOCALAPPDATA=xdg/cache`, `APPDATA=xdg/data` |
+| `worker`, `manager`, `dashboard` | Worker `CLI_JAW_HOME=worker`; Manager/Electron `CLI_JAW_HOME=manager`; `CLI_JAW_DASHBOARD_HOME=dashboard` |
+| `providers/codex`, `providers/claude`, `providers/pi` | `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR` |
+| `electron/userData`, `electron/sessionData`, `electron/logs`, `electron/crashDumps` | Electron path adapter, applied before lock/session creation |
+
+All layout directories must exist inside R. Set distinct decimal ports W/M/P:
+`DASHBOARD_SCAN_FROM=W`, `DASHBOARD_PORT=M`, `DASHBOARD_PREVIEW_FROM=P`,
+`DASHBOARD_SCAN_COUNT=1`; worker also requires `PORT=W`. Electron requires the
+exact explicit `http://127.0.0.1:M/` Manager URL. Conflicting/invalid CLI flags,
+including earlier duplicate values, reject before default normalization.
+The child environment is a fresh allowlist, not an ambient overlay. Initial
+supervisors remove inherited renderer tokens; only the app-generated IPC token
+is deliberately forwarded along the Electron-to-Manager chain.
+
+QA Electron suppresses protocol/login/shortcut/Automation/CLI-install actions,
+including menu callbacks and repeated startup. Packaged startup uses the exact
+sidecar Node/CLI, never shell PATH repair, global jaw or picker fallback.
+Dashboard CLI preserves W/M/1/P at its Manager child. Manager rejects foreign
+stored/custom/single scan ranges before fetch/cache/preview/service effects,
+never enumerates peer dashboards, and refuses HTTP/direct lifecycle actions;
+the supervisor owns process teardown. Existing normal-mode behavior remains.
+
+This covers controlled entrypoints, not arbitrary CLI commands, raw imports,
+shell/browser actions or malicious same-user filesystem replacement. Empty
+task-owned messaging/jobs/MCP fixtures are prerequisites, not copied personal
+settings. Import-time DB containment belongs to the supervisor. A built module,
+mocked startup test or this profile alone does not certify the builder-filtered
+packaged resources, actual native UI, provider authentication or OS-wide behavior.
 
 ### 환경변수
 

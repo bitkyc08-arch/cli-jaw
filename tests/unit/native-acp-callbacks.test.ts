@@ -14,7 +14,7 @@ import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-co
 
 const raw: unknown[] = [], published: RuntimeEvent[] = [];
 let appendFails = false;
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: (entry: { raw: unknown }) => {
+mock.module('../../src/trace/activity-journal.js', { namedExports: { markActivityFailure: () => {}, appendActivityBody: (entry: { raw: unknown }) => {
     if (appendFails) return null;
     raw.push(JSON.parse(stringifyTraceValue(entry.raw)));
     return { traceRunId: 'not-an-identity-source', traceSeq: raw.length, detailAvailable: true, detailBytes: 100, rawRetentionStatus: 'available' };

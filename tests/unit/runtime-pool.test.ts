@@ -404,6 +404,65 @@ test('latch timeout removes listeners and falls back to kill', async (t) => {
     fakeState.interruptMode = 'success';
 });
 
+test('20 same-key cancellation rounds release listeners and preserve a sibling-scope lease', { timeout: 10_000 }, async t => {
+    const before = poolStats();
+    const instancesBefore = fakeState.instances.length;
+    const previousMode = fakeState.interruptMode;
+    const ownOptions = options({ scopeKey: `cycles-own-${scopeSequence++}` });
+    let sibling: Awaited<ReturnType<typeof acquireCodexAppRuntime>> | undefined;
+    let own: Awaited<ReturnType<typeof acquireCodexAppRuntime>> | undefined;
+    try {
+        sibling = await acquireCodexAppRuntime(options({ scopeKey: `cycles-sibling-${scopeSequence++}` }));
+        const sentinel = fakeClient(sibling);
+        sentinel.setActiveTurnId(sibling.laneScope, 'sentinel-turn');
+        const sentinelListeners = sentinel.eventNames().map(name => [name, sentinel.listenerCount(name)]);
+        own = await acquireCodexAppRuntime(ownOptions);
+        const client = fakeClient(own), lane = own.laneScope, thread = own.threadId;
+        const ownedListeners = client.eventNames().map(name => [name, client.listenerCount(name)]);
+        const interrupt = client.interruptTurn.bind(client);
+        let round = 0;
+        fakeState.interruptMode = 'completed';
+        t.mock.method(client, 'interruptTurn', async scope => {
+            assert.equal(scope, lane);
+            assert.equal(client.getActiveTurnId(scope), null, 'enter the installed-listener latch, not the active-turn shortcut');
+            assert.equal(client.listenerCount(`notification:${lane}`), 1);
+            assert.equal(client.listenerCount(`interrupt-failed:${lane}`), 1);
+            client.setActiveTurnId(scope, `cycle-turn-${round}`);
+            await interrupt(scope); // Existing fake emits the exact completed notification.
+        });
+        for (round = 0; round < 20; round++) {
+            if (round > 0) own = await acquireCodexAppRuntime(ownOptions);
+            assert.equal(own.client === client, true);
+            assert.equal(own.threadId, thread); assert.equal(own.reused, round > 0);
+            assert.deepEqual(poolStats(), { size: before.size + 2, busy: before.busy + 2 });
+            client.setActiveTurnId(lane, null);
+            await own.cancel();
+            assert.equal(client.getActiveTurnId(lane), `cycle-turn-${round}`);
+            assert.equal(client.interruptCount, round + 1);
+            assert.equal(client.listenerCount(`notification:${lane}`), 0);
+            assert.equal(client.listenerCount(`interrupt-failed:${lane}`), 0);
+            assert.deepEqual(client.eventNames().map(name => [name, client.listenerCount(name)]), ownedListeners);
+            own.release(); own.release();
+            assert.deepEqual(poolStats(), { size: before.size + 2, busy: before.busy + 1 });
+            assert.equal(fakeState.instances.length, instancesBefore + 2);
+            assert.equal(client.initializeCount, 1); assert.equal(client.killCount, 0); assert.equal(client.closeCount, 0);
+            assert.equal(sentinel.getActiveTurnId(sibling.laneScope), 'sentinel-turn');
+            assert.equal(sentinel.interruptCount, 0); assert.equal(sentinel.killCount, 0); assert.equal(sentinel.closeCount, 0);
+            assert.equal(sentinel.alive, true);
+            assert.deepEqual(sentinel.eventNames().map(name => [name, sentinel.listenerCount(name)]), sentinelListeners);
+        }
+    } finally {
+        if (own) retire(own);
+        if (sibling) retire(sibling);
+        fakeState.interruptMode = previousMode;
+        assert.deepEqual(poolStats(), before, 'retire only this case resources back to the real pre-case baseline');
+        for (const client of fakeState.instances.slice(instancesBefore)) {
+            assert.deepEqual(client.eventNames(), []);
+            assert.equal(client.alive, false);
+        }
+    }
+});
+
 test('pool storage is partitioned by engine before full-key and scope indexing', () => {
     const source = readFileSync(new URL('../../src/agent/runtime-pool.ts', import.meta.url), 'utf8');
     assert.match(source, /type Engine = 'codex-app' \| 'pi'/);

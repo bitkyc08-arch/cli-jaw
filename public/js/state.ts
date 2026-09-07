@@ -3,6 +3,7 @@
 // Object reference ensures mutations are seen across modules.
 
 import type { ProcessBlockState } from './features/process-block.js';
+import type { ActivityIdentity } from '../../src/shared/presentation.js';
 
 export type HeartbeatSchedule =
     | {
@@ -59,6 +60,7 @@ export interface ActiveGoalState {
 }
 
 export interface AppState {
+    activityIdentity: ActivityIdentity | null;
     agentBusy: boolean;
     orcState: OrcStateName;
     employees: unknown[];
@@ -82,6 +84,7 @@ export interface AppState {
 }
 
 export const state: AppState = {
+    activityIdentity: null,
     agentBusy: false,
     employees: [],
     allSkills: [],

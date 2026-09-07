@@ -417,6 +417,25 @@
     align-items: end;
 }
 
+/* Pi's long effort note must wrap within its track, not claim an auto track. */
+.settings-percli-grid--pi {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+}
+
+.settings-percli-grid--pi > * {
+    min-width: 0;
+}
+
+.settings-percli-grid--pi .settings-percli-note {
+    overflow-wrap: anywhere;
+}
+
+.settings-percli-grid--pi > .settings-action {
+    justify-self: start;
+    max-width: 100%;
+}
+
 .settings-percli-note {
     margin: 4px 0 0;
     color: var(--text-secondary);
@@ -455,7 +474,8 @@
 }
 
 @media (max-width: 720px) {
-    .settings-percli-grid {
+    .settings-percli-grid,
+    .settings-percli-grid--pi {
         grid-template-columns: minmax(0, 1fr);
     }
     .settings-avatar-card {

@@ -17,12 +17,31 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 ## Route Module Architecture
 
+### Saved Activity answer lookup
+
+`GET /api/messages?withSession=1` returns `{sessionId,messages}` inside the existing
+ok/data envelope, using the actual resolved conversation. Without literal1 the
+legacy array remains unchanged. This metadata opt-in does not change final selection.
+
+`GET /api/messages/by-trace/:runId?session=<id>` requires explicit nonempty session
+and a valid public run ID under existing instance auth. It reads assistant MESSAGE
+rows through the existing trace index, independent of the optional reverse trace
+link. A unique match returns `{message:{id,role,content,trace_run_id,session_id}}`;
+zero matches returns `{message:null}`; two matches returns409. Content and exact
+serialized response are bounded to16MiB (413); repository failure returns generic503.
+All responses use no-store. A copied fork MESSAGE is readable in its own chat, but
+this endpoint never grants permission to read the original chat's journal or raw Trace.
+
+`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton/JWC file, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
+
+Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
+
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
 | `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
 | `src/routes/static.ts` | 137L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
 | `src/routes/system.ts` | 82L | 5 | health/session/runtime/auth-token/slack-manifest |
-| `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
+| `src/routes/messages.ts` | 186L | 5 | message list/count/search/latest and exact saved Activity answer |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
 | `src/routes/chat-sessions.ts` | 62L | 4 | session list/create/switch/delete (전 route requireAuth) |
@@ -42,7 +61,8 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/skills.ts` | 89L | 5 | skills list/read/enable/disable/reset |
 | `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
 | `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
-| `src/routes/runtime-requests.ts` | 33L | 2 | exact-bound ephemeral native decisions; existing instance auth |
+| `src/routes/runtime-requests.ts` | 35L | 2 | exact-bound ephemeral native decisions; existing instance auth |
+| `src/routes/runtime-request-notices.ts` | 22L | — | captured chat to presentation-scope SSE notice mapping |
 | `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
 | `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
 | `src/routes/jaw-ceo.ts` | 321L | 20 | Jaw CEO coordinator: state/message/query/docs-edit/settings/events/pending/watch/audit/voice/confirmations |
@@ -78,10 +98,29 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ## Native Runtime Decisions
 
+Manager's explicit [isolated QA launch profile](infra.md#isolated-desktop-qa)
+changes no endpoint shape. It rejects foreign stored/custom/single scan ranges
+before reads, suppresses peer discovery, and rejects both HTTP and direct
+Manager lifecycle actions. Normal instances retain their existing behavior;
+this controlled profile is not authorization to use arbitrary worker/service APIs.
+
 | Method | Path | Contract |
 | --- | --- | --- |
 | `GET` | `/api/runtime/requests?sessionId=<jaw-id>` | Explicit nonempty session ID, at most240 characters. Returns `{ok:true,data:{requests:[...]}}`; never substitutes the active session. |
 | `POST` | `/api/runtime/requests/:id` | Body contains only `runId`, `sessionId`, `scope`, `turnId`, `response`. Exact stored binding and current ownership required. Returns `{ok:true,data:{accepted:true}}`. |
+
+The live list is session-scoped and may contain multiple execution scopes. A
+presentation hint never replaces those IDs: the Classic/Manager chat panel POSTs
+the selected live entry unchanged. Registry insertion/removal triggers the
+route-owned SSE-only `agent_runtime_requests_changed` metadata hint, mapped to the
+captured chat's display scope without active-chat fallback. It bypasses messaging
+listeners and does not contain tool input, answers or native provider IDs.
+
+`GET /api/orchestrate/snapshot?session=<id>` adds server-owned `activityIdentity`
+and `Cache-Control: no-store`. Malformed supplied session values return400;
+unknown named sessions return404 when multi-session is enabled. With that feature
+disabled, existing active/default snapshot behavior remains. Snapshot identity
+does not grant response authority or replace a pending entry's execution binding.
 
 Both routes use the same existing requireAuth and global Host/Origin guards as the worker. Loopback and configured LAN bypass remain unchanged; these routes do not introduce per-session user ACLs. Missing/malformed input or an invalid choice returns400; missing, expired, stale, already answered or mismatched requests return409 `request_not_current`. A bad choice does not consume a current request. No top-level requests alias exists.
 
@@ -158,14 +197,16 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | Messaging | `POST /api/upload` `POST /api/file/open` `POST /api/voice` `POST /api/telegram/send` `POST /api/channels/validate` `POST /api/channel/send` `POST /api/discord/send` `POST /api/slack/send` `GET /api/slack/history` `GET /api/slack/members` `GET /api/slack/users` |
 | Wiki | `GET /api/wiki/status` `GET /api/wiki/entities` `POST /api/wiki/enable` `POST /api/wiki/configure` |
 | Avatar | `GET /api/avatar` `POST /api/avatar/:target/upload` `DELETE /api/avatar/:target/image` `GET /api/avatar/:target/image` |
-| Traces | `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
+| Traces | `GET /api/traces/activity-runs?session=<id>` `GET /api/traces/:runId/activity?session=<id>` `GET /api/traces/:runId` `GET /api/traces/:runId/events` `GET /api/traces/:runId/events/:seq` |
+
+All trace routes set `Cache-Control: no-store` before auth/parsing. Activity discovery accepts explicit `session` and optional lexical run-ID `after` (40 runs/page). Replay accepts explicit `session`, decimal `after`/optional fixed `through`, and `limit`1–40; pages are also capped at256KiB. Responses retain `{ok,data}` and include sparse cursor/high-water, status, events and explicit loss/incomplete metadata. Malformed queries return400, wrong/internal/deleted owners404, future or reversed cursors409, storage failures503. Existing instance auth still applies. Owned raw summary/list/detail routes also require the original `session`; only truly ownerless legacy rows retain old access. Session-only historical backfills can use raw diagnostics but cannot invent a canonical scope. Replay is read-only and cannot submit historical decisions.
 | Debug | `GET /api/debug/mem` |
 | Link Preview | `GET /api/link-preview?url=` `GET /api/link-preview/image?url=` |
 | Dashboard Board | `GET /api/dashboard/board/tasks` `POST /api/dashboard/board/tasks` `PATCH /api/dashboard/board/tasks/:id` `DELETE /api/dashboard/board/tasks/:id` `POST /api/dashboard/board/tasks/from-message` |
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 258개 route handler 기준이다. 이 중 API 엔드포인트는 257개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 261개 route handler 기준이다. 이 중 API 엔드포인트는 260개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 `PUT /api/heartbeat`의 job은 `mentionWatch: { channel: "slack", userId: "U...", channelIds: ["C..."], maxHits?, since? }`를 선택적으로 받는다. `channelIds`는 비어 있지 않아야 하고 저장 시 `slack.channelIds` allowlist의 부분집합이어야 하며, 실행 tick 직전 현재 allowlist와 다시 교집합한다. job id가 같은 기존 값에 대해 필드가 없으면 상속하고, `null`이면 삭제하며, 잘못된 값은 `400 invalid heartbeat mention watch`다. 파일 로드 정규화에서 잘못된 `mentionWatch`는 해당 job을 `enabled: false`로 내린다. 기본 운영값은 비활성이고, 설정된 watch는 별도 daemon이 아니라 기존 `runHeartbeatJob`에서 실행된다.
 

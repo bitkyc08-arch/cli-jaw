@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parsePiRpcRecord, type PiRuntimeEvent } from '../../src/agent/pi-runtime.ts';
 // Recorders are injected here; module loading must not initialize shared SQLite.
 let unexpectedDefaultWrites = 0;
-mock.module('../../src/trace/store.js', { namedExports: { appendTraceEvent: () => {
+mock.module('../../src/trace/activity-journal.js', { namedExports: { markActivityFailure: () => {}, appendActivityBody: () => {
     unexpectedDefaultWrites++; throw new Error('Pure projection test reached the default trace writer');
 } } });
 test.after(() => assert.equal(unexpectedDefaultWrites, 0));

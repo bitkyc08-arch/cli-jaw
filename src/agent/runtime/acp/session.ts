@@ -37,6 +37,44 @@ function acpString(value: unknown): string {
     if (typeof value !== 'string' || !value || value.length > 1024) throw new Error('acp_invalid_string');
     return value;
 }
+const MODEL_META_BYTES = 32 * 1024;
+const MODEL_META_DEPTH = 16;
+const MODEL_META_NODES = 4096;
+
+/** Copy only bounded JSON data; never invoke a metadata getter or toJSON hook. */
+function copyModelMeta(meta: Record<string, unknown>): Record<string, unknown> {
+    let bytes = 0, nodes = 0;
+    const invalid = (): never => { throw new Error('acp_invalid_model_meta'); };
+    const charge = (value: string): void => {
+        bytes += Buffer.byteLength(value);
+        if (bytes > MODEL_META_BYTES) invalid();
+    };
+    const copy = (value: unknown, depth: number): unknown => {
+        if (++nodes > MODEL_META_NODES || depth > MODEL_META_DEPTH) return invalid();
+        if (value === null || typeof value === 'string' || typeof value === 'boolean'
+            || (typeof value === 'number' && Number.isFinite(value))) {
+            charge(JSON.stringify(value)); return value;
+        }
+        if (!value || typeof value !== 'object') return invalid();
+        const array = Array.isArray(value), prototype: unknown = Object.getPrototypeOf(value);
+        if (!array && prototype !== Object.prototype && prototype !== null) return invalid();
+        const entries: [string, unknown][] = [];
+        for (const key of Reflect.ownKeys(value)) {
+            if (array && key === 'length') continue;
+            if (typeof key !== 'string') return invalid();
+            const descriptor = Object.getOwnPropertyDescriptor(value, key);
+            if (!descriptor || !('value' in descriptor) || !descriptor.enumerable) return invalid();
+            if (array && key !== String(entries.length)) return invalid();
+            charge(JSON.stringify(key));
+            entries.push([key, copy(descriptor.value, depth + 1)]);
+        }
+        if (array && entries.length !== value.length) return invalid();
+        return array ? entries.map(([, entry]) => entry) : Object.fromEntries(entries);
+    };
+    const result = acpRecord(copy(acpRecord(meta), 0));
+    if (Buffer.byteLength(JSON.stringify(result)) > MODEL_META_BYTES) invalid();
+    return result;
+}
 export function validateAcpSessionOptions(options: AcpSessionOptions): void {
     for (const timeout of [options.promptTimeoutMs, options.requestTimeoutMs ?? 30_000,
         options.controlTimeoutMs ?? 5_000, options.drainTimeoutMs ?? 5_000]) {
@@ -59,6 +97,7 @@ export class AcpSession {
     private replay = false;
     private id = '';
     private configs: unknown = [];
+    private setup: Record<string, unknown> = {};
     private capabilities: Record<string, unknown> = {};
     private stderrCount = 0;
 
@@ -90,6 +129,7 @@ export class AcpSession {
     get agentCapabilities(): Record<string, unknown> { return structuredClone(this.capabilities); }
     get stderrBytes(): number { return this.stderrCount; }
     getConfigOptions(): unknown { return structuredClone(this.configs); }
+    getSessionSetup(): Record<string, unknown> { return structuredClone(this.setup); }
 
     private consumeStderr = (chunk: Buffer) => {
         this.stderrCount = Math.min(Number.MAX_SAFE_INTEGER, this.stderrCount + chunk.length);
@@ -110,7 +150,8 @@ export class AcpSession {
         return request.result;
     }
 
-    async start(input: { cwd: string; resumeSessionId?: string; authMethodId?: string }): Promise<void> {
+    async start(input: { cwd: string; resumeSessionId?: string;
+        authMethodId?: string | ((initialize: Record<string, unknown>) => string | undefined) }): Promise<void> {
         if (this.started || !this.alive) throw new Error('acp_start_unavailable');
         this.started = true; this.replay = true;
         try {
@@ -121,8 +162,10 @@ export class AcpSession {
                     ...(this.options.clientMetadata === undefined ? {} : { _meta: this.options.clientMetadata }) } }));
             if (init['protocolVersion'] !== 1) throw new Error('acp_protocol_unsupported');
             this.capabilities = acpRecord(init['agentCapabilities']);
-            if (input.authMethodId !== undefined) {
-                const method = acpString(input.authMethodId);
+            const selected = typeof input.authMethodId === 'function'
+                ? input.authMethodId(structuredClone(init)) : input.authMethodId;
+            if (selected !== undefined) {
+                const method = acpString(selected);
                 const methods = init['authMethods'];
                 if (!Array.isArray(methods) || !methods.some(item => acpRecord(item)['id'] === method)) throw new Error('acp_auth_method_unavailable');
                 await this.rpc('authenticate', { methodId: method });
@@ -138,6 +181,7 @@ export class AcpSession {
                 const setup = acpRecord(value);
                 if (!load) this.id = acpString(setup['sessionId']);
                 this.updateConfigs(setup['configOptions']);
+                this.setup = structuredClone(setup);
             });
             await this.bounded(this.callbacks.drain(), this.options.drainTimeoutMs ?? 5_000, 'acp_drain_timeout');
             this.assertAlive(); this.ready = true;
@@ -153,6 +197,28 @@ export class AcpSession {
                 const response = acpRecord(result);
                 if (!Array.isArray(response['configOptions'])) throw new Error('acp_missing_config_options');
                 this.updateConfigs(response['configOptions']);
+            });
+            await this.bounded(this.callbacks.drain(), this.options.drainTimeoutMs ?? 5_000, 'acp_drain_timeout');
+            this.assertAlive();
+        } catch (error) { this.retire(this.error(error)); throw error; }
+        finally { this.controlBusy = false; }
+    }
+
+    async setModel(modelId: string, meta?: Record<string, unknown>): Promise<void> {
+        if (!this.idle) throw new Error('acp_model_busy');
+        const selected = acpString(modelId);
+        if (!selected.trim()) throw new Error('acp_invalid_string');
+        const metadata = meta === undefined ? undefined : copyModelMeta(meta);
+        if (!this.idle) throw new Error('acp_model_busy');
+        this.controlBusy = true;
+        try {
+            await this.rpc('session/set_model', { sessionId: this.id, modelId: selected,
+                ...(metadata === undefined ? {} : { _meta: metadata }) }, result => {
+                acpRecord(result); // ACP acknowledges with an object, normally {}.
+                const models = this.setup['models'];
+                if (models !== undefined && models !== null) {
+                    this.setup = { ...this.setup, models: { ...acpRecord(models), currentModelId: selected } };
+                }
             });
             await this.bounded(this.callbacks.drain(), this.options.drainTimeoutMs ?? 5_000, 'acp_drain_timeout');
             this.assertAlive();

@@ -69,6 +69,17 @@ effort, fast, context, tools, redraw, retry, export, resume, hotkeys
 Appearance MVP screen in the main content region; it does not expose unsupported
 JWC-only `Context` settings. Line-mode still returns the generic command result.
 
+Interactive rich TUI uses Activity by default. Appearance → Presentation switches
+only `presentation.mode` between Activity and Legacy; it does not select transport
+or permissions. Fullscreen Ctrl+O toggles the latest uncommitted Activity before
+legacy tool details/background tasks. F6 opens read-only retained history:
+Up/Down records, Left/Right runs, Enter record detail, A saved answer, R reload,
+N next descriptor window, PageUp/PageDown/Home/End scroll, Esc/F6 close. Pasted
+control sequences remain paste, including during inspector close/reset. This is
+a server-active-chat client: F6 selection never changes message/Stop routing.
+Classic Ctrl+O keeps background tasks; `--simple` and piped `--raw` receive no
+Activity reads or new output/termination behavior.
+
 ---
 
 ## Root CLI Surface (`bin/cli-jaw.ts` + `bin/commands/*.ts`)
@@ -82,6 +93,13 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `--home <path>` / `--home=<path>` | command parsing 전에 `CLI_JAW_HOME` 설정 |
 | `--help` / `-h` | root help 출력 |
 | `--version` / `-v` | `cli-jaw v{package.version}` 출력 |
+
+Explicit desktop QA is an environment opt-in, not a new global CLI command.
+With a validated `CLI_JAW_ISOLATED_QA_ROOT`, `dashboard serve` inherits the fixed
+Manager/worker/count-one values when omitted and rejects conflicting raw flags
+before normalization. Its child receives the scrubbed role environment. See
+[isolated desktop QA](infra.md#isolated-desktop-qa); the supervisor must reject
+escaped `--home` values before launching any DB-bearing CLI imports.
 
 ### 실제 서브커맨드 / 옵션
 
@@ -221,6 +239,9 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
   로컬 전송 완료와 소유권 재검사 뒤 한 번만 한다. 진행 중인 replacement는 후속 입력을
   큐로 보낼 수 있지만, 불확실한 전송·기록 실패는 자동 재시도하지 않는다.
   Stop으로 취소된 대기 지시는 `cancelled`로 끝내며, 큐에 되살리지 않는다.
+- Native Grok도 같은 취소 응답·drain·idle 경계와 `replaceTurn` 훅을 쓰되,
+  Cursor의 문맥 재주입은 적용하지 않는다. Stop으로 취소된 입력은 실제 enqueue
+  직전까지 보호하며 다시 제출하지 않는다. Stop 이후의 새 입력은 받을 수 있다.
 - `/queue steer <n>`은 별도 큐 항목 우선 실행이다. 기존 항목 제거·interrupt·exit-settle·
   salvage 뒤 새 run을 시작하며, 같은 세션 replacement로 바꾸지 않는다.
 - Web/Telegram/Discord/Slack에서 실행 가능. CLI slash registry에는 노출되지 않는다.
@@ -229,7 +250,7 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
   **kill 없이** 진행 중 턴에 주입된다. codex-app은 app-server `turn/steer`로 같은 턴에
   합류하므로 이전 맥락 손실이 없다. 주입이 불가한 경우(턴 종료 race, review/compact 턴)
   kill 대신 follow-up 큐로 간다.
-- 그 외 런타임은 kill 후 재지시(kill-path). 이때 중단된 턴의 부분 출력이 salvage되어
+- 위 native Cursor/Grok와 in-band 경로를 제외한 런타임은 kill 후 재지시(kill-path). 이때 중단된 턴의 부분 출력이 salvage되어
   follow-up run 프롬프트에 구조화 블록으로 주입된다 (wp1: exit-settle 배리어 +
   `withSteerContext`). 즉 kill-path에서도 "이전 맥락"이 모델에 도달한다.
 

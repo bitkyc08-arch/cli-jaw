@@ -36,7 +36,8 @@ test.mock.module('../../src/core/config.js', { namedExports: {
 
 const selection = await import('../../src/agent/runtime/selection.ts');
 let simulatedMainAdapter = false;
-const workerEligibility = test.mock.fn((cli: string) => selection.isNativeWorkerImplemented(cli));
+// This suite exercises a deliberately unavailable worker adapter, independent of compiled support.
+const workerEligibility = test.mock.fn((_cli: string) => false);
 test.mock.module('../../src/agent/runtime/selection.js', { namedExports: {
     ...selection,
     isNativeAdapterImplemented: (cli: string) => simulatedMainAdapter

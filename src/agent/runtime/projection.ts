@@ -78,6 +78,12 @@ export class RuntimeProjection {
         return createHash('sha256').update(JSON.stringify([kind, nativeRef])).digest('hex');
     }
 
+    /** Published display linkage only; never allocation or approval authority. */
+    itemId(kind: Preview['kind'], nativeRef: string): string | null {
+        if (this.recordingFailed) return null;
+        return this.items.get(this.key(kind, nativeRef))?.itemId ?? null;
+    }
+
     private id(key: string): string | null {
         const found = this.items.get(key);
         if (found) return found.itemId;
@@ -126,7 +132,7 @@ export class RuntimeProjection {
         catch { this.report('persistence'); return WITHHELD_PREVIEW; }
     }
 
-    private save(key: string, body: Preview): void {
+    private save(key: string, body: Preview, preserveTerminal = false): void {
         if (this.ended || this.recordingFailed) return;
         const previous = this.items.get(key);
         const previousJson = previous ? JSON.stringify(previous) : '';
@@ -144,6 +150,9 @@ export class RuntimeProjection {
             }
         }
         let json = JSON.stringify(next);
+        // Enrichment is optional. Never spend the budget by deleting already
+        // authoritative terminal fields to make room for newly learned metadata.
+        if (preserveTerminal && json.length > available) { this.report('capacity'); return; }
         // Charge JSON escaping too. Keep already retained IDs; no eviction/reopen.
         for (const field of fields.filter(field => field !== 'name').reverse()) {
             if (json.length <= available) break;
@@ -160,12 +169,21 @@ export class RuntimeProjection {
         this.emit(next);
     }
 
-    tool(nativeRef: string, patch: ToolPatch): void {
+    tool(nativeRef: string, patch: ToolPatch, options: { allowTerminalUpdates?: boolean } = {}): void {
         if (this.ended || this.recordingFailed) return;
         const key = this.key('tool', nativeRef);
         const previous = this.items.get(key);
         const old = previous?.kind === 'tool' ? previous : undefined;
-        if (old && old.status !== 'running') return;
+        const replaceTerminal = options.allowTerminalUpdates === true && patch.status !== undefined && patch.status !== 'running';
+        if (old && old.status !== 'running' && !replaceTerminal) {
+            // A result may precede its start. Fill only unknown metadata; terminal
+            // status, output, detail and established fields remain authoritative.
+            const name = (!old.name || old.name === 'tool') && patch.name ? patch.name : old.name;
+            const input = old.input === undefined && patch.input !== undefined
+                ? this.source(key, 'input', patch.input, false, patch.inputStructured) : old.input;
+            this.save(key, { ...old, name, ...(input === undefined ? {} : { input }) }, true);
+            return;
+        }
         const itemId = this.id(key);
         if (!itemId) return;
         const body: Tool = { kind: 'tool', itemId, name: old?.name && old.name !== 'tool' ? old.name : patch.name || 'tool',

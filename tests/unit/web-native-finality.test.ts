@@ -144,3 +144,22 @@ test('direct web finalizer accepts native null and cancels the provisional rende
     assert.equal(document.querySelector('.msg-content')?.getAttribute('data-raw'), '');
     assert.equal(state.agentBusy, false);
 });
+
+test('RID-005: stale and replayed completion cannot finalize the current run', t => {
+    const a = stream();
+    const aHost = state.currentAgentDiv;
+    dispatch!({ event: 'agent_done', traceRunId: 'foreign-run', text: 'FOREIGN', runtimeFinality: 'present' });
+    assert.equal(state.currentAgentDiv, aHost); assert.equal(state.agentBusy, true);
+    dispatch!({ event: 'agent_done', traceRunId: a, text: 'A final', runtimeFinality: 'present' });
+    const now = Date.now(); t.mock.method(Date, 'now', () => now + 1000);
+    dispatch!({ event: 'agent_done', traceRunId: a, text: 'duplicate A', runtimeFinality: 'present', sseReplay: true });
+    assert.equal(document.querySelectorAll('.msg-agent').length, 1);
+    assert.equal(aHost?.querySelector('.msg-content')?.getAttribute('data-raw'), 'A final');
+    const b = stream(); const bHost = state.currentAgentDiv;
+    dispatch!({ event: 'orchestrate_done', traceRunId: a, text: 'late A', runtimeFinality: 'present', sseReplay: true });
+    assert.equal(state.currentAgentDiv, bHost); assert.equal(state.agentBusy, true);
+    dispatch!({ event: 'agent_done', traceRunId: b, text: 'B final', runtimeFinality: 'present' });
+    assert.equal(document.querySelectorAll('.msg-agent').length, 2);
+    assert.equal(bHost?.querySelector('.msg-content')?.getAttribute('data-raw'), 'B final');
+    assert.equal(aHost?.querySelector('.msg-content')?.getAttribute('data-raw'), 'A final');
+});

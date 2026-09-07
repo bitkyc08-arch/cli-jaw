@@ -403,11 +403,36 @@ Check everything at once: `jaw doctor`
 The dashboard is your command center. `jaw dashboard` starts the manager at `http://localhost:24576`; individual agent Web UIs are served by `jaw serve` from `http://localhost:3457` and nearby managed ports.
 Live Web/TUI updates use the SSE-first `GET /api/events` channel, with legacy WebSocket fallback only for older servers where SSE never opens.
 
-Codex app-server and Pi RPC also record versioned, redacted runtime events independently of channel delivery. Native terminal handling keeps empty final answers distinct from live previews; Slack/Telegram/Discord retain their existing final-response, acknowledgement and queue-notice flow. The Activity presentation mode is a separate follow-on change, not enabled by this event foundation.
+Interactive `jaw chat` defaults to collapsed Activity with a separate final answer.
+Fullscreen: Ctrl+O toggles details; F6 opens read-only history; Enter expands a
+journal record; A shows the exact saved answer. Appearance → Presentation switches
+to Legacy without changing runtime or permission settings. History selection does
+not change the server-active chat targeted by message/Stop. `--simple` and piped
+`--raw` retain their existing behavior. See [TUI controls](structure/commands.md).
+
+Codex app-server and Pi RPC also record versioned, redacted runtime events independently of channel delivery. Native terminal handling keeps empty final answers distinct from live previews; Slack/Telegram/Discord retain their existing final-response, acknowledgement and queue-notice flow. Classic uses this event stream for its bounded live Activity display.
+
+Pi prepares capabilities asynchronously before dispatching a prompt and keeps that decision for the RPC instance. Failed or incomplete preparation cannot dispatch with guessed support. Worker cleanup tracks both RPC and version processes and retains temporary data when closure or directory ownership is uncertain; the older command-discovery step may still block briefly. See [runtime ownership](structure/runtime-integration.md#capability-preparation-and-execution-ownership).
+
+Runtime history is persisted in a bounded Activity journal. Discovery uses `GET /api/traces/activity-runs?session=<id>`; replay uses `GET /api/traces/<runId>/activity?session=<id>` with `after`, fixed `through` and `limit` cursors. Owned public traces require the original chat session on raw reads too; Open trace captures that identity from the server. Internal worker records are not public replay. Missing or expired history is explicit and never replaces the final answer; historical decisions cannot be answered from replay. Existing ownerless raw traces retain their compatibility access policy.
+
+Print-mode providers also record accepted text, reasoning and tool activity without changing their existing answer selection. Untagged text remains unclassified; the existing lifecycle supplies the application-final answer. Tool status/detail converges across live and saved views, and partially retained history keeps its omission notice. Activity recording failure does not add a retry or channel send. Classic live and retained Activity rendering is layered separately over this observer.
+
+Display preferences use `presentation.mode`: `activity` is the default for fresh and upgraded settings without a choice; explicit `legacy` is preserved. Manager → Display provides the reversible choice, independently of runtime transport and permissions. Classic groups live tools and intermediate output in a collapsed Activity section while keeping the final answer separate. Open details stay open as updates arrive; limited or incomplete previews are labeled. Live approval/question controls remain available in either mode. Classic restores retained Activity on transcript rows and offers paged discovery outside the loaded transcript. Saved final answers come from MESSAGE, not the redacted journal; unavailable reads retain an explicit retry path. Raw Trace uses bounded earlier/later pages. Interactive TUI controls and saved-answer ownership are described above; integrated Electron QA remains a separate gate.
 
 Cursor, Grok and Claude retain `print` compatibility mode. Their optional `perCli.<cli>.transport` setting is validated independently of display preferences; selecting an unimplemented native adapter gives an explicit error, never silently launches print. Existing settings without this field stay print, and native/print session storage is isolated. `/api/cli-status` reports compiled native main/worker support separately from cached binary/authentication readiness.
 
+Manager → Model defaults offers explicit native opt-in and print reversal for those three runtimes. Saving only the display mode and/or runtime transport through the settings API preserves a running turn; transport applies to the next run, while current completion retains its original session bucket. Combining the save with model, permissions or other execution settings keeps the existing invalidation behavior. Manual settings-file transport changes also retain their existing invalidation policy.
+
+Claude native uses the optional pinned Agent SDK: main turns reuse a sequential session, while each worker assignment owns a fresh query and instruction directory. Stop closes the query; the default mid-run steer policy uses kill/resume with interrupted context, while follow-up mode queues. Native supports auto/safe permissions, live approvals/questions, validated image input and foreground child activity. Deny/unknown profiles (including the output-only memory extractor) require print compatibility; background SDK tasks remain unavailable. An unavailable SDK fails the explicit native request without falling back to print.
+
+Claude main steering waits for its own interrupted run, not a surviving worker in the same scope. Shutdown still includes workers. A completed answer is separate from physical cleanup; pending or failed cleanup remains tracked within the existing bounded waits.
+
+Classic and its Manager/Electron chat surface share a live request panel. It answers only the selected live request's original execution IDs; stream outages retain a visible manual refresh path and never replay a response automatically. Image input is limited to four supported images, 5MiB each/10MiB total; existing staged-file references remain separate. Activity timeline/default/history rollout is independent of this decision surface.
+
 Cursor main turns support the native ACP path with explicit `transport: "native"` and literal `permissions: "auto"`; restrictive native permissions and workers are rejected before prompt-file or session preparation. Model/effort use native advertised choices (Composer models may require unset effort). Canonical tool/commentary activity is separate from the full final answer; interrupted text remains available for steer salvage. Native I/O refreshes only its own collector through a private, text-free callback. Display defaults and owned history UI remain separate rollout layers.
+
+Grok main also supports native ACP with literal auto permissions, existing CLI authentication and advertised model/effort values. Mid-run steering cancels and drains the original prompt before sending the replacement in the same native session, without Cursor's context reinjection. One logical turn produces one final answer. A replacement already in progress may send later input to the existing queue; Stop cancels pending inputs through the final enqueue decision, while fresh post-Stop input remains admissible. Transport or ownership failures fail the request without an automatic retry. Restrictive Grok policies and native workers remain unavailable.
 
 Native Cursor redirects use **cancel-reprompt**, not in-band input: the original prompt's cancelled response and pending updates finish before the replacement is sent in the same native session. cli-jaw restores the original request, accepted redirects and bounded incomplete output as context while keeping current instructions active. `/steer` uses this path; another pending redirect may queue, but a failed or indeterminate dispatch is not automatically retried. `/queue steer <n>` retains its separate interrupt-and-run-now behavior.
 
@@ -832,6 +857,10 @@ bash structure/check-doc-drift.sh
 ```
 
 Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt context hooks: [pre-prompt-context-hooks.md](docs/dev/pre-prompt-context-hooks.md) · Internal structure docs: [structure/](structure/)
+
+Desktop QA has an explicit [isolated launch profile](structure/infra.md#isolated-desktop-qa): fixed task-owned homes and ports, no global app registration or Manager lifecycle actions. It requires a prepared, scrubbed launch environment; it is not a sandbox for arbitrary commands or proof that a packaged artifact passed QA.
+
+Sidecar builds use [owned staging and target-runtime smoke checks](structure/infra.md#sidecar-build-and-smoke-ownership). Failed builds retain evidence rather than overwriting unknown output; a skipped or timed-out smoke is not verification.
 
 ---
 

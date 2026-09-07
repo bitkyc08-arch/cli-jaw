@@ -21,6 +21,7 @@ export interface ChatChannel {
     send(payload: string): void;
     on(event: 'message', cb: (data: ChannelData) => void): void;
     on(event: 'close', cb: () => void): void;
+    onReconnect?(cb: () => void): void;
     close(): void;
 }
 
@@ -42,6 +43,7 @@ async function connectSse(port: string | number): Promise<ChatChannel> {
         });
         const messageCbs: Array<(data: ChannelData) => void> = [];
         const closeCbs: Array<() => void> = [];
+        const reconnectCbs: Array<() => void> = [];
         let opened = false;
         let closed = false;
 
@@ -50,10 +52,14 @@ async function connectSse(port: string | number): Promise<ChatChannel> {
             closed = true;
             es.close();
             for (const cb of closeCbs) cb();
+            messageCbs.length = 0;
+            closeCbs.length = 0;
+            reconnectCbs.length = 0;
         };
 
         es.onopen = () => {
-            if (opened) return;
+            if (closed) return;
+            if (opened) { for (const cb of reconnectCbs) cb(); return; }
             opened = true;
             resolve(channel);
         };
@@ -100,6 +106,7 @@ async function connectSse(port: string | number): Promise<ChatChannel> {
                 if (event === 'message') messageCbs.push(cb as (data: ChannelData) => void);
                 else closeCbs.push(cb as () => void);
             },
+            onReconnect(cb) { reconnectCbs.push(cb); },
             close: emitClose,
         };
     });

@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
+import { readIsolatedQaPolicy, isolatedQaEnvironment } from '../../../src/shared/isolated-qa.js';
+import { applyIsolatedQaPaths } from './lib/qa-session.js';
 import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-spawn.js';
 import { promptInstallCli } from './lib/install-cli.js';
 import {
@@ -129,11 +131,53 @@ function parseArgs(argv: string[]): CliFlags {
   return { port, attachOnly, spawn, background, managerUrl, managerUrlExplicit };
 }
 
-const FLAGS = parseArgs(process.argv.slice(1));
+// Validate raw flags before the legacy parser can normalize invalid input. The
+// shared owner alone parses the environment; this adapter checks CLI agreement.
+function readQaFlags(argv: string[]): CliFlags | null {
+  const policy = QA_POLICY;
+  if (!policy) return null;
+  let attachOnly = false;
+  let spawn = false;
+  let background = false;
+  let explicitUrl = false;
+  if (process.env.JAW_MANAGER_PORT !== undefined && process.env.JAW_MANAGER_PORT !== String(policy.managerPort)) {
+    throw new Error('[isolated-qa] JAW_MANAGER_PORT: must match manager port');
+  }
+  if (process.env.JAW_MANAGER_URL !== undefined) {
+    if (process.env.JAW_MANAGER_URL !== policy.managerUrl) throw new Error('[isolated-qa] JAW_MANAGER_URL: must match manager URL');
+    explicitUrl = true;
+  }
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--port' || arg?.startsWith('--port=')) {
+      const raw = arg === '--port' ? argv[++i] : arg.slice(7);
+      if (raw !== String(policy.managerPort)) throw new Error('[isolated-qa] --port: must match manager port');
+    } else if (arg === '--manager-url' || arg?.startsWith('--manager-url=')) {
+      const raw = arg === '--manager-url' ? argv[++i] : arg.slice(14);
+      if (raw !== policy.managerUrl) throw new Error('[isolated-qa] --manager-url: must match manager URL');
+      explicitUrl = true;
+    } else if (arg === '--attach-only') attachOnly = true;
+    else if (arg === '--spawn') spawn = true;
+    else if (arg === '--background') background = true;
+  }
+  if (!explicitUrl) throw new Error('[isolated-qa] --manager-url: explicit manager URL required');
+  if (attachOnly && spawn) throw new Error('[isolated-qa] --attach-only: conflicts with --spawn');
+  return { port: policy.managerPort, managerUrl: policy.managerUrl,
+    managerUrlExplicit: true, attachOnly, spawn, background };
+}
+
+const QA_POLICY = readIsolatedQaPolicy(process.env, 'electron');
+const FLAGS = readQaFlags(process.argv.slice(1)) ?? parseArgs(process.argv.slice(1));
+const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
+process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN = ELECTRON_RENDERER_TOKEN;
+const QA_ENV = QA_POLICY ? isolatedQaEnvironment(QA_POLICY, {
+  ...process.env, CLI_JAW_ELECTRON_RENDERER_TOKEN: ELECTRON_RENDERER_TOKEN,
+}) : null;
+if (QA_POLICY) applyIsolatedQaPaths(app, QA_POLICY);
 let MANAGER_URL = FLAGS.managerUrl;
 let MANAGER_ORIGIN = new URL(MANAGER_URL).origin;
 setAllowedOrigin(MANAGER_ORIGIN);
-let PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(getManagerUrlPort(MANAGER_URL));
+let PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(getManagerUrlPort(MANAGER_URL), QA_ENV ?? process.env);
 
 const DEV_TOOLS_ENABLED =
   process.env.NODE_ENV === 'development' || process.env.JAW_ELECTRON_DEVTOOLS === '1';
@@ -190,6 +234,7 @@ let restartTimestamps: number[] = [];
 let crashLoopStopped = false;
 let shuttingDown = false;
 let shutdownComplete = false;
+let qaCleanupUncertain = false;
 let forceQuitRequested = false;
 let managerRestarting = false;
 let windowCreating = false;
@@ -207,9 +252,6 @@ const __dirname = dirname(__filename);
 const PRELOAD_PATH = join(__dirname, '..', 'preload', 'index.js');
 const DESKTOP_USER_AGENT_TOKEN = 'cli-jaw-desktop';
 const EMBEDDED_BROWSER_PARTITION = 'persist:cli-jaw-browser';
-const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
-
-process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN = ELECTRON_RENDERER_TOKEN;
 
 // #229: the webview tag sets a clean per-webview UA, but service workers and other
 // background requests in the partition fall back to the session UA, which carries the
@@ -255,7 +297,7 @@ if (!gotLock) {
   app.quit();
 } else {
   app.enableSandbox();
-  registerJawProtocol(app);
+  if (!QA_POLICY) registerJawProtocol(app);
 
   app.on('second-instance', (_event, argv) => {
     const deepLink = extractJawUrlArg(argv);
@@ -278,7 +320,7 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     configureEmbeddedBrowserSession();
     await bootstrapOnce();
-    promptInstallCli().catch(() => {});
+    if (!QA_POLICY) promptInstallCli().catch(() => {});
     if (!metricsCollector) {
       try {
         metricsCollector = startAppMetricsCollector();
@@ -372,13 +414,33 @@ async function requestApplicationQuit(reason: string): Promise<void> {
     // best-effort — quit must not block on cookie flush
   }
   const child = managerProcess;
-  managerProcess = null;
+  if (!QA_POLICY) managerProcess = null;
   try {
-    if (child) await gracefulShutdown(child, 5000);
-  } finally {
+    if (child) await gracefulShutdown(child, 5000, QA_POLICY);
+    if (QA_POLICY && qaCleanupUncertain) throw new Error('[isolated-qa] prior cleanup remains uncertain');
+    managerProcess = null;
     shutdownComplete = true;
     app.exit(0);
+  } catch (err) {
+    if (!QA_POLICY) {
+      shutdownComplete = true;
+      app.exit(0);
+      throw err;
+    }
+    reportQaCleanupUncertain(err);
+    shuttingDown = false;
   }
+}
+
+function reportQaCleanupUncertain(error: unknown): void {
+  qaCleanupUncertain = true;
+  crashLoopStopped = true;
+  stopTrayReminderBadgePolling();
+  const message = `[isolated-qa] cleanup uncertain; retain task profile. ${(error as Error)?.message ?? 'unknown completion'}`;
+  ringBuffer.append(`${message}\n`);
+  console.error(message);
+  updateServerStatus('QA cleanup uncertain — supervisor required');
+  dialog.showErrorBox('Isolated QA cleanup uncertain', message);
 }
 
 async function forceQuit(): Promise<void> {
@@ -430,6 +492,7 @@ function toggleTrayRemindersPopover(): void {
 }
 
 function registerTrayRemindersShortcut(): void {
+  if (QA_POLICY) return;
   if (trayRemindersShortcutRegistered) return;
   const registered = globalShortcut.register(TRAY_REMINDERS_ACCELERATOR, toggleTrayRemindersPopover);
   if (!registered) {
@@ -511,22 +574,26 @@ async function createManagerWindow(): Promise<void> {
 }
 
 async function restartManagerServer(): Promise<void> {
+  if (QA_POLICY && qaCleanupUncertain) return;
   managerRestarting = true;
   stopTrayReminderBadgePolling();
   updateServerStatus('Server: Restarting...');
   const child = managerProcess;
-  managerProcess = null;
+  if (!QA_POLICY) managerProcess = null;
   try {
     if (child) {
-      child.removeAllListeners('exit');
-      await gracefulShutdown(child, 5000);
+      if (QA_POLICY) child.removeListener('exit', handleManagerExit);
+      else child.removeAllListeners('exit');
+      await gracefulShutdown(child, 5000, QA_POLICY);
     }
+    managerProcess = null;
     await ensureManagerRunning();
     markManagerRunning();
     if (mainWindow && !mainWindow.isDestroyed()) {
       await mainWindow.loadURL(MANAGER_URL);
     }
   } catch (err) {
+    if (QA_POLICY) reportQaCleanupUncertain(err);
     ringBuffer.append(`[restart error] ${(err as Error)?.message ?? err}\n`);
     stopTrayReminderBadgePolling();
     updateServerStatus('Server: Restart failed');
@@ -574,7 +641,7 @@ async function bootstrap(): Promise<void> {
       void forceQuit();
     },
     getManagerUrl: () => MANAGER_URL,
-  });
+  }, QA_POLICY);
 
   await ensureManagerRunning();
   installTrayReminders();
@@ -584,13 +651,14 @@ async function bootstrap(): Promise<void> {
   } else {
     await createManagerWindow();
   }
-  primeMacAutomationPermission({
+  if (!QA_POLICY) primeMacAutomationPermission({
     log: ringBuffer,
     onBlocked: showAutomationPermissionDialog,
   });
 }
 
 function showAutomationPermissionDialog(reason: string): void {
+  if (QA_POLICY) return;
   void dialog.showMessageBox({
     type: 'warning',
     title: 'cli-jaw Automation permission',
@@ -991,7 +1059,7 @@ function installManagerApplicationMenu(): void {
 function switchManagerUrl(url: string): void {
   MANAGER_URL = url;
   MANAGER_ORIGIN = new URL(url).origin;
-  PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(getManagerUrlPort(url));
+  PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(getManagerUrlPort(url), QA_ENV ?? process.env);
   setAllowedOrigin(MANAGER_ORIGIN);
 }
 
@@ -1052,6 +1120,7 @@ async function findAvailableManagerPort(preferredPort: number): Promise<number> 
 }
 
 async function prepareSpawnManagerUrl(): Promise<void> {
+  if (QA_POLICY) return;
   if (FLAGS.managerUrlExplicit) return;
   const port = await findAvailableManagerPort(FLAGS.port);
   const url = `http://127.0.0.1:${port}/`;
@@ -1062,6 +1131,7 @@ async function prepareSpawnManagerUrl(): Promise<void> {
 }
 
 async function ensureManagerRunning(): Promise<void> {
+  if (QA_POLICY && qaCleanupUncertain) throw new Error('[isolated-qa] cleanup uncertain; restart forbidden');
   if (shouldAttachToExistingManager()) {
     if (await isManagerHealthy(MANAGER_URL)) return;
     const ok = await waitForManagerReady(MANAGER_URL, { timeoutMs: 60_000 });
@@ -1089,8 +1159,9 @@ async function ensureManagerRunning(): Promise<void> {
 
 async function spawnAndWait(): Promise<void> {
   await prepareSpawnManagerUrl();
-  const found = await findJawBinary();
+  const found = await findJawBinary(QA_POLICY);
   if (!found.path) {
+    if (QA_POLICY) throw new Error('[isolated-qa] packaged sidecar: unavailable; fallback forbidden');
     const choice = await showJawNotFoundDialog(found.searched);
     if (choice === 'pick') {
       const picked = await dialog.showOpenDialog({
@@ -1107,12 +1178,13 @@ async function spawnAndWait(): Promise<void> {
   }
 
   const managerPort = getManagerUrlPort(MANAGER_URL);
-  PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(managerPort);
+  PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(managerPort, QA_ENV ?? process.env);
   managerProcess = spawnJawDashboard(found.path, {
     port: managerPort,
     ringBuffer,
+    qaPolicy: QA_POLICY,
     env: {
-      ...previewSpawnEnvForManager(managerPort),
+      ...(QA_ENV ?? previewSpawnEnvForManager(managerPort)),
       CLI_JAW_ELECTRON_RENDERER_TOKEN: ELECTRON_RENDERER_TOKEN,
     },
   });
@@ -1120,9 +1192,11 @@ async function spawnAndWait(): Promise<void> {
   managerProcess.on('exit', handleManagerExit);
   managerProcess.on('error', (err) => {
     ringBuffer.append(`[spawn error] ${err.message}\n`);
+    if (QA_POLICY) reportQaCleanupUncertain(err);
   });
 
   const ok = await waitForManagerReady(MANAGER_URL, { timeoutMs: 60_000 });
+  if (QA_POLICY && qaCleanupUncertain) throw new Error('[isolated-qa] child lifetime failed during readiness');
   if (!ok) {
     await showSpawnFailedDialog(
       `60초 안에 ${MANAGER_URL} 가 응답하지 않았습니다.\n\n최근 로그:\n${ringBuffer.read().slice(-1500)}`,
@@ -1148,6 +1222,23 @@ function consumeRestartBudget(): boolean {
 }
 
 function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): void {
+  if (!QA_POLICY) return handleManagerExitAfterCleanup(code, signal);
+  if (shuttingDown || managerRestarting || qaCleanupUncertain) return;
+  const child = managerProcess;
+  void (async () => {
+    try {
+      if (!child) throw new Error('[isolated-qa] unowned exit');
+      await gracefulShutdown(child, 5000, QA_POLICY);
+      if (managerProcess !== child || shuttingDown || managerRestarting) return;
+      managerProcess = null;
+      handleManagerExitAfterCleanup(code, signal);
+    } catch (err) {
+      reportQaCleanupUncertain(err);
+    }
+  })();
+}
+
+function handleManagerExitAfterCleanup(code: number | null, signal: NodeJS.Signals | null): void {
   ringBuffer.append(`[manager exit] code=${code} signal=${signal}\n`);
   if (shuttingDown || crashLoopStopped) return;
   if (managerRestarting) return;

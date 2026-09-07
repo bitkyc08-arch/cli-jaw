@@ -39,6 +39,16 @@ const DEFAULT_AUTO_TOKENS: ReadonlyArray<string> = [
 
 // ─── Pure helpers (exported for tests) ───────────────────────────────
 
+export function configuredPolicyLabel(value: unknown): string {
+    if (value === 'auto') return 'Auto';
+    if (value === 'safe') return 'Safe';
+    if (value === null || value === undefined) return 'Not provided';
+    if (Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
+        return `Custom (${value.length} ${value.length === 1 ? 'entry' : 'entries'})`;
+    }
+    return 'Unrecognized';
+}
+
 export function isPermissionsAuto(value: unknown): value is 'auto' {
     return value === 'auto';
 }
@@ -216,22 +226,17 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
     const hasInvalid = invalidChips.length > 0;
     const isEmpty = mode === 'custom' && tokens.length === 0;
 
-    const activeSummary =
-        original?.mode === 'custom'
-            ? `${original.tokens.length} explicit token${original.tokens.length === 1 ? '' : 's'}: ${original.tokens.join(', ')}`
-            : original?.mode === 'auto'
-                ? 'auto (runtime decides)'
-                : 'unknown shape — saved value will overwrite on next save';
+    const activeSummary = configuredPolicyLabel(state.data.permissions);
 
     return (
         <form className="settings-page-form" onSubmit={(event) => event.preventDefault()}>
             <SettingsSection
                 title="Permissions"
-                hint="Controls which capabilities the CLI can use. Auto delegates to the runtime; Custom freezes the list to your allowlist."
+                hint="Selecting a value changes the draft. Save applies it."
             >
                 <SelectField
                     id="permissions-mode"
-                    label="Mode"
+                    label="Change policy to"
                     value={mode}
                     options={MODE_OPTIONS}
                     onChange={handleModeChange}
@@ -267,13 +272,16 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
             </SettingsSection>
 
             <SettingsSection
-                title="Currently active"
+                title="Saved policy"
                 hint="Reflects the saved snapshot from /api/settings."
             >
                 <p className="settings-readonly-line">
-                    <span className="settings-field-label">Resolved permissions</span>
+                    <span className="settings-field-label">Configured policy:</span>{' '}
                     <span>{activeSummary}</span>
                 </p>
+                {original?.mode === 'unknown' ? (
+                    <p className="settings-section-hint">Use Agent to change this configured policy.</p>
+                ) : null}
             </SettingsSection>
         </form>
     );

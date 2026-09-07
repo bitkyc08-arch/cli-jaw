@@ -8,13 +8,12 @@ tags: [cli-jaw, codex-app, pi, opencodex, runtime-pool]
 
 ## Shared event contract foundation
 
-Native Cursor setup failures and immediate pre-acquisition Stop admit one cached
-fallback start before compatibility completion. Exceptional settlement and final
-cleanup close only the captured still-running trace header, independently of
-canonical recording. The optional onlyIfRunning trace finalizer preserves an
-already selected status, timestamp and error; old unconditional callers retain
-their behavior. Failure diagnostics do not become final MESSAGE content, and
-cleanup cannot clear a successor's main slot or exit barrier.
+The shared native Cursor/Grok host admits one cached fallback start before a
+pre-start failure or immediate Stop emits compatibility completion. Exceptional
+settlement and final cleanup close only the captured still-running trace header,
+even if canonical recording fails. They never rewrite an already selected result,
+timestamp or another owner's run. Exact lease/exit-barrier cleanup remains separate;
+failure diagnostics are not final MESSAGE content.
 
 `src/shared/runtime-contract.ts` defines native/print capabilities, distinct native-input/cancel-reprompt/queued/restart controls, and versioned presentation events. A jaw chat session and routing scope are separate from private provider session IDs. `RuntimeTurnOutcome` keeps authoritative `finalText` (null means absent; an empty string is intentional) separate from partial text.
 
@@ -30,13 +29,141 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ## Transport selection and session identity
 
-`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor main has a native ACP path with literal auto permissions; restrictive Cursor and unsupported Grok/Claude/worker selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags.
+### Independent display preference
+
+`presentation.mode` is `activity` by default or explicitly `legacy`. Both fresh and upgraded documents without the field use Activity; explicit Legacy and future siblings survive merge/load/watch. This policy does not change the separate existing-user print transport policy. API rejects invalid blocks/modes; watch ingress keeps current mode on rejected fields. A sole own presentation patch skips fallback reset, singleton session sync and JWC config rewrite while preserving serialized persistence/rollback and the existing messaging dispatcher, which finds no affected transport. Mixed/empty patches retain existing behavior. Registered native ownership and live identity remain current.
+
+Manager Display offers Activity first and Legacy as a reversible choice, with current-instance singleflight, guarded disabled edits and captured dirty acknowledgement. Classic applies a bounded generation-fenced settings refresh on settings_change, not loadSettings/runtime prompts. Failed latest reads retain the applied mode. This is preference plumbing; full Activity renderer/admission/history and TUI adoption are separate following layers, not certified by the setting alone.
+
+### Print observation and tool convergence
+
+`runtime/print-projection.ts` is a counter-only accepted-content observer; `print-activity.ts` composes it with existing RuntimeProjection/journal bounds. Generic print and legacy Copilot ACP branches create it once. Native Codex/Pi/Cursor/Grok/Claude retain their own projections and never also take the print path. Accepted Codex phase tags, Claude deltas/snapshots, Cursor normalized segments, Grok text/thought, OpenCode steps and Kiro/AGY/Copilot accepted text are observed before destructive legacy resets. Unknown text stays unknown; stderr, housekeeping and control frames are not assistant messages. Synthetic narration/thought cards are not double-counted as tools.
+
+The existing lifecycle's `onRuntimeEnd` supplies the print application-final, preserving null/empty/whitespace meaning without a native outcome. Normal and bypass error/retry paths close once. Print trace link/finalize errors are best-effort diagnostics, not rollback of an inserted assistant MESSAGE or authority for another inference/send. Reverse linkage may be incomplete after a failed trace write; body/tool blob fallback remains. This is not an atomic MESSAGE+trace-link promise.
+
+`merge-tool-log.ts` keeps primary-first order, latest within each source, primary ties and terminal-over-running precedence. Identity is run+ref or run+seq, never label; unknown workers cannot use boss fallback identity. Exact-pointer parser recovery updates existing durable tool rows after RAM eviction. Only print calls `RuntimeProjection.tool` with `allowTerminalUpdates:true`; native frozen result/enrichment rules remain the default. Live snapshots read at most400 newest durable tool rows even at equal count and merge RAM fallback. The sanitizer's explicit `knownOmitted` option preserves a conservative known loss marker using max-overlap accounting, not addition of overlapping RAM/DB counts. Ordinary append/storage callers keep their existing additive count behavior.
+
+### Durable Activity journal
+
+Classic restores this journal through the bounded history/discovery owners described
+in `frontend.md`. Historical scope stays as recorded even after live scope changes.
+Exact saved answers use the run+chat MESSAGE index, not the redacted canonical final
+preview or a nullable reverse trace link. A fork may read its own copied MESSAGE
+without gaining access to source history. Recovery never synthesizes a RuntimeEvent,
+answers a historical decision, or changes runtime scheduling or Slack delivery.
+
+`src/trace/activity-journal.ts` commits validated runtime bodies using the existing trace sequence allocator inside one SQLite transaction. `trace_runs.session_id/scope_key` capture the original chat and execution scope at all provider trace starts, including internal Claude workers. The journal validates stored owner, audience and running status before append. Internal records support private child/decision lifecycle but never public SSE, discovery or replay. A copied/forked message cannot acquire source history; deleting its original chat deletes its owned traces. Additive migration backfills only `trace_runs.message_id -> messages.id`, never copied `trace_run_id` pointers, and never invents a historical scope.
+
+Bounds: 32KiB/event, 4096 events/4MiB per run, 20,000 runtime events/32MiB globally, also bounded by configured total trace rows. A private `system/runtime.control.v1` row holds append high-water, counts, close and first loss; it is not a canonical event. Loss stops later appends and never truncates an append-dependent prefix into a plausible answer. Control failure cannot suppress final delivery or interrupted MESSAGE salvage. Finalization closes control after an actual header update; a zero-change `onlyIfRunning` returns without touching completed control. Startup closes stale running records without resuming a provider.
+
+Discovery and replay use the trace API's explicit `session` query. Pages contain at most40 scanned events/256KiB and use sparse committed `seq`, `after`, fixed `through`, `nextAfter`, `hasMore`, `incomplete` and `loss`. A fixed high-water excludes concurrent tail appends; corrupt rows advance the scan cursor with explicit loss. Runtime rows remain immutable while legacy raw/tool rows keep their existing behavior. Retention prunes raw rows first, then whole canonical prefixes; running headers survive and loss tombstones preserve cursor meaning until eligible reclamation. Trace spill cleanup refuses symlinked roots/directories.
+
+The existing raw drawer passes captured server session identity to summary/list/detail reads and invalidates stale/closed requests. Sparse sequence is not a row offset. This storage/API layer does not enable print projection, Activity preferences or full history UI; it cannot make historical requests actionable. Existing instance auth is retained, not a new tenant ACL. Slack final/ACK/queue behavior is unchanged.
+
+`perCli.<cli>.transport` accepts `print` or `native` only for Cursor, Grok and Claude. All three still default to print. Cursor and Grok main have native ACP paths with literal auto permissions; Claude main uses the optional Agent SDK. Restrictive Cursor/Grok and unsupported worker selections are rejected with code78 before prompt-file regeneration, bucket/bootstrap/snapshot, fallback or pool work. Builtin Codex App and Pi retain their existing paths and keys. Main-adapter support and worker support are independent flags, not binary/authentication readiness.
 
 Existing documents with no transport field are pinned to print before fresh defaults are merged. Existing corrupt/unreadable or established missing-file homes also stay print; persistence-blocked behavior is unchanged. A genuinely fresh init records factory choices explicitly. Invalid API fields are rejected; watcher input drops only the invalid transport and preserves current mode/siblings. A real watcher mode change invalidates existing ownership generations after settings commit and before publication.
 
 Print keys are byte-for-byte unchanged. Switchable native sessions use `native-v1:` before the entire opaque legacy key and never update the print singleton. Spawn captures this identity once; lifecycle saves and explicit compact paths receive the captured transport/bucket. Scoped new/reset removes exact print/native keys only, including bare/default aliases for the default scope; colon-containing scopes are not a hierarchy. Instance-wide clear retains its existing Codex all-lane exception. Explicit native outcomes skip print-era automatic compact/count/high-turn-reset heuristics; native providers manage their own context. Explicit CLI switching retains its prior fresh-start semantics.
 
 `GET /api/cli-status` adds `runtimeSelection: {transport, nativeAdapterImplemented, nativeWorkerImplemented}` only to those three engines plus builtin Codex App/Pi. These are compiled implementation flags, not authentication/binary/probe readiness. Existing status evidence and non-participating rows remain unchanged. Display preferences and runtime transport choice are separate controls; the Activity default is not enabled by this layer.
+
+### Manager runtime preference and save ownership
+
+Manager Settings → Model defaults (`public/manager/src/settings/pages/ModelProvider.tsx`)
+exposes Runtime transport only for Cursor, Grok and Claude. Native session is an
+explicit opt-in; missing transport displays Print compatibility without creating a
+patch. Explicit native remains native, print is reversible, and an unknown value
+gets a generic error/label rather than silently selecting the first option. The
+unknown sentinel is UI-only and cannot be submitted. Cursor/Grok native require
+Auto and do not support native workers; Claude native supports Auto/Safe. The
+selector does not change permissions, model/effort or active CLI to satisfy those
+constraints, and its configured value is not a readiness check.
+
+Three independent choices remain separate: `perCli.<cli>.transport` selects the
+next run's native/print path; `presentation.mode` defaults to Activity with explicit
+Legacy reversal; Manager `preview.ts` selects the HTTP embed route
+(`origin-port`, `legacy-path`, or unavailable `none`). A runtime preference edit
+does not select a display mode or preview route, migrate defaults, or replace the
+running adapter. Builtin Codex App/Pi have no print selector here.
+
+The actual web/API settings wrapper preserves admitted-run ownership only for
+explicit known `presentation.mode` and/or eligible transport-only patches. It
+also leaves fallback state, singleton session and JWC config untouched for these
+preferences; persistence, serialization, rollback and settings publication still
+run. Old completion saves to its captured native/print bucket; the next run reads
+the new choice. Mixed model/permissions/CLI/workspace or unknown/empty leaves keep
+the existing invalidation. Legacy presentation-only subtree side-effect skips are
+retained separately. External-file transport edits still invalidate ownership;
+the API's own saved-file echo is ignored by the existing watcher fingerprint.
+
+`components/runtime-transport-field.tsx` subscribes to its own DirtyStore entry,
+falling back to the server original, never the row's model-draft transport. It
+validates CLI/value before setting exactly `perCli.<cli>.transport`; it sends no
+HTTP. The page expands valid owned `perCli.*`/`fallbackOrder` entries and uses the
+ordinary SettingsClient's existing `PUT /i/<port>/api/settings`. Save/reset share
+one operation owner; duplicate saves join it, ordinary inputs and already-open
+menu callbacks are guarded, and failed saves retain pending intent. Success
+acknowledges only captured entry identities, not newer or unrelated entries.
+
+Committed client/port/store identity fences requests and completions, including
+A→B→A; metadata reads also have a request generation. A private snapshot read
+adapter tags results with their captured instance so ready A data cannot become B
+data; this tag never changes the wire payload or write client. Snapshot refresh
+overlays still-pending owned perCli values onto the model draft. These are UI
+currentness guards, not an authorization layer or cancellation of admitted writes.
+
+Disabling a row retains its open Pi dialog under an inert wrapper rather than
+unmounting it solely for disabled state; normal snapshot loading or instance
+remount can still destroy the row. An already-admitted registration completion
+uses the separate `onPiRegistered`
+sink: current-instance provider/model intent may reconcile while inputs are
+blocked, but a retired instance cannot write the current draft. This does not add
+another HTTP mutation. Optional returned Pi profile-metadata refresh remains a
+separate inherited dialog response-envelope limitation; selection reconciliation
+does not claim to fix it. The existing Classic native-request bridge remains the
+embedded panel owner. This settings integration does not certify embedded browser,
+dev Electron or packaged-sidecar QA.
+
+## Internal Claude SDK session core
+
+`runtime/claude-sdk-session.ts` owns one persistent query from the optional, exact-pinned `@anthropic-ai/claude-agent-sdk@0.3.261`. One reader consumes sequential parent-text turns; explicit resume is passed to a new query. The factory captures prepared options, environment and cancellation before lazy loading. The input stream has one unconsumed text slot (at most1MiB) and one active turn; this does not bound the SDK's internal buffers or provide in-band steer.
+
+Turn bindings separate jaw IDs from the provider session ID. Bounded terminal dedupe, explicit user-message UUID checks and owner rechecks prevent stale identified results from completing a replacement turn. Anonymous output still relies on the SDK's single-query ordering contract. Final text remains authoritative, including empty versus absent; partial text is never promoted after error or Stop. Cleanup fences admission immediately and succeeds only after reader completion and observed owned-process closure. Native Windows launch is covered by resolver simulations, not installed-provider proof.
+
+The internal session now maps parent streamed text, tool input/output, provider-supplied plaintext reasoning and per-turn usage through the shared RuntimeProjection. Completed block snapshots replace matching deltas; child narration and encrypted thinking never enter parent output. Tool JSON is bounded before parsing/publication. Late tool metadata may fill unknown name/input without reopening or replacing a terminal result; optional enrichment is rejected if it would erase established output under preview-budget pressure. Final publication fences reentrant input until the prior end is emitted.
+
+The main adapter now uses this session through the existing shared runtime store, native host and lifecycle. `runtime-pool-contract.ts` owns type-only provider ports; the Claude adapter cannot import back into its pool owner. Prepared config/canonical cwd/environment and captured ownership govern reuse; failed physical disposal retains a fence until safe release. SDK candidates defer final publication until the host claims an immutable result and lifecycle supplies its terminal. Input remains blocked through pending/finishing state. A Stop before claim changes an unclaimed candidate; after claim the established final can survive a stopped lifecycle status, as in the common outcome contract. Error/unfinished partial is never promoted.
+
+Stop hard-closes the query, and the existing default steer policy resumes with interrupted context after MESSAGE persistence and exit-settle. Explicit followup/collect queues; there is no native-input hook. No-start failure and Stop-before-acquisition use one cached fallback projection, started before compatibility completion and closed once. Exceptional trace finalization updates only a still-running header, preserving a prior lifecycle's status/timestamp/error.
+
+Current-message partial text still resets on a new assistant message. Interruption
+uses a separate bounded view of the latest parent message containing a text block:
+a later tool-only boundary does not erase progress, but an explicit empty text
+block remains empty. This applies only to Stop/error and an unclaimed candidate;
+successful final selection and already claimed results never borrow that fallback.
+
+An unleased `ClaudeAcquireFailure.cleanup` belongs to its captured main or worker
+control even after logical settlement removes the process-map entry. Logical
+answer delivery does not wait for this receipt; physical accounting ends only
+when it fulfills. Rejection retains the fence, and late completion never repeats
+lifecycle delivery. Instruction-directory cleanup remains worker-only.
+`waitForMainProcessEnd` counts main controls, including this retained cleanup,
+but excludes surviving workers during all three steer entrypoints. The existing
+`waitForProcessEnd` and global shutdown wait remain inclusive. Their bounded
+deadline returning is not evidence that physical cleanup succeeded.
+
+Native Claude main and workers support tools, live approvals/questions, bounded image input and foreground child activity. Auto/safe profiles preserve their existing meanings; deny/unknown profiles fail before prompt/directory/query work, so the output-only memory extractor still requires print. Workers use a dedicated query, real process handle and unique owned instruction directory; cancellation/completion registration outlives process-map removal until cleanup settles. Claude print and claude-e remain unchanged. Foreground-only hooks do not promise an OS sandbox. SDK authentication follows the official API/cloud setup; no claude.ai login flow, credential copying or subscription entitlement is added. Qualification distinguishes actual pinned SDK/owned simulated CLI from real-provider and rendered UI evidence; these are not interchangeable.
+
+`claude-sdk-permissions.ts` snapshots original input and binds callbacks to declared tool IDs. Questions return original full-question keys and comma-separated selected labels; neither auto mode nor a display item can bypass explicit ask rules. Missing/unreviewable operations deny, no future permission grant is created, and Stop/expiry cancels exactly the captured request. Images are in-memory validated PNG/JPEG/GIF/WebP, at most4,5MiB each/10MiB aggregate; the adapter never fetches arbitrary URLs/paths. Existing staged-file references remain prompt/tool access, not automatic image conversion.
+
+Child linkage is bounded to128 children,512 tools and32 prelink frames/64KiB. Parent and child declaration paths both reconcile until no progress or32 passes. Every usable declared ID reaches the owner table even if its child finished in the same drain; live eligibility remains false for inactive children. Cross-owner/retired ID reuse fails the reader, while identical-context declarations deduplicate. Parent completion stops unfinished child display entries, never manufactures child success. A captured synchronous terminal-only capability can record old child tool endings after ownership revocation, but cannot authorize requests, text, new tools or input.
+
+## Live native decision presentation
+
+The registry stays DB-independent with one optional change observer. Route composition installs `runtime-request-notices.ts`, which maps the captured registered chat to its presentation scope and emits `agent_runtime_requests_changed` directly to SSE. It never substitutes the active chat or calls messaging broadcast. This three-field hint contains only version/sessionId/delivery scope; canonical events and live request entries retain original execution scope.
+
+`/api/orchestrate/snapshot?session=<id>` supplies `activityIdentity` with no-store caching and strict named-session handling. The Classic panel (also used inside Manager/Electron chat) accepts the existing same-chat live list, labels execution context and POSTs the selected row's original four IDs. Another chat or stale binding cannot be substituted. Stream health, list freshness and manual recovery are separate: initial SSE unavailability invalidates pending automatic work, manual refresh retains the outage label, only SSE-open restores live health, and an uncertain POST is never automatically replayed. Old-server WebSocket fallback is retained, not a native decision channel. Full Activity timeline/default/replay remains a separate layer.
 
 ## ACP v1 transport boundary
 
@@ -62,7 +189,25 @@ Cancellation latches outlive a resolved registry answer. cancelRun/dispose preve
 
 The two request routes use existing instance auth, including loopback and configured LAN bypass; they are not an OS sandbox or per-session tenant ACL. Exact IDs prevent misrouting and replay, not authority escalation between already-authorized instance users. API accepted means decision recorded, not tool completion. Provider activation, Activity controls and channel interactions remain separate layers; Slack final/ACK/queue behavior is untouched.
 
+## Grok factory boundary
+
+`runtime/acp/grok-session.ts` is the internal dedicated-process factory. It reuses the existing ACP session, Windows launch resolver and owned-process cleanup. Only literal auto is admitted (`--no-leader --always-approve`); restrictive policies fail before spawn and keep print as the compatibility choice. Existing advertised cached-token/API-key authentication is selected without login or identity fallback. Legacy model IDs and object-valued effort choices are validated; a default alias with no explicit effort preserves the provider's current configuration.
+
+`AcpSession` exposes copied setup metadata and serialized idle-only model selection. Model metadata is bounded plain JSON, acknowledgements update state before subsequent frames, and failed/aborted setup waits for owned-child reaping. The targeted provider setup requires an object response with advertised models; null-only load responses shown in the [general v1 examples](https://agentclientprotocol.com/protocol/v1/session-setup) are an explicit interoperability limit, not invalid ACP. Grok main consumes this factory through the bridge below; workers remain unsupported and print defaults are unchanged.
+
+The passive `grok-events.ts` mapper reads only aggregate `_meta.usage` from the original prompt response. It maps cached-read tokens without adding them to input, preserves absent versus zero, and omits malformed optional telemetry without changing the answer. Last-call counters, context size, extension payloads and cost fields are not substitutes. The existing runtime-session `resultUsage` hook owns event publication; main Grok activation supplies that hook in its integration layer.
+
+Grok completion extensions do not own completion: id-less `_x.ai/session/prompt_complete` remains ignored, while unsupported question/plan/filesystem requests receive the common fixed protocol error. The original prompt result and callback/notification drain still gate cancellation and reuse. Captured tool updates reuse the common projector; no extra completion accumulator or native question capability is introduced.
+
 ## Resident Runtime Pool (`src/agent/runtime-pool.ts`)
+
+### Grok native main and replacement
+
+Grok1.0.13 uses a dedicated `agent --no-leader --always-approve stdio` child only for literal auto. Safe/custom policies fail before spawn or prompt preparation because restrictive native enforcement is unverified. Existing advertised cached_token or xai.api_key authentication is selected without login. Legacy advertised model metadata resolves the grok-build alias and exact reasoningEfforts.value; unavailable choices fail explicitly. Usage comes only from the observed result _meta.usage, preserving absent versus zero values.
+
+`acquireGrokRuntime` reuses ACP pool ownership and retirement fences in a separate engine partition; its key additionally hashes captured XAI_API_KEY, GROK_AUTH, HOME, USERPROFILE, GROK_HOME and GROK_AUTH_PATH values. Changing a supplied credential input cannot reuse an alive idle session; values never appear in the key. This is a conservative reuse fence, not proof that every variable/auth mode is supported by every installed provider version. Native session persistence uses native-v1 buckets and never print trace backfill. Workers stay disabled.
+
+The optional common AcpReplacementTurn keeps one logical send across original cancellation, original response, notification/callback drain and idle, then replacement dispatch. Single-flight application steering returns busy/no-start for a second concurrent replacement. Fatal cancellation/dispatch/preparation/commit failures retire and never queue. The input callback runs once after local dispatch, before a fast logical final, only while the captured owner remains current; exact main identity and canonical reset generation are checked again before DB/events. Stop with valid ownership preserves an already-dispatched input fact. Returned thenables are consumed and rejected. The optional prepareReplacement callback runs after drain. Grok1.0.13 retained the tested context without copying prior input into B; this observation is not a universal provider guarantee. Anonymous packets after B begins still rely on provider ordering.
 
 ### Cursor main native bridge
 
@@ -138,3 +283,38 @@ Wire limits are explicit: terminal-plus-late-content in one chunk and content in
 - 2026-08-02 실probe 판정: **multi-prompt SUPPORTED + abortEffective=true** (progrok/grok-composer-2.5-fast, pi 0.83.0). 판정 근거는 프로토콜 사실(두 번째 prompt의 id 상관 success 응답 + user echo 상관) — 모델이 두 번째 턴 답변을 reasoning 채널로만 내는 비결정성과 무관.
 - 판정 결과는 `~/.cli-jaw/pi/rpc-capabilities.json`에 기록(schemaVersion/commandId/probedAt). `spawnPersistentPiRpc`는 부재/파손/schema·profile·commandId 불일치/30일 초과 시 보수적 false (cancel은 kill 경로).
 - persistent 세션은 풀 어댑터로 편입 (`acquirePiRuntime`); boss는 멀티턴 재사용, employee는 기존 one-shot.
+
+### Capability preparation and execution ownership
+
+Each RPC instance now obtains one bounded asynchronous version observation,
+using captured command arguments, cwd and environment. Both full launch plans
+are validated before either execution handle is started. The actual RPC child
+still returns synchronously, but bootstrap/prompt writes wait for version close.
+The same observation selects typed settled finality and matches the existing
+abort receipt; both pool wrappers forward the live capability getter. Preparing
+prompts reserve overlap immediately, and pre-dispatch abort cancels only that
+reservation without sending an RPC abort. Incomplete version evidence poisons
+preparation; completed unknown/nonzero versions keep the existing legacy policy.
+The older command-availability resolver can still block for up to3s; this is
+not a claim that every creation operation is asynchronous.
+
+An instance-owned cleanup controller tracks RPC and version handles. Direct
+execution returns a separate immutable cleanup receipt, and publishes its
+selected result only after that receipt. Stop uses the direct child's owned
+cancellation port (also used by worker/duplicate/aggregate cancellation), not a
+second tree timer. RPC exit starts cleanup even after version readiness. One
+2s drain and1s escalation serve both handles; signals target retained handles
+and stop after terminal observations. Held pipes or uncertain closure retain
+resources, never become a successful close by detaching streams. Persistent
+failure/close claims its pending result before awaiting cleanup, so late output
+cannot replace failure with success. A previously selected typed answer remains
+separate from an uncertain cleanup result.
+
+Pi workers allocate fresh temporary directories and capture canonical path and
+device/inode ownership. The existing release path removes only its still-owned
+directory with a removable physical receipt; absent allocation, missing/rejected
+receipt, changed directory or symlink means no deletion. Live settings do not
+grant deletion authority, and late close never upgrades a retained decision.
+These controls are not an arbitrary-process sandbox or aggregate pool/server
+shutdown certificate. Opaque wrappers and escaped descendants remain explicit
+limits; version output never enters Activity, MESSAGE or channel delivery.

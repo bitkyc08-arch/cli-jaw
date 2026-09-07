@@ -1,6 +1,7 @@
 import type { Router, RequestHandler } from 'express';
 import { runtimeRequests, type RuntimeRequests } from '../agent/runtime/requests.js';
 import { ok, fail } from '../http/response.js';
+import { publishRuntimeRequestNotice } from './runtime-request-notices.js';
 
 function isId(value: unknown): value is string {
     return typeof value === 'string' && value.length > 0 && value.length <= 240;
@@ -8,6 +9,7 @@ function isId(value: unknown): value is string {
 
 /** Uses the existing instance auth policy; binding is not a per-session tenant ACL. */
 export function registerRuntimeRequestRoutes(app: Router, requireAuth: RequestHandler, registry: RuntimeRequests = runtimeRequests): void {
+    registry.setChangeObserver(publishRuntimeRequestNotice);
     app.get('/api/runtime/requests', requireAuth, (req, res) => {
         const sessionId = req.query['sessionId'];
         if (!isId(sessionId)) { fail(res, 400, 'invalid_session'); return; }

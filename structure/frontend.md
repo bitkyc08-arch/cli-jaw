@@ -13,11 +13,74 @@ aliases: [CLI-JAW Frontend, public architecture, frontend.md]
 > 메인 UI는 `index.html`에서 Google Fonts `Chakra Petch` + `Outfit`을 불러오고, 로컬 `public/assets/fonts/GeistVF.woff2`와 `JetBrainsMono-Variable.woff2`는 자산으로 보관 중이다.
 > PWA는 `manifest.json` + `sw.js` + `icons/`로 구성된다. 오프라인 메시지 캐시, virtual scroll, markdown/KaTeX/Mermaid 렌더링, sandboxed diagram widget, avatar emoji/image 커스터마이즈, voice recording, SSE-first event-channel, PABCD roadmap, subagent-aware ProcessBlock 렌더링, slash command 복구 액션, 반응형 사이드바, theme toggle, chat search, workflow cockpit이 현재 런타임의 핵심이다.
 
-TUI line-mode output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Thinking may start the clock without an answer sink; the first later assistant chunk creates that sink once, keeping the same clock/footer and thinking transcript. Completed markdown blocks stream before the terminal, and finalization flushes the remaining answer once. Fullscreen/raw behavior is unchanged.
+Legacy TUI output in `bin/commands/tui/ws-handler.ts` separates turn-clock startup from answer-sink startup. Activity-native output uses the scoped owners below; piped raw remains unchanged.
+
+### Interactive TUI Activity
+
+`src/cli/tui/activity.ts` groups live work, defaults collapsed and preserves explicit
+disclosure through later updates. Whole-instance compatibility frames are fenced
+before transcript/lifecycle mutation. Snapshot identity owns live admission; selected
+history keeps original scope for the same authorized chat without changing writes.
+The reducer is a bounded preview, not an answer source. Journal terminal text is
+redacted. `activity-answer.ts` coalesces compatibility delivery and exact saved MESSAGE
+(saved wins), with null/empty/whitespace distinct and explicit correction after
+irreversible printing. Missing journal uses an identified assistant receipt, never
+a fabricated canonical event. Absent-native error text remains a bounded diagnostic.
+
+`bin/commands/tui/activity-http.ts` is GET-only, rejects redirects, combines caller
+abort/deadline and counts streamed bytes before JSON:270000/page,16MiB snapshot/MESSAGE.
+`activity-answer-read.ts` retains one active and16 queued identity/ref-only jobs;
+retirement/captured-base checks prevent old replies from updating a new view.
+Late line output redraws the existing draft/cursor without repeating turn cleanup.
+F6 is a read-only inspector: Enter shows journal records; A shows exact saved answer.
+Missing, loading, absent and unavailable are distinct. The selected answer renderer
+retains only a viewport, not a full wrapped row array. Terminal sanitation and shared
+grapheme cell policy preserve raw stored bytes while preventing provider VT controls.
+Native scrollback releases payload only after actual flush; see `tui-scrollback.md`.
+
+Saved viewport rendering has same-output fast paths: ordinary text/LF bypasses
+per-character sanitizer staging; sanitized printable ASCII/LF uses logical-line
+row arithmetic and slices only the requested viewport. Unicode/control fallback
+still uses the shared parser/grapheme policy. This is not a whole-process memory
+or constant-time Unicode guarantee. Compact F6 labels retain read-only, absent,
+empty and failed-read meanings at20columns. An absent error/stopped terminal with
+no diagnostic still has a generic status notice; it never becomes a final answer.
 
 ---
 
 ## 파일 구조
+
+### Display preference plumbing
+
+`presentation.mode` is Activity by default for fresh/upgraded settings without a choice, or explicitly Legacy. Manager Display places this before TUI appearance using the existing SelectField/SettingsSection skin. It has current-instance singleflight, disabled/guarded editing, failed-save draft retention and captured dirty-entry acknowledgement; A→B→A cannot accept an old completion. Existing SettingsShell is keyed by port and is not rewritten.
+
+Classic `presentation-preference.ts` shares initial-load/event generations, coalesces queued changes and reads settings with the existing4MiB/15s bounded helper. It accepts direct settings or successful ok/data, retains last mode on latest failure, and never invokes loadSettings/runtime migration from settings_change. The native request bridge still owns snapshot identity, outage/manual freshness and original execution-ID responses.
+
+### Live Activity
+
+Classic consumes parsed canonical events through the existing SSE dispatcher. Activity is the default presentation: one closed native disclosure groups tools, commentary, reasoning and explicitly unknown-phase output; the existing message body owns the full final answer. Legacy remains reversible during a turn because CSS hides, rather than deletes, its existing bounded preview. Requests stay outside disclosure in either mode.
+
+Legacy exposes the existing canonical Stopped/Failed status and bounded error summary even while Activity details remain hidden. It does not manufacture an answer for an interrupted empty turn. Initial virtual-history bootstrap keeps the exact current live message element outside the history copy, including when server events precede the user echo; completed text/empty rows still enter history, and the live row is promoted only on normal settlement.
+
+Native request feedback follows the full selected form identity (including view, excluding expiry). A newly selected request does not inherit a previous request's success/expiry text. Empty-list polite outcome announcements and the same form's unconfirmed feedback/draft remain; this changes no freshness, focus, response payload or automatic retry policy.
+
+`src/shared/activity-state.ts` owns the pure preview reducer (128 entries,4096 chars each,65536 combined chars,16 request notices,32768-char final preview). `activity-replay.ts` coordinates bounded state; it does not fetch history. `features/activity-view.ts` renders40 rows/page and retains128 explicit item choices. `activity-live.ts` retains16 turn models/64 choice groups and receives existing renderer actions through a host port; it must not import the legacy ui/state/VS/Trace dependency cycle.
+
+`ws.ts` admits events only against the snapshot bridge's accepted session/scope and current stream readiness. Pre-admission events and gap notices share256 entries/1MiB; foreign identities are ignored, overflow and missing starts are visibly incomplete. Capacity fallback preserves the compatibility answer. Native-input/cancel-reprompt receipts are not terminals. A new run resets only the previous legacy presentation singleton, not the runtime.
+
+Canonical terminal previews and public answers can arrive in either order. A later run-bound native-present or print answer corrects only its own earlier canonical row, without another completion/unread notification. Native-absent diagnostics are notices, not Activity answers. Virtual scroll uses stable message IDs and additive live remount/recycle hooks; cache correction updates only existing assistant rows in the captured browser cache scope and run. The full answer is never read back from the bounded reducer.
+
+Virtualized rows are reconciled into geometric order in the DOM before lazy rendering and post-render hooks. Backward scrolling inserts older rows before retained newer rows, so reading and Tab order agree without replacing message or Activity hosts. Retained focus survives reordering without scrolling; evicted rows and focus outside the transcript are not restored.
+
+### Retained Activity and saved answers
+
+`activity-history.ts` admits only owned transcript/discovery hosts. It queues at most16 reads behind one active job, retains64 host records, cancels recycled/navigation jobs and bounds each read job to30s. Targeted replay buffers only that run while unrelated live turns continue. Historical stored execution scope is preserved; it need not equal the currently selected live scope. Focused terminal previews cannot be evicted, and recycled offscreen previews are preferred for eviction. Remounts reject nested copied message keys.
+
+`activity-read.ts` validates fixed-through pages and one run/turn identity, with4096 events/4MiB across seed and catch-up. `activity-discovery.ts` exposes a secondary disclosure for runs outside the loaded transcript:256 descriptors/window,16 visible rows and opaque-ID paging, not chronological ordering. Closed discovery does not fetch payloads. Missing or partial Activity has an explicit retry/retention notice; read success does not establish healthy SSE.
+
+The exact final answer comes from MESSAGE, never the redacted journal preview. The opt-in resolved-session MESSAGE envelope supplies chat identity; browser/VS IDs remain distinct from server MESSAGE IDs. Saved-answer reads use the explicit chat/run endpoint with16MiB limit. Ambiguous links do not transfer a view. Fork-owned copied answers may display without gaining source Trace access. Metadata-free offline cache is a labeled text-only disclosure, not an identified conversation. MESSAGE loading is singleflight per view, cancellation-bounded and namespace-captured before asynchronous work.
+
+The raw Trace drawer displays at most80 event rows with earlier/later controls; sparse sequence and row offset remain separate. Raw actions stay disabled until ownership has been checked. TUI has a separate read-only history and exact-answer consumer; integrated Electron QA is separately verified.
 
 ```text
 public/
@@ -300,6 +363,25 @@ settings.ts (barrel)
 | `manager/src/dashboard-reminders/` | reminders matrix/sidebar/workspace UI, drag/drop, detail popover |
 | `manager/src/dashboard-settings/` | Developer tools settings (diff defaults, embedding) |
 
+### Manager Settings — Runtime transport and embedded Classic
+
+Model defaults uses `ModelProvider.tsx` → `PerCliRow.tsx` →
+`runtime-transport-field.tsx` for explicit Cursor/Grok/Claude native opt-in or
+print compatibility. Absence stays print; the field reads only its own pending
+dirty entry or server original, not a model-draft shadow. ModelProvider owns
+save/reset singleflight, guarded inputs, captured-entry acknowledgement and
+instance/read generations. See [runtime preference and save ownership](runtime-integration.md#manager-runtime-preference-and-save-ownership)
+for the existing settings PUT chain, native constraints and admitted Pi completion.
+
+Runtime native/print is separate from Activity-default/Legacy presentation and
+from `preview.ts`'s `origin-port`/`legacy-path`/`none` HTTP routing. Manager embeds
+the existing Classic Activity/history/native-request surface; it does not own a
+second transcript or request panel. Workbench tab changes hide the same iframe;
+port changes remount it, with saved-history/snapshot restoration owned by Classic.
+Unsent input is not promised across A→B→A. Presentation is not part of iframe
+src/key; theme still affects src. These source contracts do not certify embedded
+browser, dev Electron or packaged-sidecar QA.
+
 ### Manager Settings — Pi Runtime
 
 | 파일 | 역할 |
@@ -310,7 +392,8 @@ settings.ts (barrel)
 | `manager/src/settings/pages/components/pi-profile.ts` | Pi profile/model option pure helper |
 
 - Pi model field는 발견된 모델이 있으면 `SelectField`를 사용하고, 목록이 비어 있을 때만 free-text `TextField`로 fallback한다.
-- 등록 성공 시 `settings.pi.profiles`, `settings.pi.discoveredModels`, `perCli.pi.provider`, `perCli.pi.model` draft가 함께 갱신되어 Pi model dropdown에 새 모델이 바로 나타난다.
+- Pi 전용 grid는 provider/model/effort를 bounded 1:2:1 트랙에 두고 긴 설명을 줄바꿈한다. 720px 이하의 기존 한 열 배치는 유지하며 다른 CLI grid나 설정 값/콜백은 바꾸지 않는다.
+- 이미 수락된 등록이 완료되면 현재 instance의 `onPiRegistered`가 `perCli.pi.provider/model` intent를 반영한다. 페이지 저장 중에도 이 완료 처리는 허용하지만, 일반 입력은 차단하고 retired instance의 완료는 무시한다. Optional `settings.pi` metadata는 응답에 있을 때만 반영하며, 기존 dialog의 `ok/data` envelope 처리에 따른 metadata refresh 한계는 별개다. 새 provider/model 선택 반영을 전체 profile/discovery metadata 갱신 보장으로 해석하지 않는다.
 | `manager/src/jaw-ceo/` | Jaw CEO console panels, orchestration-control actions, voice, virtual timeline |
 | `manager/src/goal-status/` `manager/src/background-tasks/` `manager/src/workers/` | Manager runtime-observability monitors for goal/PABCD, background tasks, web-ai bgtask bridges, worker progress, durable worker runs, shared status-category display contracts, safe event timelines, and explicit bounded raw-output drill-down |
 | `manager/src/notes/` | markdown notes, search sidebar, WYSIWYG editing, wikilinks, graph view |

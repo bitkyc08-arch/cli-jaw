@@ -4,6 +4,8 @@
 import type { WatchdogHandle } from '../agent/watchdog.js';
 import type { TracePointer } from '../trace/types.js';
 import type { RuntimeTurnOutcome } from '../shared/runtime-contract.js';
+import type { ActivityIdentity } from '../shared/presentation.js';
+import type { PrintActivityProjection } from '../agent/runtime/print-projection.js';
 
 export interface ToolEntry {
   icon: string;
@@ -46,6 +48,9 @@ export type AgyLastActivitySource = 'stdout' | 'stderr' | 'transcript' | 'none';
 
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
+  /** Captured jaw owner for presentation; sessionId below remains the provider ID. */
+  activityIdentity?: ActivityIdentity;
+  printActivity?: PrintActivityProjection;
   /** Explicit native result; never inferred from compatibility text or Activity. */
   runtimeOutcome?: RuntimeTurnOutcome;
   /** Private once-only compatibility publication marker, never serialized as an event field. */

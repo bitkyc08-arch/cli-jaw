@@ -1,5 +1,8 @@
 import { escapeHtml } from '../render.js';
 import { ICONS } from '../icons.js';
+import { requestBoundedJson } from '../bounded-api.js';
+import { parseActivityIdentity } from '../../../src/shared/presentation.js';
+import { withCurrentSessionQuery } from './session-hub.js';
 import {
     displayShellCommand,
     displayShellCommandDetail,
@@ -51,6 +54,8 @@ const PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS = 1000;
 const PROCESS_BLOCK_MAX_RENDERED_STEPS = 80;
 const PROCESS_BLOCK_HEAD_STEPS = 24;
 const PROCESS_BLOCK_TAIL_STEPS = 24;
+let traceOpenIntent = 0;
+let traceIdentityController: AbortController | null = null;
 
 export interface StoredProcessStepMeta {
     id: string;
@@ -410,6 +415,10 @@ function withProcessBlockLayoutMutation(anchor: Element | null, mutate: () => vo
     mutate();
 }
 
+function traceActionAllowed(trigger: HTMLElement): boolean {
+    return trigger.getAttribute('aria-disabled') !== 'true' && !trigger.matches(':disabled');
+}
+
 export function bindProcessBlockInteractions(root: HTMLElement): void {
     if (root.dataset['processBlockBound'] === '1') return;
     root.addEventListener('click', (event) => {
@@ -419,9 +428,24 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
         if (traceTrigger) {
             event.preventDefault();
             event.stopPropagation();
+            if (!traceActionAllowed(traceTrigger)) return;
             const runId = traceTrigger.dataset['traceRunId'] || '';
             const seq = Number(traceTrigger.dataset['traceSeq'] || 0);
-            import('./trace-drawer.js').then(m => m.openTraceDrawer(runId, seq))
+            const intent = ++traceOpenIntent;
+            const path = withCurrentSessionQuery('/api/orchestrate/snapshot');
+            traceIdentityController?.abort();
+            const controller = new AbortController();
+            traceIdentityController = controller;
+            const snapshot = requestBoundedJson(path, {}, controller.signal, 16 * 1024 * 1024);
+            Promise.all([import('./trace-drawer.js'), snapshot])
+                .then(([m, data]) => {
+                    if (intent !== traceOpenIntent || !traceTrigger.isConnected || !traceActionAllowed(traceTrigger)
+                        || path !== withCurrentSessionQuery('/api/orchestrate/snapshot')) return;
+                    const identity = parseActivityIdentity(data && typeof data === 'object' && !Array.isArray(data)
+                        ? (data as Record<string, unknown>)['activityIdentity'] : null);
+                    // Missing ownership is never guessed from the current tab.
+                    return m.openTraceDrawer(runId, seq, identity?.sessionId ?? null);
+                })
                 .catch(error => console.warn('[trace-drawer] open failed:', error));
             return;
         }
@@ -479,6 +503,16 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
                 }
             });
         }
+    });
+    root.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const trigger = (event.target as HTMLElement | null)?.closest<HTMLElement>('.process-step-trace');
+        if (!trigger) return;
+        // Native buttons already synthesize click. The nested span needs an explicit
+        // keyboard path that neither scrolls nor activates its parent step toggle.
+        if (trigger.tagName === 'BUTTON' && traceActionAllowed(trigger) && !event.repeat) return;
+        event.preventDefault(); event.stopPropagation();
+        if (!event.repeat && traceActionAllowed(trigger)) trigger.click();
     });
     root.dataset['processBlockBound'] = '1';
 }

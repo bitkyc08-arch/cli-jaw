@@ -22,6 +22,13 @@ import { c, type TuiContext } from './types.js';
 import { openPromptBlock, rebuildFooter } from './renderer.js';
 import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
+import { refreshInfo } from './api.js';
+import { handleActivityRuntime, activityForCompatibility, settleActivityCompatibility, markActivityGap, admitsCompatibility } from './activity-handler.js';
+import { handleActivityFallbackOutput } from './activity-fallback.js';
+import { safeActivityTerminalText } from '../../../src/cli/tui/activity-terminal-text.js';
+import { activityKey } from '../../../src/shared/activity-state.js';
+import { invalidateActivityContext } from './activity-replay.js';
+import { refreshActivityIdentity } from './api.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
     return ctx.displayMode === 'fullscreen';
@@ -73,11 +80,56 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
     const transcript = ctx.store.transcript;
     try {
         const wire = JSON.parse(raw);
+        if (wire && typeof wire === 'object'
+            && ['agent_chunk', 'agent_output', 'agent_tool', 'agent_status', 'agent_done', 'orchestrate_done'].includes(wire.type)
+            && !admitsCompatibility(ctx, wire)) return;
+        // Interactive raw retains its existing frame printer. Piped raw is owned
+        // by raw-pipe-mode and never enters the presentation normalizer.
+        if (ctx.isRaw && (wire?.type === 'agent_runtime' || wire?.type === 'agent_runtime_gap')) {
+            console.log(`  ${c.dim}${raw}${c.reset}`);
+            return;
+        }
         const nativeFinality = wire?.runtimeFinality === 'present' || wire?.runtimeFinality === 'absent';
         const nativeOrchestrateDone = !ctx.isRaw && nativeFinality && wire?.type === 'orchestrate_done';
         const event = normalizeTuiWsEvent(nativeOrchestrateDone ? { ...wire, type: 'agent_done' } : wire);
+        const mirroredActivity = event.kind === 'assistant-output' || event.kind === 'agent-tool' || event.kind === 'agent-status'
+            ? activityForCompatibility(ctx, wire) : undefined;
+        const projection = event.kind === 'assistant-output' || event.kind === 'agent-tool' || event.kind === 'agent-status' || event.kind === 'agent-done';
+        const knownRun = projection && !ctx.isRaw && typeof wire?.traceRunId === 'string' ? transcript.items.find(item =>
+            item.type === 'activity' && item.model.identity.runId === wire.traceRunId) : undefined;
+        if (knownRun?.type === 'activity' && (knownRun.retired || !activityForCompatibility(ctx, wire))) return;
+        if (mirroredActivity && (mirroredActivity.terminalStatus || !mirroredActivity.degraded)) return;
+        // Old fallback mirrors have no ownership of the current run's global
+        // clock or tool lane. Scoped answer/thinking previews remain admissible.
+        if (mirroredActivity && ctx.activeActivityKey && ctx.activeActivityKey !== mirroredActivity.key
+            && (event.kind === 'agent-status' || (event.kind === 'agent-tool' && !isThinkingToolEvent(event)))) return;
+        if (mirroredActivity && event.kind === 'agent-tool' && !isThinkingToolEvent(event)) {
+            event.label = safeActivityTerminalText(event.label);
+            event.detail = safeActivityTerminalText(event.detail);
+            event.icon = safeActivityTerminalText(event.icon);
+        }
         switch (event.kind) {
+            case 'runtime':
+                if (handleActivityRuntime(ctx, event.event) && event.event.kind !== 'turn-end'
+                    && ctx.activeActivityKey === activityKey(event.event)) {
+                    clearEphemeralStatus(transcript);
+                    ensureTurnClock(ctx, event.event.kind === 'tool' ? 'tool' : 'responding');
+                }
+                break;
+            case 'runtime-gap':
+                markActivityGap(ctx, event);
+                break;
+            case 'runtime-invalid':
+                markActivityGap(ctx, { sessionId: event.raw['sessionId'], scope: event.raw['scope'], runId: event.raw['runId'] });
+                break;
             case 'assistant-output':
+                if (mirroredActivity) {
+                    handleActivityFallbackOutput(ctx, mirroredActivity, event.text, {
+                        thinking: event.thinking, ...(event.agentId ? { agentId: event.agentId } : {}),
+                    });
+                    if (ctx.activeActivityKey === mirroredActivity.key) ensureTurnClock(ctx, 'responding');
+                    break;
+                }
                 if (ov.helpOpen || ov.paletteOpen || ov.bgtaskOpen) dismissOverlay(ctx);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
@@ -123,6 +175,19 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 const nativeFinal = nativeFinality && !ctx.isRaw;
                 const runId = typeof event.raw['traceRunId'] === 'string' ? event.raw['traceRunId'] : '';
                 const receipt = nativeTerminalReceipts.get(ctx);
+                const activity = activityForCompatibility(ctx, event.raw);
+                if (activity?.compatibilityDone) break;
+                const semanticFinal = settleActivityCompatibility(ctx, event.raw);
+                const active = transcript.items.find(row => row.type === 'activity' && row.key === ctx.activeActivityKey);
+                const activeRunId = active?.type === 'activity' && !active.terminalStatus
+                    ? active.model.identity.runId : ctx.activityActiveRunId;
+                if (runId && ctx.streaming && activeRunId && activeRunId !== runId) break;
+                // A delayed terminal can finish its own history without closing
+                // a newer run's composer, clocks or IDE lifecycle.
+                if (semanticFinal && activity && ctx.activeActivityKey && ctx.activeActivityKey !== activity.key) {
+                    activity.compatibilityDone = true;
+                    break;
+                }
                 if (nativeOrchestrateDone) delete ctx.orchPhase;
                 if (nativeFinal && receipt && (runId ? receipt.runs.includes(runId)
                     : !ctx.streaming && receipt.items === transcript.items && receipt.length === transcript.items.length
@@ -133,17 +198,22 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 if (nativeFinal) replaceNativeAssistantFinal(transcript, '');
                 stopSpinner();
                 clearEphemeralStatus(transcript);
-                for (const tool of event.toolLog) {
+                const activityFallback = activity?.recordingGap || activity?.displayGap;
+                for (const rawTool of semanticFinal && !activityFallback ? [] : event.toolLog) {
+                    const tool = semanticFinal ? { ...rawTool, icon: safeActivityTerminalText(rawTool.icon),
+                        label: safeActivityTerminalText(rawTool.label), detail: safeActivityTerminalText(rawTool.detail) } : rawTool;
                     if (isThinkingToolEvent(tool)) {
                         commitThinkingItemOnce(transcript, tool, { updateCommitted: true });
                     } else {
                         commitToolItemOnce(transcript, tool, { updateCommitted: true });
                     }
                 }
-                commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
+                if (!semanticFinal || activityFallback) commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
                 resetTurnToolDedup(transcript);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
+                } else if (semanticFinal) {
+                    ctx.streamSink = null;
                 } else if (nativeFinal) {
                     ctx.streamSink = null; // never flush a provisional buffer as final
                     replaceNativeAssistantFinal(transcript, event.text, event.agentId);
@@ -233,7 +303,9 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 stopFooterTimer(ctx);
                 rebuildFooter(ctx); // safe point: turn finished, before reopening the prompt
                 ctx.inputActive = true;
+                if (ctx.activityActiveRunId === runId) ctx.activityActiveRunId = null;
                 openPromptBlock(ctx);
+                if (semanticFinal && activity) activity.compatibilityDone = true;
                 if (nativeFinal) {
                     const runs = receipt?.runs ?? [];
                     if (runId) { runs.push(runId); if (runs.length > 8) runs.shift(); }
@@ -263,6 +335,14 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 break;
 
             case 'agent-tool':
+                if (mirroredActivity && isThinkingToolEvent(event)) {
+                    handleActivityFallbackOutput(ctx, mirroredActivity, event.detail || event.label, {
+                        thinking: true, replace: true, ...(event.agentId ? { agentId: event.agentId } : {}),
+                        ...(event.stepRef ? { stepRef: event.stepRef } : {}),
+                    });
+                    if (ctx.activeActivityKey === mirroredActivity.key) ensureTurnClock(ctx, 'responding');
+                    break;
+                }
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
                 } else {
@@ -376,6 +456,8 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 break;
 
             case 'session-reset':
+                invalidateActivityContext(ctx);
+                void refreshActivityIdentity(ctx);
                 if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}🔄 세션 초기화됨${c.reset}`);
                 break;
 
@@ -402,6 +484,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         }
                         break;
                     case 'settings_change':
+                        void refreshInfo(ctx).then(() => ctx.requestFrame?.());
                         if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}⚙️  설정 변경됨${c.reset}`);
                         break;
                     case 'orc_state':

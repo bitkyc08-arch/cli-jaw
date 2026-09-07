@@ -12,6 +12,15 @@ import { log } from '../../src/core/logger.ts';
 // Actual bot producers; only collection, gateway admission and external transports
 // are faked. No polling sockets, SDK clients or real message requests are started.
 const operations: string[] = [];
+// Independent producer contract: parity alone could preserve the same bad order.
+function assertSlackBodyOrder(events: string[], text: string, queued = false) {
+    const labels = [`post:slack:${text}`, 'ack:success', 'images:slack'];
+    if (queued) labels.push('notice:delete');
+    for (const label of labels) assert.equal(events.filter(value => value === label).length, 1, label);
+    assert.ok(events.indexOf(labels[0]!) < events.indexOf('ack:success'), 'body precedes reaction ACK');
+    assert.ok(events.indexOf('ack:success') < events.indexOf('images:slack'), 'image relay cannot hold reaction ACK');
+    if (queued) assert.ok(events.indexOf(labels[0]!) < events.indexOf('notice:delete'), 'answer precedes notice deletion');
+}
 const optionsSeen: boolean[] = [];
 let completion: Record<string, unknown> = {};
 let body = 'answer';
@@ -286,12 +295,14 @@ for (const channel of ['slack', 'discord', 'telegram']) {
         const baseline = [...operations];
         assert.ok(baseline.includes(`post:${channel}:${body}`), JSON.stringify(baseline));
         assert.equal(baseline.filter(x => x === 'ack:success').length, 1);
+        if (channel === 'slack') assertSlackBodyOrder(baseline, body);
         for (const runtimeFinality of ['present', 'absent']) {
             for (const runtimeStatus of ['done', 'error', 'stopped']) {
                 operations.length = 0; optionsSeen.length = 0;
                 completion = { runtimeFinality, runtimeStatus };
                 await run(channel); await drain();
                 assert.deepEqual(operations, baseline);
+                if (channel === 'slack') assertSlackBodyOrder(operations, body);
                 assert.deepEqual(optionsSeen, [true]);
             }
         }
@@ -347,8 +358,10 @@ for (const channel of ['slack', 'discord', 'telegram']) {
         assert.ok(baseline.includes(`post:${channel}:queued answer`));
         assert.equal(baseline.filter(x => x === 'ack:success').length, 1);
         assert.ok(baseline.indexOf(`post:${channel}:queued answer`) < baseline.indexOf('notice:delete'));
+        if (channel === 'slack') assertSlackBodyOrder(baseline, 'queued answer', true);
         const native = await deliver({ runtimeFinality: 'present', runtimeStatus: 'done' });
         assert.deepEqual(native, baseline);
+        if (channel === 'slack') assertSlackBodyOrder(native, 'queued answer', true);
         assert.deepEqual(optionsSeen, [true]);
     });
     test(`${channel} queued formatted-away native expires instead of answered`, async () => {

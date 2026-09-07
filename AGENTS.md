@@ -176,8 +176,13 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Architecture Docs Sync
 
-- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex/Pi projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Activity layout/default settings are separate follow-on work.
+- Sidecar builds use exclusive owned staging/source snapshots and retained failure evidence; preserve the existing compiled-asset/prune/native/no-JWC gates. Smoke executes a byte-matched copy outside checkout dependency ancestors with the target Node, strict process/IPC/listener/HTTP/close checks and evidence before cleanup. Never equate timeout/skipped with pass, relabel retained roots as deleted, adopt unknown output, or force-remove locks. Input relative contained symlinks are preserved verbatim; output fingerprinting is local provenance, not a signature. Final builder-filtered native UI remains separate. See `structure/infra.md`.
+
+- Isolated desktop QA is explicit via `CLI_JAW_ISOLATED_QA_ROOT`; `src/shared/isolated-qa.ts` owns fixed role homes, strict W/M/P ports and fresh child environment. The supervisor validates before imports; Electron applies paths before lock/session and suppresses global registration/installer actions. QA Manager rejects foreign scans/peers and lifecycle actions before side effects; ordinary mode is unchanged. Preserve captured policy and lifetime-safe QA cleanup. This is controlled launch containment, not an arbitrary-command sandbox or packaged/native QA certification. Sync `structure/infra.md`, README and root/structure notes.
+
+- Native event foundation: `src/shared/runtime-contract.ts` + `src/agent/runtime/*` own canonical Codex/Pi projections and optional explicit outcomes. `agent_runtime`/`agent_runtime_gap` publish directly to SSE, bypassing messaging listeners. Native compatibility terminals carry only finality/status and existing trace identity; no public partial/outcome object. Preserve legacy final selection when outcome is absent, and interrupted MESSAGE salvage before exit settlement. See `structure/runtime-integration.md` and `structure/stream-events.md`; Classic live Activity and its default preference are implemented separately from this event foundation; Classic history has its own bounded restoration owner; Interactive TUI has its own scoped consumer described below.
 - Runtime selection: only Cursor/Grok/Claude accept `perCli.<cli>.transport`; existing absence stays print before defaults merge. Native switchable keys prefix the whole legacy bucket with `native-v1:` and never overwrite the print singleton. Capture transport/bucket once, forward through lifecycle persistence/compact, and keep scoped resets exact. Unsupported main/worker native adapters fail before print/fallback work; compiled support in `/api/cli-status` is separate from cached auth/binary readiness. Codex App/Pi keys remain unchanged.
+- Claude native: the optional SDK, shared pool/host and existing lifecycle own sequential main turns, fresh worker assignments, immutable terminal claims, hard Stop and interrupted MESSAGE before exit-settle. Default steer remains kill/resume, never advertised as in-band. Auto/safe decisions use live requests; deny/unknown profiles fail before preparation, including the memory extractor. Images are bounded and child activity is foreground-only. Child declarations reconcile from both parent/child frames; their ID ownership survives child completion and is not the same as live permission eligibility. Pre-start failure/Stop use one cached fallback before compatibility output; `onlyIfRunning` preserves finished trace headers.
 
 - Cursor native main: explicit native/auto only; restrictive permissions and unsupported workers fail before `regenerateB`, bucket/bootstrap/snapshot, detection or pool work. `AcpRuntimeSession` keeps raw final/partial independent of bounded Activity and claims an immutable logical result before lifecycle; passive finalization survives main-map removal. Native run cleanup holds the exact lease through application settlement and uses captured exit-barrier identity. Server-explicit scope/chat bindings survive multi-session off; private identity-only I/O liveness keeps the owning collector alive without messaging content. Preserve legacy/manual compact while excluding print-era automatic compact/count heuristics from explicit native outcomes.
 - `structure/` is the current architecture-doc hub; do not point new docs at `devlog/structure/`.
@@ -192,9 +197,46 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
   Canonical: dev-pabcd §10, dev-testing §9.5; injected via orchestration template and goal continuation.
 - `structure/` reading map: start at `structure/INDEX.md`; depth — `telegram.md` (Hub), `prompt_flow.md` (attest/hooks/bounded search), `stream-events.md` (pause gate/SSE), `infra.md` (test scripts), `commands.md` + `server_api.md` (slash/API surfaces). Concurrent inbound gateway docs: `structure/INDEX.md` §gateway, `structure/infra.md` §`src/messaging/`, `structure/telegram.md` §common messaging layer; legacy `settings.channel` is a deprecated read-only alias for one major version.
 
+- Grok main native ACP requires literal auto, existing advertised authentication/model/effort, and no leader. Its optional common replacement strategy waits for original cancellation and drain, preserves one logical final, commits input only after local dispatch with current ownership, and never queues fatal failures. Restrictive policies and workers fail before preparation. Sync `structure/runtime-integration.md`.
+
 ### Native decisions
 
-`src/agent/runtime/requests.ts` and `acp/callbacks.ts` own bounded pending decisions, opaque native-option mapping and cancellation latches. `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id` use the existing instance auth policy (including loopback/LAN bypass), never a current-session fallback. Match run/session/scope/turn and current ownership before answering. Canonical sanitization and the32KiB event preflight precede insertion; global128/120s and per-connection32 bounds apply. An admitted selected write cannot be retracted: cancellation during dispatch retires the connection. Provider activation, approval UI and messaging changes are not implied. Sync `structure/runtime-integration.md` and `structure/server_api.md`.
+Pi capability preparation owns one asynchronous, completed-close version probe
+per RPC instance; preparing input is not dispatched or treated as legacy yet.
+Keep both capability getters live and typed finality unchanged. Direct Stop and
+RPC exit enter the same bounded paired cleanup owner; persistent first failure
+claims its result before cleanup. Pi worker deletion requires both the immutable
+physical receipt and captured fresh-directory identity, never live workingDir
+inequality. Uncertainty retains data, with no late automatic deletion. The old
+3s resolver and opaque-wrapper/aggregate-shutdown limits remain explicit. Sync
+runtime-integration and root notes; do not add numeric tree signals or a registry.
+
+Interactive TUI Activity is implemented in `src/cli/tui/activity*.ts` and
+`bin/commands/tui/activity*.ts`. Default Activity/explicit Legacy is independent of
+transport. Snapshot owns live admission; F6 is read-only history, never a message/
+Stop target selector. Journal text is redacted, not final: exact saved MESSAGE wins
+over compatibility and preserves null/empty/whitespace. Keep missing-journal receipt
+binding shared by live and replay, bounded GET/queue lifetime, native-absent diagnostic
+separation, newer-run cleanup guards and draft-preserving late line output. Release
+payload only after actual scrollback flush; raw/simple paths receive no new reads.
+Sync commands/frontend/stream/tui-scrollback docs; broader visual/cross-runtime and
+final integrated Electron QA have separate owners and are not implied by TUI tests.
+
+Classic retained Activity uses `activity-history.ts`/`activity-discovery.ts` and the
+shared fixed-through reader. Preserve original stored scope, bounded per-run replay,
+focus-aware eviction and rejection of nested copied host keys. MESSAGE loading opts
+into `withSession=1`; `/api/messages/by-trace/:runId?session=...` returns a unique
+exact saved answer (16MiB,409 ambiguity), never grants source Trace access to forks.
+Cache/VS IDs are not server MESSAGE IDs. Keep raw Trace at80 rows with paging and
+honor denied/unverified actions. See frontend/API docs; TUI request records remain read-only.
+
+`presentation.mode` accepts only activity/legacy; absence defaultsActivity for fresh/upgraded homes, explicitLegacy survives reload, and perCli.transport is independent. Explicit known mode and/or eligible transport-only API patches preserve admitted-run ownership and skip fallback reset/singleton sync/JWC rewrite. Keep legacy presentation-subtree skips separately, and retain serialization, persistence rollback and messaging dispatch. Mixed execution-changing/unknown/empty leaves retain invalidation; external-file transport edits still invalidate while API self-write echoes are ignored. Classic preference refresh uses the existing bounded reader and shared load/event generation; never replace native-request-bridge with the old Web donor. Manager Display owns singleflight, disabled/guarded edits, captured dirty acknowledgement and client/port epochs. Classic live and retained Activity consume the canonical stream and journal; Manager and TUI have separate instance and input lifecycle owners. Keep bounded views, current-run final ownership and independent request controls.
+
+Print Activity uses `runtime/print-projection.ts` and `print-activity.ts` as observers, never final selectors. Only accepted parser text enters; stderr/control output stays raw. Lifecycle supplies the application-final and existing bypass/retry paths close once. `merge-tool-log.ts` reconciles exact run/ref or run/seq identities; unknown workers never borrow boss identity. Bounded snapshot hydration retains known RAM omission with the sanitizer's explicit max-overlap option; default append/storage counting is unchanged. Only print opts into terminal tool refresh; native default freeze/enrichment, Claude pending-worker cancellation and Slack final/ACK/queue owners remain intact.
+
+Activity journal: `src/trace/activity-{journal,control,retention}.ts` owns bounded immutable runtime rows and private control metadata. Capture durable chat/scope on all trace starts; internal append is allowed, public replay is not. Session discovery/replay and owned raw routes require the explicit original session under existing instance auth. Only original message links backfill owners; forks cannot acquire source traces. Keep `onlyIfRunning` close ordering, first-loss metadata, whole-prefix retention and final/Slack independence. Sync `structure/runtime-integration.md`, `server_api.md`, `stream-events.md`; timeline/default/print presentation are separate layers.
+
+`src/agent/runtime/requests.ts` and `acp/callbacks.ts` own bounded pending decisions, opaque native-option mapping and cancellation latches. `GET /api/runtime/requests?sessionId=...` and `POST /api/runtime/requests/:id` use the existing instance auth policy (including loopback/LAN bypass), never a current-session fallback. Match run/session/scope/turn and current ownership before answering. Canonical sanitization and the32KiB event preflight precede insertion; global128/120s and per-connection32 bounds apply. An admitted ACP selected write cannot be retracted: cancellation during dispatch retires the connection. Route-owned `agent_runtime_requests_changed` is an SSE-only metadata hint: its scope routes to the captured chat's presentation surface, while live GET/POST retain original execution scope. The Classic request panel keeps stream health separate from manual REST freshness and never retries POST automatically. Do not broadcast notices to messaging or infer Activity defaults/history from this panel. Sync `structure/runtime-integration.md` and `structure/server_api.md`.
 
 ### Concurrent inbound gateway (M1)
 
@@ -206,8 +248,10 @@ git add devlog && git commit -m "chore: update devlog ref" && git push
 
 ### Mid-run steer (기본 정책)
 
-- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor는 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. 원래 요청·수락된 추가 지시·제한된 부분 출력은 읽기 전용 문맥으로, 현재 운영 지침은 활성 지침으로 복원한다.
-- Native Cursor는 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
+- Claude unleased acquisition cleanup stays attached to its captured main/worker control after logical settlement; rejected cleanup is not physical completion. Late completion must not replay lifecycle or run main through worker-directory cleanup. Main steer, slash fallback and queue steer use the main-only wait while inclusive scoped/global shutdown still counts workers; preserve the following exit-settle/salvage barrier. See `structure/runtime-integration.md` and `structure/prompt_flow.md`.
+
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor와 Grok은 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. Cursor는 원래 요청·수락된 추가 지시·제한된 부분 출력을 읽기 전용 문맥으로, 현재 운영 지침을 활성 지침으로 복원한다. Grok에는 이 재주입을 적용하지 않는다.
+- Native Cursor와 Grok은 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. Stop으로 무효화된 입력은 실제 enqueue까지 보호하고 `cancelled`로 끝내며, 이후 새 입력은 받을 수 있다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
 - `/steer`는 런타임 훅을 사용한다. 별도 `/queue steer <n>`은 기존 항목을 중단 후 우선 실행하는 동작을 유지한다. Kill 경로의 제한된 부분 출력은 pre-kill MAX(id)와 정확한 exit-settle 배리어 뒤 `withSteerContext`로 복원한다. 전체 과거 맥락 보존을 보장하지 않는다. 정책 표는 `structure/prompt_flow.md`를 참고한다.
 
 ### Korean Content Skill Routing

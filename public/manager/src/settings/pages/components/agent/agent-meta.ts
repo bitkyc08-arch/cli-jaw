@@ -1,3 +1,5 @@
+import type { RuntimeTransport } from '../../../../../../../src/shared/runtime-contract';
+
 export type CliMeta = {
     label: string;
     models: ReadonlyArray<string>;
@@ -27,6 +29,7 @@ export type CliMeta = {
 };
 
 export type PerCliEntry = {
+    transport?: RuntimeTransport;
     provider?: string;
     model?: string;
     effort?: string;

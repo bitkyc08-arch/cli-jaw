@@ -5,6 +5,7 @@
 // (lifecycle-handler.ts:524); worker child runs fold in via parent_run_id once Phase 2's
 // cross-process linkage lands. Audience-filtered so internal worker noise stays hidden.
 
+import '../setup/test-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -12,7 +13,12 @@ import {
     stampTraceTool,
     linkTraceRunToMessage,
     listToolEntriesForMessage,
+    appendTraceEvent,
+    getTraceEvent,
+    updateTraceToolRow,
 } from '../../src/trace/store.js';
+import { resolveToolLog } from '../../src/routes/messages.js';
+import type { ToolEntry } from '../../src/types/agent.js';
 
 test('P3H-001: boss message tools hydrate from trace_events by message_id, in seq order', () => {
     const runId = startTraceRun({ cli: 'claude', audience: 'public' });
@@ -43,5 +49,63 @@ test('P3H-003: public hydration excludes internal-audience (worker) runs', () =>
     linkTraceRunToMessage(runId, messageId);
 
     assert.deepEqual(listToolEntriesForMessage(messageId, { audience: 'public' }), [], 'internal run excluded from public hydration');
-    assert.equal(listToolEntriesForMessage(messageId, { audience: 'internal' }).length, 1, 'internal audience sees it');
+    const internal = listToolEntriesForMessage(messageId, { audience: 'internal' });
+    assert.equal(internal.length, 1, 'internal audience sees it');
+    assert.equal(internal[0]?.traceRunId, runId);
+    assert.equal(internal[0]?.traceSeq, 1);
+    assert.equal(internal[0]?.detailAvailable, false);
+    assert.equal(internal[0]?.rawRetentionStatus, 'internal');
+});
+
+test('message hydration synthesizes noncontiguous pointers and current SQL detail metadata', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    appendTraceEvent({ runId, source: 'cli_raw', eventType: 'text', raw: 'between tools' });
+    const tool: ToolEntry = { icon: '🔧', label: 'read', toolType: 'tool', detail: 'initial' };
+    stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' });
+    linkTraceRunToMessage(runId, 990401);
+    const initial = listToolEntriesForMessage(990401)[0]!;
+    assert.equal(initial.traceRunId, runId);
+    assert.equal(initial.traceSeq, 2);
+    assert.equal(initial.detailAvailable, true);
+    assert.equal(initial.detailBytes, getTraceEvent(runId, 2)?.bytes);
+    assert.equal(initial.rawRetentionStatus, 'available');
+    updateTraceToolRow({ ...tool, status: 'done', detail: 'a much longer completed result' });
+    const updated = listToolEntriesForMessage(990401)[0]!;
+    assert.equal(updated.status, 'done');
+    assert.equal(updated.detail, 'a much longer completed result');
+    assert.equal(updated.detailBytes, getTraceEvent(runId, 2)?.bytes, 'SQL bytes replace the stale pointer embedded in raw JSON');
+    assert.notEqual(updated.detailBytes, initial.detailBytes);
+    updateTraceToolRow({ ...tool, status: 'done', detail: 'x'.repeat(100_000) });
+    const spilled = listToolEntriesForMessage(990401)[0]!;
+    assert.equal(spilled.rawRetentionStatus, 'spilled');
+    assert.equal(spilled.detailBytes, getTraceEvent(runId, 2)?.bytes);
+    assert.equal(spilled.detail?.length, 100_000);
+});
+
+test('resolveToolLog preserves boss-first ordering and cross-run/unscoped blob workers', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const otherRunId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const workerRunId = startTraceRun({ cli: 'claude', audience: 'internal' });
+    const tool: ToolEntry = { icon: '🔧', label: 'boss', toolType: 'tool', stepRef: 'shared', status: 'running', detail: 'old' };
+    stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' });
+    updateTraceToolRow({ ...tool, status: 'done', detail: '' });
+    stampTraceTool({ ...tool, label: 'other-boss', traceRunId: undefined, traceSeq: undefined }, { traceRunId: otherRunId, traceAudience: 'public' });
+    linkTraceRunToMessage(runId, 990501);
+    linkTraceRunToMessage(otherRunId, 990501);
+    const blob = JSON.stringify([
+        { ...tool, label: 'blob-boss' },
+        { ...tool, traceRunId: workerRunId, label: 'worker-start', isEmployee: true },
+        { ...tool, traceRunId: workerRunId, label: 'worker-done', status: 'done', isEmployee: true },
+        { ...tool, traceRunId: undefined, label: 'unscoped-worker', isEmployee: true },
+        { icon: '🤖', label: 'anonymous-worker', isEmployee: true },
+    ]);
+    const result = JSON.parse(resolveToolLog(990501, blob, true)!) as ToolEntry[];
+    assert.deepEqual(result.slice(0, 2).map(t => t.traceRunId).sort(), [runId, otherRunId].sort());
+    assert.deepEqual(result.slice(2).map(t => t.label), ['worker-done', 'unscoped-worker', 'anonymous-worker']);
+    const boss = result.find(t => t.traceRunId === runId)!;
+    assert.equal(boss.status, 'done');
+    assert.equal(boss.detail ?? '', '');
+    assert.equal(boss.traceSeq, 1);
+    assert.equal((JSON.parse(resolveToolLog(990501, blob, false)!) as ToolEntry[])[0]?.label, 'blob-boss');
+    assert.equal(resolveToolLog(990599, blob, true), resolveToolLog(990599, blob, false), 'missing rows retain legacy blob fallback');
 });
