@@ -22,6 +22,7 @@ export interface SessionListResponse {
 type SessionViewMode = 'off' | 'hub' | 'session' | 'redirect';
 
 interface SessionViewState {
+    initialized: boolean;
     enabled: boolean;
     mode: SessionViewMode;
     activeId: string | null;
@@ -29,6 +30,7 @@ interface SessionViewState {
 }
 
 const viewState: SessionViewState = {
+    initialized: false,
     enabled: false,
     mode: 'off',
     activeId: null,
@@ -37,6 +39,12 @@ const viewState: SessionViewState = {
 
 let cancelRecordingOnReadonly: (() => void) | null = null;
 let latestList: SessionListResponse | null = null;
+
+export function resetSessionViewForTest(): void {
+    Object.assign(viewState, { initialized: false, enabled: false, mode: 'off', activeId: null, viewed: null });
+    cancelRecordingOnReadonly = null;
+    latestList = null;
+}
 
 const ALLOWED_READONLY_COMMAND = /^\s*(?:\/switch(?:\s|$)|\/sessions(?:\s|$)|\/fork(?:\s|$)|\/\d+(?:\s|$))/i;
 
@@ -59,24 +67,24 @@ function navigationFieldsPresent(response: SessionListResponse): boolean {
 export function configureSessionView(response: SessionListResponse, pathname = window.location.pathname): SessionViewMode {
     latestList = response;
     if (!navigationFieldsPresent(response)) {
-        Object.assign(viewState, { enabled: false, mode: 'off', activeId: null, viewed: null });
+        Object.assign(viewState, { initialized: true, enabled: false, mode: 'off', activeId: null, viewed: null });
         return 'off';
     }
 
     const path = routePath(pathname);
     if (path === '/' || path === '') {
-        Object.assign(viewState, { enabled: true, mode: 'hub', activeId: response.active, viewed: null });
+        Object.assign(viewState, { initialized: true, enabled: true, mode: 'hub', activeId: response.active, viewed: null });
         return 'hub';
     }
 
     const seq = parsedSeq(pathname);
     const viewed = seq === null ? null : response.sessions.find(session => session.seq === seq) || null;
     if (!viewed) {
-        Object.assign(viewState, { enabled: true, mode: 'redirect', activeId: response.active, viewed: null });
+        Object.assign(viewState, { initialized: true, enabled: true, mode: 'redirect', activeId: response.active, viewed: null });
         return 'redirect';
     }
 
-    Object.assign(viewState, { enabled: true, mode: 'session', activeId: response.active, viewed });
+    Object.assign(viewState, { initialized: true, enabled: true, mode: 'session', activeId: response.active, viewed });
     if (!canSendFromCurrentView()) cancelRecordingOnReadonly?.();
     return 'session';
 }
@@ -88,6 +96,8 @@ export function canSendFromCurrentView(commandText = ''): boolean {
     // the guard and write to the GLOBAL active session — the exact
     // cross-session write this guard exists to prevent.
     if (!viewState.enabled) {
+        // Once navigation is known to be off, numeric routes use the legacy session.
+        if (viewState.initialized) return true;
         if (parsedSeq(window.location.pathname) === null) return true;
         return commandText ? ALLOWED_READONLY_COMMAND.test(commandText) : false;
     }

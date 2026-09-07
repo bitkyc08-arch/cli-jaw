@@ -27,9 +27,6 @@ type InstanceListContentProps = {
     showInlineLabelEditor: boolean;
     showSidebarRuntimeLine: boolean;
     showSelectedRowActions: boolean;
-    /** Re-clicking the already selected (Active) row routes here instead of
-     *  onSelect — palette/keyboard selection keeps its meaning (260806 D3). */
-    onRouteToSettings?: (port: number) => void;
     profiles: DashboardProfile[];
     getLabel: (instance: DashboardInstance) => string;
     formatUptime: (seconds: number | null) => string;
@@ -51,14 +48,14 @@ export function InstanceListContent(props: InstanceListContentProps) {
         ? [props.selectedInstance, ...props.filtered]
         : props.filtered;
     const handleSelect = (instance: DashboardInstance): void => {
-        if (props.onRouteToSettings && props.selectedInstance?.port === instance.port) {
-            props.onRouteToSettings(instance.port);
+        if (instance.ok) {
+            props.onPreview(instance);
             return;
         }
         props.onSelect(instance);
     };
     const renderActiveSessionList = (port: number): ReactNode =>
-        <InstanceSessionList port={port} open={sessionsOpen} />;
+        <InstanceSessionList key={port} port={port} open={sessionsOpen} />;
 
     return (
         <>
