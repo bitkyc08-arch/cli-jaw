@@ -19,6 +19,7 @@ export function reserveClaudeRun(input: { runId: string; scope: string; workerId
 }
 export function hasClaudeWorker(id: string): boolean { return [...runs.values()].some(entry => entry.workerId === id); }
 export function hasClaudeRuns(scope?: string): boolean { return [...runs.values()].some(entry => scope === undefined || entry.scope === scope); }
+export function hasClaudeMainRuns(scope: string): boolean { return [...runs.values()].some(entry => entry.scope === scope && !entry.workerId); }
 export function cancelClaudeWorker(id: string, reason = 'user'): boolean {
     const entry = [...runs.values()].find(entry => entry.workerId === id);
     if (!entry) return false;
