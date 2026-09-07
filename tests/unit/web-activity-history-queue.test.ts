@@ -232,22 +232,16 @@ test('nested copied msg-agent markers never authorize a read or steal the real l
     assert.equal(spoof.textContent?.includes('REAL HOST ONLY'), false);
 });
 
-test('closed discovery lists descriptors but does not observe or fetch their payload until disclosure', options, async () => {
-    const run = runId('discovered');
-    const original = serve;
-    serve = async (url, init) => url.pathname === '/api/traces/activity-runs'
-        ? response({ runs: [{ id: run, messageId: null, status: 'done', startedAt: 1 }], pageSize: 40 }) : original(url, init);
+test('only transcript hosts are observed and payloads keep the queue owner', options, async () => {
+    const row = savedMessage(runId('loaded'));
+    const fake = bareMessage('FOREIGN'); fake.className = 'activity-recorded-run';
+    fake.dataset['traceRunId'] = runId('foreign'); fake.dataset['messageSessionId'] = identity.sessionId;
     history.setActivityHistoryReadReady(true);
-    await history.discoverActivityHistory();
-    const panel = document.getElementById('activityDiscovery') as HTMLDetailsElement;
-    const row = panel.querySelector<HTMLElement>('.activity-recorded-run')!;
-    assert.equal(panel.open, false);
-    history.observeActivityHistory(panel);
-    assert.equal(getObservedElements().includes(row), false);
-    assert.deepEqual(calls.map(url => url.pathname), ['/api/traces/activity-runs']);
-    panel.open = true; panel.dispatchEvent(new window.Event('toggle'));
+    history.observeActivityHistory(document.getElementById('chatMessages')!);
     assert.equal(getObservedElements().includes(row), true);
-    await hydrate(row); // Deterministic user inspection after the real disclosure event.
+    assert.equal(getObservedElements().includes(fake), false);
+    await hydrate(row);
     assert.ok(row.querySelector('.activity-turn'));
-    assert.ok(calls.some(url => url.pathname === `/api/traces/${run}/activity`));
+    assert.equal(calls.some(url => url.pathname === '/api/traces/activity-runs'), false);
+    assert.equal(fake.querySelector('.activity-turn'), null);
 });

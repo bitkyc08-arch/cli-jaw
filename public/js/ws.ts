@@ -21,11 +21,11 @@ import { parseActivityIdentity, type ActivityIdentity } from '../../src/shared/p
 import {
     ActivityCapacityError, configureLiveActivityHost, clearLiveActivity, setLiveActivityIdentity,
     findLiveActivity, ingestLiveActivity, settleLiveActivity, reconcileLiveActivityAnswer,
-    degradeLiveActivity, rebindLiveActivity,
+    degradeLiveActivity, rebindLiveActivity, markLiveActivitySteered,
     setActivityTransportHealthy, settleModelFreeUnavailableAnswer, reconcileModelFreePublicAnswer, hasModelFreeAnswerReceipt,
 } from './features/activity-live.js';
 import { setActivityHistoryIdentity, setActivityHistoryReadReady, setActivityTranscript,
-    observeActivityHistory, hydrateActivityHost, discoverActivityHistory, disposeActivityHistory,
+    observeActivityHistory, hydrateActivityHost, disposeActivityHistory,
     markActivityHistoryUnavailable, type RecoveredActivityTerminal } from './features/activity-history.js';
 
 configureLiveActivityHost({
@@ -521,7 +521,6 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     if (activityAdmissionReady && options.hydrateRun) {
         if (state.currentAgentDiv && liveTraceRunId && (currentRunSnapshot || findLiveActivity(liveTraceRunId)?.degraded))
             void hydrateActivityHost(state.currentAgentDiv, liveTraceRunId, true);
-        void discoverActivityHistory();
     }
     import('./features/employees.js').then(m => {
         if (typeof m.renderEmployees === 'function') m.renderEmployees();
@@ -1346,6 +1345,10 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'goal_continuation') {
         addSystemMsg(`🎯 Active goal — auto-continuing`, 'tool-activity');
     } else if (msg.type === 'agent_done') {
+        if (msg.steered === true) {
+            const pair = parseActivityIdentity(msg as unknown as Record<string, unknown>);
+            if (pair && msg.traceRunId) markLiveActivitySteered({ ...pair, runId: msg.traceRunId });
+        }
         if (msg.steered || isRecentSteer()) {
             // Suppress agent_done from steered (killed) process.
             // Server sets steered:true; isRecentSteer is fallback for edge cases.
@@ -1389,6 +1392,8 @@ function handleServerEvent(msg: WsMessage): void {
     } else if (msg.type === 'memory_status') {
         import('./features/memory.js').then(m => m.refreshMemorySidebar());
     } else if (msg.type === 'steer_started') {
+        const pair = parseActivityIdentity(msg as unknown as Record<string, unknown>);
+        if (pair && msg.traceRunId) markLiveActivitySteered({ ...pair, runId: msg.traceRunId });
         // Both modes continue one logical run. Metadata is not a final and a
         // delayed receipt must not retire a newer turn in this conversation.
         if (msg.mode === 'native-input' || msg.mode === 'cancel-reprompt'
@@ -1412,7 +1417,9 @@ function handleServerEvent(msg: WsMessage): void {
                     .catch(err => console.warn('[ws] new_message reload after in-flight failed', err));
                 return;
             }
-            addMessage(newMessageRole, newMessageContent, newMessageCli);
+            addMessage(newMessageRole, newMessageContent, newMessageCli, {
+                ...(msg.steered !== undefined ? { steered: msg.steered } : {}),
+            });
         });
     } else if (msg.type === 'system_notice') {
         addSystemMsg(`ℹ️ ${escapeHtml(msg.text || '')}`, 'tool-activity');

@@ -45,6 +45,25 @@ async function toggle(node: HTMLDetailsElement, open: boolean): Promise<void> {
 test.beforeEach(setupWebUiDom);
 test.afterEach(resetWebUiDom);
 
+test('summary keeps five ordered slots and an independent live status', () => {
+    const { model, view, group, answer } = mount(); tool(model, 'one');
+    view.render(model, { steered: true });
+    const summary = group.querySelector('summary')!;
+    assert.deepEqual([...summary.children].map(el => el.className.split(' ')[0]), [
+        'activity-chevron', 'activity-status-label', 'activity-summary-text', 'activity-steer-pill', 'activity-accessory']);
+    assert.ok(summary.querySelector('.activity-chevron svg'));
+    assert.equal(summary.querySelector('.activity-chevron')?.getAttribute('aria-hidden'), 'true');
+    assert.equal(summary.querySelector<HTMLElement>('.activity-steer-pill')!.hidden, false);
+    assert.equal(view.element.querySelector('.activity-status')?.classList.contains('sr-only'), true);
+    assert.equal(answer.textContent, 'Canonical answer');
+    for (const status of ['running', 'finished', 'done', 'stopped', 'error'] as const) {
+        view.render(model, { status });
+        assert.equal(summary.querySelector('.activity-status-label')?.textContent,
+            ({ running: 'Working', finished: 'Finished', done: 'Complete', stopped: 'Stopped', error: 'Failed' })[status]);
+        assert.equal(summary.querySelector<HTMLElement>('.activity-steer-pill')!.hidden, true);
+    }
+});
+
 test('empty Activity mounts before the untouched answer and has no unavailable Trace control', () => {
     const { host, answer, model, view, group } = mount();
     view.render(model);
@@ -80,7 +99,7 @@ test('tool fields and latest action render literal XSS text without HTML or mark
     send(model, { kind: 'tool', itemId: '"]<img>', name: attack, input: attack, output: attack, detail: attack, status: 'running' });
     view.render(model);
     assert.equal(group.open, false);
-    assert.match(group.firstElementChild!.textContent!, /1 retained preview/);
+    assert.match(group.firstElementChild!.getAttribute('aria-label')!, /1 step/);
     assert.ok(group.firstElementChild!.textContent!.includes(attack));
     assert.equal(view.element.querySelector('img, script, strong'), null);
     assert.equal(rows(view.element)[0].querySelector('pre')?.textContent, [attack, attack, attack].join('\n'));
@@ -110,7 +129,7 @@ test(`explicit disclosure and focused keyed tool survive replacement, growth and
     assert.equal(document.activeElement, title);
     assert.equal(rows(view.element).length, 40);
     assert.match(group.firstElementChild!.textContent!, /read tool-80/);
-    assert.match(group.firstElementChild!.textContent!, /81 retained previews/);
+    assert.match(group.firstElementChild!.getAttribute('aria-label')!, /81 steps/);
 });
 }
 
@@ -331,7 +350,7 @@ test('pending native toggles survive immediate recycle and preview eviction does
     assert.equal(returned.querySelector('pre')!.textContent, 'returned snapshot');
 });
 
-test('view text clipping is visible even when the reducer retained all text and the group is collapsed', () => {
+test('view text clipping notice lives in the disclosure body and survives a collapsed group', () => {
     const { model, view, group } = mount();
     tool(model, 'long', '가'.repeat(3500));
     assert.equal(model.omitted.textChars, 0);
@@ -339,7 +358,7 @@ test('view text clipping is visible even when the reducer retained all text and 
     assert.equal(group.open, false);
     const notice = view.element.querySelector<HTMLElement>('.activity-omitted')!;
     assert.equal(notice.hidden, false);
-    assert.equal(notice.closest('details'), null);
+    assert.equal(notice.closest('details'), group);
     assert.match(notice.textContent!, /omitted/);
 });
 
@@ -389,7 +408,7 @@ test('status distinguishes terminal outcomes without rewriting unfinished tools;
     assert.equal(view.element.querySelector<HTMLElement>('.activity-degraded')!.hidden, true);
 });
 
-test('omission and request notices stay visible when collapsed; Trace is an optional sibling action', () => {
+test('notices and Trace belong to the disclosure body; answer remains independent', () => {
     const inspected: ActivityState[] = [];
     const { model, view, group } = mount(state => inspected.push(state));
     tool(model, 'long', '가'.repeat(4000));
@@ -399,14 +418,16 @@ test('omission and request notices stay visible when collapsed; Trace is an opti
     assert.equal(group.open, false);
     const omitted = view.element.querySelector<HTMLElement>('.activity-omitted')!;
     assert.equal(omitted.hidden, false);
-    assert.equal(omitted.closest('details'), null);
+    assert.equal(omitted.closest('details'), group);
     assert.match(omitted.textContent!, /omitted/i);
     assert.match(view.element.textContent!, /live Requests/);
     assert.match(rows(view.element)[0].querySelector('pre')!.textContent!, /Preview limited/);
     assert.ok(rows(view.element)[0].querySelector('pre')!.textContent!.length < 3200);
-    const trace = button(view.element, 'Inspect retained activity');
+    const trace = button(view.element, 'Open in Trace');
     assert.equal(trace.closest('summary'), null);
-    assert.equal(trace.closest('details'), null);
+    assert.equal(trace.closest('details'), group);
+    assert.equal(trace.parentElement, group.querySelector('.activity-footer'));
+    group.open = true;
     assert.equal(view.element.querySelector('input, select, textarea'), null);
     trace.click();
     assert.deepEqual(inspected, [model]);
