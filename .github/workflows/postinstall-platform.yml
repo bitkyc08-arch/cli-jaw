@@ -14,6 +14,10 @@ on:
       - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
+      - 'scripts/retired-runtime-package-smoke.mjs'
+      - 'scripts/check-electron-sidecar-no-jwc.cjs'
+      - 'tests/unit/retired-runtime-package.test.ts'
+      - 'tests/unit/jwc-command-contract.test.ts'
       - 'scripts/install.sh'
       - 'scripts/install-wsl.sh'
       - 'scripts/install-officecli.ps1'
@@ -88,6 +92,10 @@ on:
       - 'src/core/platform-kind.ts'
       - 'src/core/runtime-path.ts'
       - 'scripts/install-risk-gate.mjs'
+      - 'scripts/retired-runtime-package-smoke.mjs'
+      - 'scripts/check-electron-sidecar-no-jwc.cjs'
+      - 'tests/unit/retired-runtime-package.test.ts'
+      - 'tests/unit/jwc-command-contract.test.ts'
       - 'scripts/install.sh'
       - 'scripts/install-wsl.sh'
       - 'scripts/install-officecli.ps1'
@@ -226,6 +234,9 @@ jobs:
       - name: Build package
         run: npm run build
 
+      - name: Verify packed package has no retired runtime
+        run: npm run smoke:retired-runtime:package
+
       - name: Smoke packaged global install
         run: npm run test:fresh-install -- --postinstall --skip-doctor
 
@@ -305,6 +316,13 @@ jobs:
           set -euo pipefail
           cd "$(wslpath '${{ github.workspace }}')"
           npm run build
+
+      - name: Verify packed package has no retired runtime in WSL
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          cd "$(wslpath '${{ github.workspace }}')"
+          npm run smoke:retired-runtime:package
 
       - name: Smoke packaged global install in WSL
         shell: wsl-bash {0}

@@ -5,7 +5,9 @@
 import { randomUUID } from 'node:crypto';
 import { isAgentBusy, enqueueMessage, killActiveAgent, messageQueue, purgeQueueOnStop, steerAgent } from '../agent/spawn.js';
 import { hasBlockingWorkers } from './worker-registry.js';
-import { insertMessage } from '../core/db.js';
+import { getSession, insertMessage } from '../core/db.js';
+import { resolveMainCli, type MainSessionRecord } from '../core/main-session.js';
+import { isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
 import { getActiveChatSession, getSessionRunPolicy, isActiveRunPolicy, resolveOrCreateRemoteSession, type ActiveRunPolicy } from '../core/chat-sessions.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
@@ -96,11 +98,11 @@ function applyMidRunPolicy(
 
     if (policy === 'steer') {
         // 'steer' means the message steers the agent — never a silent queue.
-        // In-band runtimes (jwc, codex-app with a steerable turn) inject into the
-        // running turn; every other runtime takes the kill-steer path, which
-        // salvages the interrupted turn's partial output into the follow-up run
-        // (withSteerContext), so the redirect preserves context. Queueing is
-        // what the 'followup'/'collect' policies are for.
+        // A steerable Codex App turn receives in-band input. Native Cursor/Grok
+        // use their cancel-reprompt hooks; other runtimes take the kill-steer
+        // path, which salvages bounded partial output into the follow-up run
+        // (withSteerContext). Queueing is what the 'followup'/'collect' policies
+        // are for.
         //
         // submitMessage is a sync contract, so the response stays optimistic
         // ('steered'). The outcome is not fire-and-forget: a raced
@@ -230,6 +232,14 @@ export function submitMessage(
         ? { scope, chatSessionId, ...(remoteKey ? { remoteKey } : {}) }
         : undefined;
     const eventScope = multiSessionEnabled ? { scope, sessionId: chatSessionId } : undefined;
+
+    // Reject before recording input, steering, interrupting or enqueueing. The
+    // synchronous response must not advertise a rejected admission as steered.
+    if (isRetiredCliSelection(resolveMainCli(null, settings, getSession() as MainSessionRecord | undefined))) {
+        settleOnce(requestId, 'failed', { error: RETIRED_RUNTIME_DIAGNOSTIC, scope, sessionId: chatSessionId });
+        return { action: 'rejected', reason: RETIRED_RUNTIME_DIAGNOSTIC, requestId,
+            ...(sessionContext ? { sessionContext } : {}) };
+    }
 
     // Admission must use the resolved persistent scope, not a pre-resolution transport guess.
     const now = Date.now();

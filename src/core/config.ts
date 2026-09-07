@@ -1,10 +1,11 @@
 // ─── Config: paths, settings, CLI detection ──────────
 
+import { isCliEngine, isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
 import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { join } from 'path';
-import { DEFAULT_CLI, CLI_KEYS, buildDefaultPerCli } from '../cli/registry.js';
+import { DEFAULT_CLI, buildDefaultPerCli } from '../cli/registry.js';
 import { SWITCHABLE_NATIVE_CLIS, resolveRuntimeTransport } from '../agent/runtime/selection.js';
 import { presentationMode } from '../shared/presentation.js';
 import type { MessengerChannel } from '../messaging/types.js';
@@ -233,12 +234,15 @@ export const LEGACY_MULTI_SESSION_BASELINE = {
 };
 
 function createDefaultSettings() {
+    // The registry default must stay executable, but a formerly valid explicit
+    // environment selection remains an inert stored choice until replaced.
+    const environmentDefaultCli = process.env['CLI_JAW_DEFAULT_CLI'];
     return {
         settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
         runtimeDefaultMigration: null as RuntimeDefaultMigration | null,
         multiSessionDefaultMigration: null as MultiSessionDefaultMigration | null,
         port: '',  // persisted by server on startup; CLI commands use as fallback
-        cli: DEFAULT_CLI,
+        cli: isRetiredCliSelection(environmentDefaultCli) ? environmentDefaultCli : DEFAULT_CLI,
         fallbackOrder: [],
         showReasoning: false,
         permissions: 'auto',
@@ -570,6 +574,10 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     s["settingsSchemaVersion"] = SETTINGS_SCHEMA_VERSION;
     if (s["planning"]) {
         if (s["planning"].cli && s["planning"].cli !== s["cli"]) s["cli"] = s["planning"].cli;
+        if (isRetiredCliSelection(s['cli'])) {
+            s['perCli'] ??= {};
+            s['perCli'][s['cli']] ??= {};
+        }
         if (s["planning"].model && s["planning"].model !== 'default') {
             const target = s["perCli"]?.[s["cli"]];
             if (target) target.model = s["planning"].model;
@@ -582,7 +590,7 @@ export function migrateSettings(s: Record<string, any>, sourceVersion = readSett
     }
 
     if (sourceVersion === 1) {
-        const fromCli = CLI_KEYS.includes(s["cli"]) ? s["cli"] : 'claude';
+        const fromCli = (isCliEngine(s["cli"]) || isRetiredCliSelection(s["cli"])) ? s["cli"] : 'claude';
         s["cli"] = fromCli;
         s["settingsSchemaVersion"] = SETTINGS_SCHEMA_VERSION;
         s["runtimeDefaultMigration"] = {
@@ -1068,14 +1076,14 @@ export function loadSettings() {
         // already name a known runtime; if it does not, the file is not
         // trustworthy enough to silently supply one, so it closes the same way
         // a corrupt or future-versioned document does.
-        if (sourceVersion >= 2 && !CLI_KEYS.includes(raw["cli"])) {
+        if (sourceVersion >= 2 && !(isCliEngine(raw["cli"]) || isRetiredCliSelection(raw["cli"]))) {
             throw new Error(`invalid_settings_cli:${String(raw["cli"])}`);
         }
         // A document claiming the current schema must actually carry what this schema
         // writes. Checked before the merge, because after it the absence is gone.
         if (sourceVersion >= 3) assertCurrentSchemaSessionShape(raw);
         if (sourceVersion >= 4) assertCurrentSchemaMessagingShape(raw);
-        const legacyCli = sourceVersion === 1 && !CLI_KEYS.includes(raw["cli"])
+        const legacyCli = sourceVersion === 1 && !(isCliEngine(raw["cli"]) || isRetiredCliSelection(raw["cli"]))
             ? 'claude'
             : raw["cli"];
         const hadPlanning = !!raw.planning;
@@ -1222,7 +1230,7 @@ export function loadSettings() {
             // a database or an uploads directory has been used, so it is treated as an
             // upgrade and asked rather than switched on.
             const next = settingsForHomeWithoutSettingsFile();
-            next.cli = pickFirstReadyCli();
+            if (!isRetiredCliSelection(next.cli)) next.cli = pickFirstReadyCli();
             applyEnvOverrides(next);
             persistAndCommit({ value: next, shape: 'absent' });
             return next;
@@ -1272,6 +1280,7 @@ let lastSavedSettingsRaw: string | null = null;
 
 export function serializeSettingsForSave(candidate: SettingsStateCandidate): string {
     const value = structuredClone(candidate.value);
+    delete value["runtimeSelectionDiagnostic"];
     if (value["slack"] && typeof value["slack"] === 'object') {
         for (const key of slackEnvironmentManagedSettingKeys()) delete value["slack"][key];
     }
@@ -1308,6 +1317,9 @@ function writeSettingsRaw(raw: string): void {
 }
 
 export function commitCandidate(candidate: SettingsStateCandidate): void {
+    // Recompute on every load/save/watch commit; this is not a persisted marker.
+    candidate.value['runtimeSelectionDiagnostic'] = isRetiredCliSelection(candidate.value['cli'])
+        ? RETIRED_RUNTIME_DIAGNOSTIC : null;
     settings = candidate.value;
     settingsPersistenceShape = candidate.shape;
 }

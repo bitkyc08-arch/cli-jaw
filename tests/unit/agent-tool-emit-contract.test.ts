@@ -32,15 +32,6 @@ test('every spawn context literal seeds runStartedAt', () => {
         'every SpawnContext literal must seed runStartedAt for the elapsed-timer origin');
 });
 
-test('jwc mapper tool broadcasts carry startedAt', () => {
-    const mapper = src('src/agent/jwc-event-mapper.ts');
-    const toolEmits = mapper.match(/broadcast\('agent_tool',[^)]*\)/gs) || [];
-    assert.ok(toolEmits.length >= 3);
-    for (const emit of toolEmits) {
-        assert.ok(emit.includes('startedAt: ctx.runStartedAt'), `missing startedAt: ${emit.slice(0, 80)}`);
-    }
-});
-
 test('web UI step startTime prefers the server startedAt over client arrival time', () => {
     const ws = src('public/js/ws.ts');
     assert.ok(ws.includes("startTime: typeof msg.startedAt === 'number' && msg.startedAt > 0 ? msg.startedAt : Date.now()"));

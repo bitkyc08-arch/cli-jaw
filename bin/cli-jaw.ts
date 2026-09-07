@@ -82,6 +82,12 @@ if (_portShortIdx !== -1) {
 
 const command = process.argv[2];
 
+// Retired commands must stop before native repair, install diagnostics or dispatch.
+if (command === 'jwc') {
+    console.error('[jaw] retired_runtime:jwc — jaw jwc has been retired. Select an available runtime with /cli in Jaw.');
+    process.exit(1);
+}
+
 function shouldSkipNativeGuard(cmd: string | undefined): boolean {
     return !cmd || cmd === '--help' || cmd === '-h' || cmd === '--version' || cmd === '-v';
 }
@@ -180,7 +186,6 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
     doctor [--json]                     Installation diagnostics
     db maintain                         Checkpoint WAL and reclaim SQLite space
     map <dir> [--budget N]              Ranked source structure map
-    jwc install|clean|doctor            Optional external JWC runtime helper
     provider install|clean|doctor|list  On-demand provider runtime helper
     reset [--all|--mcp|--skills|...]    Reset configuration
 
@@ -244,9 +249,6 @@ switch (command) {
         break;
     case 'map':
         await import('./commands/map.js');
-        break;
-    case 'jwc':
-        await import('./commands/jwc.js');
         break;
     case 'provider':
         await import('./commands/provider.js');

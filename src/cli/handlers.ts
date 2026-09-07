@@ -4,6 +4,7 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { CLI_KEYS } from './registry.js';
+import { isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
 import { formatCliStatusLine } from './cli-status.js';
 import { resolveAiEProvider } from '../agent/args.js';
 import { t } from '../core/i18n.js';
@@ -222,23 +223,17 @@ export async function modelHandler(args: string[], ctx: CliCommandContext): Prom
     };
 }
 
-function jwcExternalRuntimeReminder(): string {
-    return [
-        'JWC is external-only: cli-jaw npm and Electron installs do not bundle JWC.',
-        'Run jaw jwc install, set the printed JWC_SDK_PATH, then check readiness with jaw jwc doctor.',
-        'Remove optional JWC dependencies with jaw jwc clean.',
-    ].join('\n');
-}
-
 export async function cliHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
     const L = ctx.locale || 'ko';
     const settings = await safeCall(ctx.getSettings, null) as Record<string, unknown> | null;
     if (!settings) return { ok: false, text: t('cmd.settingsLoadFail', {}, L) };
 
-    const allowed = Object.keys((settings["perCli"] as Record<string, unknown> | undefined) || {});
-    const fallbackAllowed = allowed.length ? allowed : DEFAULT_CLI_CHOICES;
+    const fallbackAllowed = DEFAULT_CLI_CHOICES;
     const current = (settings["cli"] as string | undefined) || 'claude';
 
+    if (!args.length && isRetiredCliSelection(current)) {
+        return { ok: false, text: `${RETIRED_RUNTIME_DIAGNOSTIC}: Select an available runtime: ${fallbackAllowed.join(', ')}` };
+    }
     if (!args.length) {
         return {
             ok: true,
@@ -247,7 +242,10 @@ export async function cliHandler(args: string[], ctx: CliCommandContext): Promis
     }
 
     const nextCli = args[0]!.toLowerCase();
-    if (!fallbackAllowed.includes(nextCli)) {
+    if (isRetiredCliSelection(nextCli)) {
+        return { ok: false, text: `${RETIRED_RUNTIME_DIAGNOSTIC}: Select an available runtime: ${fallbackAllowed.join(', ')}` };
+    }
+    if (!fallbackAllowed.some(cli => cli === nextCli)) {
         return {
             ok: false,
             text: t('cmd.cli.unknown', { cli: nextCli, available: fallbackAllowed.join(', ') }, L),
@@ -263,7 +261,7 @@ export async function cliHandler(args: string[], ctx: CliCommandContext): Promis
     const text = t('cmd.cli.changed', { from: current, to: nextCli }, L);
     return {
         ok: true,
-        text: nextCli === 'jwc' ? `${text}\n\n${jwcExternalRuntimeReminder()}` : text,
+        text,
     };
 }
 

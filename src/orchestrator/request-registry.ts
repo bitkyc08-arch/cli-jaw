@@ -6,9 +6,9 @@
  * depended on which path the server happened to take:
  *
  *   - idle -> normal run: `orchestrate_done` carried the requestId. Fine.
- *   - busy + JWC: `steerAgent` injects the prompt into the RUNNING turn and
+ *   - busy + in-band steer: `steerAgent` injects the prompt into the RUNNING turn and
  *     returns. No new turn exists, so no new completion event is ever emitted.
- *   - busy + non-JWC: a fresh orchestration ran but the requestId was not
+ *   - busy + fresh orchestration: the requestId was not
  *     passed through to it or to its error broadcast.
  *   - collect queue: N requests merge into one run and only the first id
  *     survives, so N-1 callers wait forever.

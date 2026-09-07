@@ -32,7 +32,7 @@ serialized response are bounded to16MiB (413); repository failure returns generi
 All responses use no-store. A copied fork MESSAGE is readable in its own chat, but
 this endpoint never grants permission to read the original chat's journal or raw Trace.
 
-`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton/JWC file, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
+`GET/PUT /api/settings` includes `presentation: {mode: 'activity'|'legacy'}`. Missing mode defaultsActivity; explicitLegacy persists. Malformed presentation objects/modes return400 at existing ingress validation, with no settings side effects. Partial blocks preserve siblings. A presentation-only PUT does not reset fallback, rewrite the provider singleton, change permissions or restart messaging transports; existing serialization, dispatcher and rollback remain. GET keeps its existing direct compatibility fields plus ok/data envelope. No new endpoint or tenant policy is added.
 
 Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durable rows even when RAM has the same count; in-place tool completion can change content without changing count. It merges all RAM fallback, preserves exact run/item identity and retains known omission when DB only has a suffix. The snapshot-only sanitizer option uses max-overlap rather than summing source omissions. `/api/messages` uses the same latest merge and synthesized durable pointers while preserving worker blob mirrors and existing bounds. No new endpoint, tenant policy or final-delivery path is introduced.
 
@@ -126,7 +126,7 @@ Both routes use the same existing requireAuth and global Host/Origin guards as t
 
 Each listed request has the four binding fields, `requestId`, `requestType`, `view`, and `expiresAt`. Views contain canonical sanitized labels and opaque jaw field/option handles. For ACP permissions, send `response:{optionId:<displayed-handle>}` or `{optionId:null}` to cancel, never a provider-native ID. Raw provider mappings and callbacks are private. Limits are128 pending requests globally,120-second expiry and32 per ACP connection; view admission must fit the32KiB event record. Accepted records a decision, not a provider tool result, and concurrent cancellation can still win before dispatch.
 
-Cursor/Grok activation and Activity controls are separate from this API foundation. Unsupported client-side filesystem, terminal and unproven question extensions are refused; existing JWC permissions and messaging final/ACK/queue paths are unchanged.
+Cursor/Grok activation and Activity controls are separate from this API foundation. Unsupported client-side filesystem, terminal and unproven question extensions are refused; messaging final/ACK/queue paths are unchanged.
 
 ## Base Route Surface (`server.ts`)
 

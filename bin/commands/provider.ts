@@ -2,7 +2,7 @@
  * cli-jaw provider — on-demand provider runtime installer.
  *
  * Providers removed from optionalDependencies can be installed into a
- * JAW_HOME-owned prefix, similar to `jaw jwc`.
+ * JAW_HOME-owned prefix.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';

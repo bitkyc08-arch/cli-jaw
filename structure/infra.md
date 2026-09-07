@@ -363,7 +363,7 @@ packaged resources, actual native UI, provider authentication or OS-wide behavio
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `promote-to-main.sh`, `pick-gyp-python.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `ci/aggregate-check.sh`, `ci/windows-unit-manifest.mjs`, `ci/windows-unit-manifest.txt`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
+`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `retired-runtime-package-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `promote-to-main.sh`, `pick-gyp-python.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `ci/aggregate-check.sh`, `ci/windows-unit-manifest.mjs`, `ci/windows-unit-manifest.txt`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
 
 ---
 
@@ -1521,3 +1521,13 @@ including their aggregates. Skipped jobs are not passing test evidence.
 `workflow_dispatch` behavior is unchanged. A dependent draft chain can defer
 hosted verification until its completed top branch, then dispatch the workflows
 on that exact ref and verify each run's head SHA and producer conclusions.
+
+### Retired runtime package boundary
+
+The build no longer copies Jawcode TUI bundles, Bun shims or `pi_natives` payloads.
+The obsolete Electron Jawcode source tree and `jaw jwc` installer module are gone.
+The retired-runtime package smoke and staged/platform sidecar absence guards
+check forbidden payloads while preserving ordinary Node/Jaw/native dependency
+checks. Negative fixtures prove the guards reject a forbidden payload. An absent
+staged sidecar is unverified and must not be reported as package absence proof.
+Existing external installations and user files are never cleaned by retirement.

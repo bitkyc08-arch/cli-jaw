@@ -6,7 +6,6 @@ import type { ChildProcess } from 'node:child_process';
 import { SessionLanes } from '../../src/orchestrator/session-lanes.ts';
 import { activeMainProcesses, killActiveAgent, killAllAgents } from '../../src/agent/spawn.ts';
 import { ownProcess } from '../../src/agent/spawn/process-kill.ts';
-import { jawRuntimesByScope, runtimeForScope } from '../../src/agent/jwc-runtime.ts';
 
 function deferred<T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -39,7 +38,6 @@ function fakeChild(onKill: () => void): ChildProcess {
 
 afterEach(() => {
     activeMainProcesses.clear();
-    jawRuntimesByScope.clear();
 });
 
 describe('multi-session concurrency activation', () => {
@@ -98,11 +96,19 @@ describe('multi-session concurrency activation', () => {
         assert.equal(activeMainProcesses.has('B'), true);
     });
 
-    it('allocates one resident JWC runtime per scope', () => {
-        const a = runtimeForScope('A');
-        const b = runtimeForScope('B');
-        assert.equal(runtimeForScope('A'), a);
-        assert.notEqual(a, b);
-        assert.deepEqual([...jawRuntimesByScope.keys()], ['A', 'B']);
+    it('scoped native cancel calls only the captured lease', () => {
+        const cancelled: string[] = [];
+        for (const scope of ['A', 'B']) {
+            activeMainProcesses.set(scope, {
+                process: null, starting: false, steering: false, ownerGeneration: 1,
+                meta: { origin: 'web', scopeId: scope, cli: 'codex-app' },
+                cancelTurn: () => { cancelled.push(scope); },
+            });
+        }
+        assert.equal(killActiveAgent('A', 'api'), true);
+        assert.deepEqual(cancelled, ['A']);
+        assert.equal(activeMainProcesses.has('B'), true);
+        assert.equal(killAllAgents('api'), true);
+        assert.deepEqual(cancelled, ['A', 'B']);
     });
 });

@@ -443,7 +443,7 @@ async function slackOrchestrate(
                     //
                     // An event with no requestId cannot prove which run it belongs to.
                     // Letting it through would restore the old behaviour, so it is
-                    // dropped; emitAgentTool and the jwc mapper both stamp the field.
+                    // dropped; emitAgentTool stamps the field from its run context.
                     if (data['requestId'] !== ctx.requestId) return;
                     // Thinking/commentary entries are live-UI-only narration.
                     // Telegram already drops its 💭 lines; Slack's progress

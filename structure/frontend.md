@@ -544,3 +544,11 @@ support rename, archive/restore, current-workspace filtering and paging.
 The transcript renders sanitized Markdown, math and linear tables with stable
 virtual rows. Tool output stays escaped; local files open only after an explicit
 click. Endpoint/session changes reset measured heights and scroll ownership.
+
+Retired runtime settings preserve a saved JWC selection as an explicit retired
+value. It is absent from runtime choices, including stale registry responses,
+employee creation and fallback menus. Existing employee and flush selections stay
+visible, and their model controls are disabled until a supported runtime is
+chosen. Classic native selects keep a disabled selected tombstone so rendering
+cannot silently choose the first available runtime. No settings write occurs
+merely from displaying the retired value.

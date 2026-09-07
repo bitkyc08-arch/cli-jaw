@@ -2,7 +2,6 @@ import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emitAgentTool } from '../../src/agent/events/helpers.ts';
-import { mapAgentEventToBus } from '../../src/agent/jwc-event-mapper.ts';
 import { addBroadcastListener, removeBroadcastListener } from '../../src/core/bus.ts';
 import type { SpawnContext } from '../../src/types/agent.ts';
 
@@ -46,19 +45,16 @@ test('AT-001: emitAgentTool stamps the run identity onto agent_tool', () => {
     assert.equal(seen[0]!['origin'], 'slack');
 });
 
-test('AT-002: the jwc mapper stamps the same fields', () => {
+test('AT-002: concurrent tools retain independent request and start identities', () => {
     const seen = collect(() => {
-        mapAgentEventToBus(
-            { type: 'tool_execution_start', id: 't1', name: 'bash', args: { command: 'ls' } } as never,
-            { cwd: '/tmp', sessionId: 'engine-session', requestId: 'req-b', origin: 'slack' },
-        );
+        for (const [requestId, startedAt] of [['req-a', 101], ['req-b', 202]] as const) {
+            emitAgentTool(ctxWith({ requestId, origin: 'slack', runStartedAt: startedAt }),
+                'agent-1', { icon: 'tool', label: 'bash', toolType: 'bash', detail: 'ls' }, {});
+        }
     });
-
-    assert.ok(seen.length >= 1);
-    assert.equal(seen[0]!['requestId'], 'req-b');
-    assert.equal(seen[0]!['origin'], 'slack');
-    // The engine session is NOT the request: keeping them distinct is the point.
-    assert.equal(seen[0]!['sessionId'], 'engine-session');
+    assert.deepEqual(seen.map(event => [event['requestId'], event['startedAt']]), [
+        ['req-a', 101], ['req-b', 202],
+    ]);
 });
 
 // The listener shape used by src/slack/bot.ts, asserted directly: the module itself

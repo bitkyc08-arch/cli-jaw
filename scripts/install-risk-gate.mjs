@@ -132,7 +132,7 @@ checks.push(() => run('node syntax: scripts/audit-fresh-install-evidence.mjs', p
 checks.push(() => run('node syntax: scripts/verify-release-evidence.mjs', process.execPath, ['--check', 'scripts/verify-release-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/require-release-evidence.mjs', process.execPath, ['--check', 'scripts/require-release-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/check-cli-bin-links.cjs', process.execPath, ['--check', 'scripts/check-cli-bin-links.cjs']));
-checks.push(() => run('jwc default npm install exclusion smoke', npm, ['run', 'smoke:jwc:no-global']));
+checks.push(() => run('retired runtime source-only manifest/lock check', process.execPath, ['scripts/retired-runtime-package-smoke.mjs', '--source-only']));
 
 checks.push(() => run('installer risk tests', npx, [
   'tsx',
@@ -148,6 +148,8 @@ checks.push(() => run('installer risk tests', npx, [
   'tests/unit/postinstall-strict-tools.test.ts',
   'tests/unit/wsl-installer-doctor.test.ts',
   'tests/unit/wsl-installer-exec.test.ts',
+  'tests/unit/jwc-command-contract.test.ts',
+  'tests/unit/retired-runtime-package.test.ts',
 ]));
 
 checks.push(runPackageContentsCheck);
@@ -155,7 +157,7 @@ checks.push(() => run('cli bin link contract', process.execPath, ['scripts/check
   skip: existsSync('dist/bin/cli-jaw.js') ? '' : 'dist build output not available',
 }));
 checks.push(() => run('electron staged sidecar no-JWC contract', npm, ['run', 'check:electron-sidecar-no-jwc'], {
-  skip: existsSync('electron/sidecar/server/package.json') ? '' : 'staged sidecar not bundled',
+  skip: existsSync('electron/sidecar/server/package.json') ? '' : 'staged sidecar not bundled; absence NOT RUN (not absence proof)',
 }));
 checks.push(() => run('app icon asset contract', npm, ['run', 'check:app-icons']));
 

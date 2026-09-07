@@ -58,6 +58,20 @@ test('SWA-003: malformed JSON keeps in-memory settings and stays silent', () => 
     assert.equal(events.filter(e => e.type === 'settings_change').length, 0);
 }));
 
+test('watch preserves a retired selection and metadata until an explicit supported choice', () => withCapturedBroadcasts(() => {
+    const metadata = { model: 'stored-model', credential: 'fixture-only' };
+    assert.equal(reloadSettingsFromDisk({ readImpl: () => JSON.stringify({ cli: 'jwc', perCli: { jwc: metadata } }), lastSavedRaw: null }), true);
+    assert.equal(settings['cli'], 'jwc');
+    assert.equal(settings['runtimeSelectionDiagnostic'], 'retired_runtime:jwc');
+    assert.deepEqual(settings['perCli'].jwc, metadata);
+    assert.equal(reloadSettingsFromDisk({ readImpl: () => JSON.stringify({ showReasoning: true }), lastSavedRaw: null }), true);
+    assert.equal(settings['cli'], 'jwc');
+    assert.equal(settings['runtimeSelectionDiagnostic'], 'retired_runtime:jwc');
+    assert.equal(reloadSettingsFromDisk({ readImpl: () => JSON.stringify({ cli: 'pi' }), lastSavedRaw: null }), true);
+    assert.equal(settings['runtimeSelectionDiagnostic'], null);
+    assert.deepEqual(settings['perCli'].jwc, metadata);
+}));
+
 test('SWA-004: watcher debounces rapid events into one reload and filters filenames', async () => {
     let listener: ((event: string, filename: string | Buffer | null) => void) | null = null;
     let closed = false;

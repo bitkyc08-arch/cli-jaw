@@ -1,5 +1,5 @@
 import type { SettingsClient } from '../../../types';
-import type { CliMeta } from './agent-meta';
+import { selectableRuntimeOptions, type CliMeta } from './agent-meta';
 
 export type RuntimeEmployeeSource = 'static' | 'db';
 
@@ -42,7 +42,7 @@ export function makeDefaultRuntimeEmployee(
     cliOptions: ReadonlyArray<string>,
     cliMeta?: Record<string, CliMeta> | null,
 ): RuntimeEmployeeRecord {
-    const cli = cliOptions[0] || 'claude';
+    const cli = selectableRuntimeOptions(cliOptions)[0] || 'claude';
     const model = cliMeta?.[cli]?.models?.[0] || 'default';
     return {
         id: newRuntimeEmployeeId(),

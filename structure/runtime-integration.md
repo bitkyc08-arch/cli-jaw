@@ -31,7 +31,7 @@ Telegram hub-member native target replies require the hub's additive bodyDeliver
 
 ### Independent display preference
 
-`presentation.mode` is `activity` by default or explicitly `legacy`. Both fresh and upgraded documents without the field use Activity; explicit Legacy and future siblings survive merge/load/watch. This policy does not change the separate existing-user print transport policy. API rejects invalid blocks/modes; watch ingress keeps current mode on rejected fields. A sole own presentation patch skips fallback reset, singleton session sync and JWC config rewrite while preserving serialized persistence/rollback and the existing messaging dispatcher, which finds no affected transport. Mixed/empty patches retain existing behavior. Registered native ownership and live identity remain current.
+`presentation.mode` is `activity` by default or explicitly `legacy`. Both fresh and upgraded documents without the field use Activity; explicit Legacy and future siblings survive merge/load/watch. This policy does not change the separate existing-user print transport policy. API rejects invalid blocks/modes; watch ingress keeps current mode on rejected fields. A sole own presentation patch skips fallback reset, singleton session sync while preserving serialized persistence/rollback and the existing messaging dispatcher, which finds no affected transport. Mixed/empty patches retain existing behavior. Registered native ownership and live identity remain current.
 
 Manager Display offers Activity first and Legacy as a reversible choice, with current-instance singleflight, guarded disabled edits and captured dirty acknowledgement. Classic applies a bounded generation-fenced settings refresh on settings_change, not loadSettings/runtime prompts. Failed latest reads retain the applied mode. This is preference plumbing; full Activity renderer/admission/history and TUI adoption are separate following layers, not certified by the setting alone.
 
@@ -89,7 +89,7 @@ running adapter. Builtin Codex App/Pi have no print selector here.
 
 The actual web/API settings wrapper preserves admitted-run ownership only for
 explicit known `presentation.mode` and/or eligible transport-only patches. It
-also leaves fallback state, singleton session and JWC config untouched for these
+also leaves fallback state, singleton session untouched for these
 preferences; persistence, serialization, rollback and settings publication still
 run. Old completion saves to its captured native/print bucket; the next run reads
 the new choice. Mixed model/permissions/CLI/workspace or unknown/empty leaves keep
@@ -356,3 +356,23 @@ snapshots include the complete active turn or fail explicitly. Hard bounds are
 4MiB/event, 8MiB/replay or snapshot, 32MiB ordinary events/turn and a separate
 2MiB control/terminal reserve. Capacity errors settle as visible failed turns;
 real storage failures prevent success and preserve the last committed history.
+
+## Retired runtime selections
+
+Executable CLI keys exclude JWC. Stored `jwc` values remain readable as a retired
+selection across boot, schema migration and settings reload; they never resolve
+to a different provider through a default or fallback. Execution reports
+`retired_runtime:jwc` before provider admission. Explicit selection of an available
+runtime restores execution; unrelated settings changes retain the retired value
+and existing per-CLI data. Manager and Classic show the saved retired value
+without offering it as a new selection.
+
+The JWC SDK loader, engine event mapper and configuration/model-cache integration
+are removed. Code uses its independent native adapters. Local TUI presentation
+uses cli-jaw Markdown, tool rows, tree indentation, elapsed time and subagent
+rendering; no generated Jawcode/Bun bundle is loaded.
+
+A new home configured with `CLI_JAW_DEFAULT_CLI=jwc` also keeps that retired
+selection and skips runtime readiness probes. An explicit supported selection in
+an existing settings file still wins. Unknown environment values and genuinely
+corrupt settings retain their existing handling.

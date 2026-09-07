@@ -9,8 +9,8 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 # src/cli/ — Slash Command Registry & Dispatcher
 
 > `commands.ts`(621L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(505L) + `handlers-search.ts`(34L) + `handlers-skill-invoke.ts`(36L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(254L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
-> slash registry는 55개 커맨드이며 non-hidden은 54개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 41 / Discord 41 / Slack 41이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
-> 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `jwc`, `kiro-code`, `opencode`, `copilot` 13개다.
+> slash registry는 55개 커맨드이며 non-hidden은 54개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 41 / Discord 41 / Slack 41이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
+> 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `kiro-code`, `opencode`, `copilot` 12개다.
 
 ---
 
@@ -29,7 +29,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 
 - `public/js/features/command-info.ts`의 `COMMAND_TOPIC_MAP`이 slash-command row `?` 도움말의 단일 매핑 소스다.
 - `public/js/features/slash-commands.ts`는 `COMMAND_TOPIC_MAP[cmd.name]`이 있을 때만 `.cmd-info-btn`을 렌더링하고, 클릭 시 `openHelpDialog(topicId)`를 호출한다.
-- Web에서 보이는 모든 command와 alias는 `COMMAND_TOPIC_MAP`에 있어야 한다. 단, jawcode parity stub set(`fast`, `context`, `tools`, `retry`, `export`, `resume`)은 follow-up help topic 전까지 계약 테스트에서 명시적으로 제외된다.
+- Web에서 보이는 모든 command와 alias는 `COMMAND_TOPIC_MAP`에 있어야 한다. 단, legacy compatibility command set(`fast`, `context`, `tools`, `retry`, `export`, `resume`)은 follow-up help topic 전까지 계약 테스트에서 명시적으로 제외된다.
 - `tests/unit/help-dialog-contract.test.ts`는 `COMMANDS`와 `COMMAND_TOPIC_MAP`을 대조해 `/review`, `/task`, `/fork`, `/h` 같은 누락이 재발하지 않도록 막고, parity-stub exemption만 허용한다.
 
 ---
@@ -67,7 +67,7 @@ effort, fast, context, tools, redraw, retry, export, resume, hotkeys
 
 `/settings` is CLI-only. In fullscreen `jaw chat`, selecting it opens the
 Appearance MVP screen in the main content region; it does not expose unsupported
-JWC-only `Context` settings. Line-mode still returns the generic command result.
+engine-specific `Context` settings. Line-mode still returns the generic command result.
 
 Interactive rich TUI uses Activity by default. Appearance → Presentation switches
 only `presentation.mode` between Activity and Legacy; it does not select transport
@@ -84,7 +84,7 @@ Activity reads or new output/termination behavior.
 
 ## Root CLI Surface (`bin/cli-jaw.ts` + `bin/commands/*.ts`)
 
-소스 기준 entrypoint는 `bin/cli-jaw.ts`(284L)다. 현재 소스 트리에서 root command router는 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `jwc.ts`, `dispatch-helpers.ts`, `dispatch-batch-summary.ts`, `task.ts`, `bgtask.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 40개다 (`messaging.ts` 포함).
+소스 기준 entrypoint는 `bin/cli-jaw.ts`(284L)다. 현재 소스 트리에서 root command router는 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `dispatch-helpers.ts`, `dispatch-batch-summary.ts`, `task.ts`, `bgtask.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 40개다 (`messaging.ts` 포함).
 
 ### Global options
 
@@ -111,7 +111,6 @@ escaped `--home` values before launching any DB-bearing CLI imports.
 | `messaging` | `bin/commands/messaging.ts` | `ingress list [--channel --state --older-than --limit --json]`, `ingress show <channel> <accountId> <eventId> [--json]`, `ingress replay <channel> <accountId> <eventId> --reason <text> [--force]`, `ingress audit [--limit --json]`, `doctor [--json]`. Local process only. Replay marks the journal `received`; the next vendor redelivery is what re-runs the handler. `--reason` required. completed default-deny; discarded payload hard-deny. `doctor` reports local journal counts, not the server ring. |
 | `doctor` | `bin/commands/doctor.ts` | `--json`, `--repair-shared-paths`, `--tcc`, `--fix`, `--prime`; `--json` 페이로드는 `platform` (`windows-native\|wsl\|linux\|darwin\|other`, `src/core/platform-kind.ts` 판정)과 WSL 전용 `wsl` 객체를 포함 |
 | `db` | `bin/commands/db.ts` | `maintain`; `wal_checkpoint(TRUNCATE)` 후 `VACUUM`, 전후 `page_count`/`freelist_count` 출력. 자동 실행 없음. |
-| `jwc` | `bin/commands/jwc.ts` | `install [--prefix <dir>] [--package <pkg>] [--dry-run] [--json]`, `clean [--prefix <dir>] [--dry-run] [--json]`, `doctor [--prefix <dir>] [--json]`; optional external-only JWC runtime helper |
 | `provider` | `bin/commands/provider.ts` | provider registry/config helper root command |
 | `chat` | `bin/commands/chat.ts` | `process.argv.slice(3)`를 TUI로 전달. 기본/`--raw`/`--simple` 모드. TUI transport는 `bin/commands/tui/channel.ts`에서 SSE-first inbound(`GET /api/events`) + legacy WS fallback(pre-X-01 server only)을 제공하고, outbound는 REST `POST /api/message` / `POST /api/stop`을 사용 |
 | `chat search` | `bin/commands/chat-search.ts` | `<query> [--days N] [--recent N] [--context N] [--limit N]`; 채팅 메시지 히스토리 검색 |
@@ -145,9 +144,11 @@ escaped `--home` values before launching any DB-bearing CLI imports.
 
 ---
 
-### Optional JWC runtime helper
+### Retired runtime command
 
-JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jwc install` to install the optional external runtime, `jaw jwc doctor` to inspect `JWC_SDK_PATH` readiness, and `jaw jwc clean` to remove the external runtime prefix.
+`jaw jwc` returns a retirement diagnostic. It never installs, cleans, probes an
+external SDK or falls through to a chat prompt. Choose an available runtime with
+`/cli <runtime>` in Jaw; Code has its own native per-session runtime picker.
 
 ## Command Behavior Notes
 
@@ -246,7 +247,7 @@ JWC is not bundled with the default npm install or Electron sidecar. Use `jaw jw
   salvage 뒤 새 run을 시작하며, 같은 세션 replacement로 바꾸지 않는다.
 - Web/Telegram/Discord/Slack에서 실행 가능. CLI slash registry에는 노출되지 않는다.
 - 실행 중 agent가 없으면 에러.
-- 런타임이 in-band steer를 지원하면(jwc, 또는 steer 가능한 turn이 진행 중인 codex-app)
+- 런타임이 in-band steer를 지원하면(steer 가능한 turn이 진행 중인 codex-app)
   **kill 없이** 진행 중 턴에 주입된다. codex-app은 app-server `turn/steer`로 같은 턴에
   합류하므로 이전 맥락 손실이 없다. 주입이 불가한 경우(턴 종료 race, review/compact 턴)
   kill 대신 follow-up 큐로 간다.
@@ -303,7 +304,6 @@ Codex 기본 registry는 ocx inactive fallback용 모델만 보유하며, live s
 | `codex-app` | `gpt-5.5` | `medium` |
 | `cursor` | `composer-2.5` | `medium-fast` |
 | `grok` | `grok-build` | `''` |
-| `jwc` | `claude-sonnet-4-6` | `high` |
 | `kiro-code` | `auto` | `''` |
 | `opencode` | `opencode-go/kimi-k2.6` | `''` |
 | `copilot` | `claude-sonnet-4.6` | `high` |

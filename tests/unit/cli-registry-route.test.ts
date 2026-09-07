@@ -6,7 +6,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 
 const kiroModelsPath = resolve(import.meta.dirname, '../../src/agent/kiro-models.js');
 
-// Isolate the live-registry Kiro augmentation boundary; 270 is about JWC exposure.
+// Isolate the live-registry Kiro augmentation boundary; the route exposes only executable runtimes.
 mock.module(kiroModelsPath, {
     namedExports: {
         fetchKiroModelInventory: async () => null,
@@ -17,7 +17,7 @@ const { registerSettingsRoutes } = await import('../../src/routes/settings.ts');
 
 const noAuth = (_req: Request, _res: Response, next: NextFunction): void => next();
 
-test('/api/cli-registry exposes JWC runtime metadata', async () => {
+test('/api/cli-registry excludes retired runtime metadata', async () => {
     const app = express();
     app.use(express.json());
     registerSettingsRoutes(app, noAuth, async () => ({}), process.cwd());
@@ -32,11 +32,8 @@ test('/api/cli-registry exposes JWC runtime metadata', async () => {
 
         const body = await response.json() as { ok: boolean; data: Record<string, Record<string, unknown>> };
         assert.equal(body.ok, true);
-        assert.equal(body.data.jwc.label, 'JWC');
-        assert.equal(body.data.jwc.binary, 'jwc');
-        assert.equal(body.data.jwc.experimental, true);
-        assert.equal(body.data.jwc.defaultModel, 'claude-sonnet-4-6');
-        assert.equal(body.data.jwc.defaultEffort, 'high');
+        assert.equal(Object.hasOwn(body.data, 'jwc'), false);
+        assert.equal(body.data['codex-app']?.['label'], 'Codex App');
     } finally {
         await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
     }

@@ -102,7 +102,7 @@ The version1 envelope carries jaw `sessionId`, routing `scope`, `runId`, logical
 
 Classic's live Activity dispatcher admits against the existing snapshot bridge's captured session/scope, with independently suspended stream admission. Pre-admission runtime events and projection-gap notices share a256-entry/1MiB queue; gaps retain their original identity. The bridge's live non-replayed terminal schedules its existing request GET to recover a missed settlement notice, never a POST. Closed Activity does not hide live decision controls.
 
-The journal's canonical terminal is redacted; a later owned public native-present or print answer can correct the same rendered/cache row without repeating lifecycle or notification. Native-absent diagnostics remain separate from that answer. Missing journal frames never disable compatibility final delivery. Same-turn native-input and same-session cancel-reprompt steer receipts do not terminate the current Activity; JWC's pre-acceptance receipt remains pre-acceptance despite its mechanism label. Cold journal hydration and TUI display are separate from this Classic live consumer.
+The journal's canonical terminal is redacted; a later owned public native-present or print answer can correct the same rendered/cache row without repeating lifecycle or notification. Native-absent diagnostics remain separate from that answer. Missing journal frames never disable compatibility final delivery. Same-turn native-input and same-session cancel-reprompt steer receipts do not terminate the current Activity. Cold journal hydration and TUI display are separate from this Classic live consumer.
 
 Owner-bound `activity-journal.ts` now persists immutable canonical events before SSE publication. Internal append is allowed without public replay. Storage/budget loss stops canonical append and remains visible on bounded history reads; finals and interrupted salvage stay independent. Runtime/gap broadcasts bypass all messaging listeners and require original nonempty run/session/scope before ambient-scope stamping. Discovery/replay use explicit-session trace routes and fixed sparse high-water cursors; no old event can re-open a live decision. Private control metadata and whole-prefix retention are documented in `runtime-integration.md`.
 
@@ -173,7 +173,6 @@ approval never answers it. Raw pipe retains existing NDJSON/agent_done terminati
 | Topic | Event | 대표 payload | 발행 위치 / 용도 |
 | --- | --- | --- | --- |
 | `code` | `code_item` / `code_item_update` / `code_session` | `{ sessionId, sequence, ... }` | `src/code-mode/host.ts`; persisted native session events; compact updates apply once in contiguous sequence |
-| `jwc` | `code_compaction` / `code_retry` | `{ phase, ... }` | `src/agent/jwc-event-mapper.ts`; JWC compaction/retry status |
 | `worker` | `instance-status-changed` / `worker_settings_change` | worker diff/settings metadata | manager-side worker cache invalidation and settings change bridge |
 
 ### Internal-only `trace` events

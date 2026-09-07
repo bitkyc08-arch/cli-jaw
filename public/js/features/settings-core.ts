@@ -1,3 +1,5 @@
+import { isRetiredCliSelection } from '../../../src/types/cli-engine.js';
+import { preserveRetiredRuntimeOption } from './retired-runtime-option.js';
 // ── Settings Core ──
 import { MODEL_MAP, loadCliRegistry, getCliKeys, getCliMeta, PRIMARY_CLIS } from '../constants.js';
 import type { CliEntry } from '../constants.js';
@@ -210,7 +212,7 @@ function appendCustomOption(selectEl: HTMLSelectElement | null, value: string): 
 }
 
 function syncCliOptionSelects(settings: SettingsData | null = null): void {
-    const cliKeys = getCliKeys();
+    const cliKeys = getCliKeys().filter(cli => !isRetiredCliSelection(cli));
 
     const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
     if (selCli) {
@@ -239,6 +241,8 @@ function syncCliOptionSelects(settings: SettingsData | null = null): void {
             }
         }
         selCli.innerHTML = html;
+        selCli.title = isRetiredCliSelection(current) ? 'The saved runtime is retired and cannot execute.' : '';
+        preserveRetiredRuntimeOption(selCli, current);
         if (Array.from(selCli.options).some(o => o.value === current)) selCli.value = current;
     }
 
@@ -247,6 +251,7 @@ function syncCliOptionSelects(settings: SettingsData | null = null): void {
         const current = settings?.memory?.cli || flushCli.value || '';
         flushCli.innerHTML = '<option value="">(active CLI)</option>' +
             cliKeys.map(cli => `<option value="${escapeHtml(cli)}">${escapeHtml(cliDisplayLabel(cli))}</option>`).join('');
+        preserveRetiredRuntimeOption(flushCli, current);
         if (Array.from(flushCli.options).some(o => o.value === current)) flushCli.value = current;
     }
 }
@@ -699,12 +704,19 @@ export function onCliChange(save = true): void {
     }
     selCli.dataset['prev'] = selCli.value;
     const cli = selCli.value || 'claude';
+    if (!isRetiredCliSelection(cli)) selCli.title = '';
     const cliProvider = syncCliProviderControl(null, cli);
     const meta = getCliMeta(cli);
     const models = cliProvider && meta?.modelsByProvider?.[cliProvider]
         ? meta.modelsByProvider[cliProvider]
         : (MODEL_MAP[cli] || []);
     const modelSel = document.getElementById('selModel') as HTMLSelectElement | null;
+    if (isRetiredCliSelection(cli)) {
+        if (modelSel) { modelSel.disabled = true; modelSel.title = 'The saved runtime is retired and cannot execute.'; }
+        setHeaderCli(cli);
+        syncActiveEffortOptions(cli);
+        return;
+    }
     if (meta?.modelNote && modelSel) {
         modelSel.innerHTML = `<option value="">${escapeHtml(meta.modelNote)}</option>`;
         modelSel.title = meta.modelNote;

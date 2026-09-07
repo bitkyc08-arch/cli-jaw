@@ -1,9 +1,9 @@
+import { isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
 import {
     loadUnifiedMcp, syncToAll,
     ensureWorkingDirSkillsLinks, initMcpConfig,
 } from '../../lib/mcp-sync.js';
 import { syncCodexContextWindow } from './codex-config.js';
-import { JWC_PROVIDER_MODEL_DEFAULTS } from '../code-mode/model-options.js';
 import {
     settings, persistAndCommit, snapshotSettingsState, migrateSettings, normalizeProjectDirs,
     RUNTIME_DEFAULT_MIGRATION_ID, type RuntimeDefaultMigration,
@@ -18,9 +18,6 @@ import { regenerateB } from '../prompt/builder.js';
 import { restartMessagingRuntime, initActiveMessagingRuntime } from '../messaging/runtime.js';
 import { beginRuntimeSettingsMutation } from './runtime-settings-gate.js';
 import { resolveAiEProvider } from '../agent/args.js';
-import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { log } from './logger.js';
 import { MAX_DISPATCH_APPROVAL_TTL_SECONDS } from './dispatch-approval.js';
 import { isRuntimeTransport, isSwitchableNativeCli } from '../agent/runtime/selection.js';
@@ -163,46 +160,6 @@ export async function withMultiSessionDefaultMigrationLock<T>(work: () => Promis
         return await work();
     } finally {
         release();
-    }
-}
-
-export function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
-    try {
-        const cli = currentSettings["cli"];
-        if (cli !== 'jwc') return;
-        const ao = currentSettings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
-        const pc = currentSettings["perCli"]?.['jwc'] as Record<string, string> | undefined;
-        const provider = ao?.['provider'] || pc?.['provider'] || 'anthropic';
-        // Derive the unconfigured fallback from the provider's own default list instead of
-        // repeating a literal here. The literal had drifted to claude-sonnet-4-6, seventh
-        // in the anthropic list and a generation behind its head, and a catalog refresh
-        // could not carry it: nothing links the two. Taking the head means a user who
-        // never picked a model gets what the rest of the system already calls that
-        // provider's default, and the next refresh moves this with it.
-        const model = ao?.['model'] || pc?.['model'] || JWC_PROVIDER_MODEL_DEFAULTS[provider]?.[0];
-        if (!model) return;
-        const modelRole = provider !== 'anthropic' ? `${provider}/${model}` : `${provider}/${model}`;
-        const agentDir = process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
-        const configPath = join(agentDir, 'config.yml');
-        let content: string;
-        try {
-            content = readFileSync(configPath, 'utf8');
-        } catch {
-            mkdirSync(agentDir, { recursive: true });
-            content = '';
-        }
-        const defaultLine = `  default: ${modelRole}`;
-        if (content.includes('modelRoles:')) {
-            content = content.replace(
-                /modelRoles:\s*\n\s*default:\s*.+/,
-                `modelRoles:\n${defaultLine}`,
-            );
-        } else {
-            content = `modelRoles:\n${defaultLine}\n${content}`;
-        }
-        writeFileSync(configPath, content, 'utf8');
-    } catch (e: unknown) {
-        console.error('[jaw:jwc-config]', (e as Error).message);
     }
 }
 
@@ -383,6 +340,9 @@ async function applyRuntimeSettingsPatchSerialised(
             throw new Error('invalid_settings_field');
         }
         const patch = sanitized.value;
+        if (isRetiredCliSelection(patch['cli']) && !isRetiredCliSelection(prevCli)) {
+            throw new Error(RETIRED_RUNTIME_DIAGNOSTIC);
+        }
         const presentationOnly = Object.keys(patch).length === 1 && Object.hasOwn(patch, 'presentation');
         // Preserve the older empty/sibling presentation subtree behavior separately
         // from the strict admission-ownership exception for explicit preferences.
@@ -399,6 +359,9 @@ async function applyRuntimeSettingsPatchSerialised(
             merged["projectDirs"] = normalizeProjectDirs(merged["projectDirs"]);
         }
         const migrated = migrateSettings(merged);
+        if (isRetiredCliSelection(migrated['cli']) && !isRetiredCliSelection(prevCli)) {
+            throw new Error(RETIRED_RUNTIME_DIAGNOSTIC);
+        }
         const nextShape = sanitized.persistenceShape === 'present'
             ? 'present'
             : prevCandidate.shape;
@@ -448,8 +411,6 @@ async function applyRuntimeSettingsPatchSerialised(
         } else if (!preserveRuntimeState) {
             syncMainSessionToSettings(prevCli);
         }
-
-        if (!preserveRuntimeState) syncJwcConfigDefault(settings);
 
         if (settings["workingDir"] !== prevWorkingDir) {
             try {

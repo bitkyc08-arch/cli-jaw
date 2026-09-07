@@ -1,6 +1,6 @@
 import { SelectField } from '../../../fields';
 import { SettingsSection } from '../../page-shell';
-import { metaFor, type CliMeta } from './agent-meta';
+import { metaFor, selectableRuntimeOptions, isRetiredCliSelection, type CliMeta } from './agent-meta';
 
 type FlushAgentSectionProps = {
     activeCli: string;
@@ -46,9 +46,11 @@ export function FlushAgentSection({
                         id="agent-flush-cli"
                         label="Flush CLI"
                         value={flushCli}
+                        missingValueLabel={isRetiredCliSelection(flushCli) ? 'JWC (retired)' : undefined}
+                        error={isRetiredCliSelection(effectiveCli) ? 'The saved flush runtime is retired. Choose an available runtime.' : null}
                         options={[
                             { value: '', label: '(active CLI)' },
-                            ...cliOptions.map((value) => ({ value, label: metaFor(value, cliMeta).label || value })),
+                            ...selectableRuntimeOptions(cliOptions).map((value) => ({ value, label: metaFor(value, cliMeta).label || value })),
                         ]}
                         onChange={onFlushCliChange}
                     />
@@ -56,6 +58,7 @@ export function FlushAgentSection({
                         id="agent-flush-model"
                         label="Flush model"
                         value={flushModel}
+                        disabled={isRetiredCliSelection(effectiveCli)}
                         options={[{ value: '', label: '(default)' }, ...modelOptions]}
                         onChange={onFlushModelChange}
                     />

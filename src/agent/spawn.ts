@@ -21,12 +21,11 @@ import { settings, UPLOADS_DIR, detectCli, getProjectDirs } from '../core/config
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import {
-    clearEmployeeSession, getSession, insertMessage, insertMessageWithTraceRun, getRecentMessages,
+    clearEmployeeSession, getSession, insertMessage, getRecentMessages,
     listQueuedMessages, insertQueuedMessage, deleteQueuedMessage, migrateQueuedMessagesV1ToV2,
     getSessionBucket, clearSessionBucket, setSessionBucketSnapshot,
     getMaxMessageId, getSteerSalvageAfter,
 } from '../core/db.js';
-import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
 import { getActiveChatSession, getRemoteBoundSessionId } from '../core/chat-sessions.js';
 import { currentSessionScope } from '../core/session-context.js';
@@ -91,8 +90,8 @@ import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from
 import { isRemoteTarget, type RemoteTarget } from '../messaging/types.js';
 import { buildRemoteBindingKey } from '../messaging/session-key.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
-import { jawRuntimesByScope, runtimeForScope } from './jwc-runtime.js';
-import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
+import { isRetiredCliSelection, RETIRED_RUNTIME_DIAGNOSTIC } from '../types/cli-engine.js';
+import { runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
 import { appendTraceEvent, createTraceId, finalizeTraceRun, stampTraceTool, startTraceRun, updateTraceToolRow } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
@@ -522,11 +521,9 @@ export function isSteerInProgress(scopeKey = 'default'): boolean {
 export function isAgentBusy(scopeKey: string | null = 'default'): boolean {
     if (scopeKey === null) {
         return activeMainProcesses.size > 0
-            || [...jawRuntimesByScope.values()].some(runtime => runtime.busy)
             || queueCtrl.isRetryPending(null);
     }
     return activeMainProcesses.has(scopeKey)
-        || runtimeForScope(scopeKey).busy
         || queueCtrl.isRetryPending(scopeKey);
 }
 
@@ -653,22 +650,6 @@ function clearMainLiveRunOnStop(scopeKey: string, reason: string): void {
     clearLiveRun(scopeKey);
 }
 
-/**
- * jwc turns run in-process (no ChildProcess), so the SIGTERM/SIGKILL paths
- * below never touch them — abort the resident runtime session explicitly or
- * /api/stop is a no-op while jwc streams.
- */
-function abortInProcessRuntimeOnStop(scopeKey: string, reason: string): boolean {
-    if (reason !== 'api' && reason !== 'user' && reason !== 'steer' && reason !== 'interrupt') return false;
-    if (getActiveMainCli(scopeKey) !== 'jwc') return false;
-    const runtime = runtimeForScope(scopeKey);
-    if (!runtime.busy) return false;
-    runtime.abort().catch((err: unknown) => {
-        console.warn('[jaw:stop] jwc abort failed', (err as Error)?.message || err);
-    });
-    return true;
-}
-
 export function killActiveAgent(scopeKey: string, reason: string): boolean;
 export function killActiveAgent(reason?: string): boolean;
 export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string): boolean {
@@ -681,7 +662,6 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const cancelledPendingMain = run?.cancelPending ? (run.cancelPending(reason), true) : false;
     clearRetryTimer(scopeKey, false);
     if (!cancelledPendingMain) clearMainLiveRunOnStop(scopeKey, reason);
-    const abortedInProcess = abortInProcessRuntimeOnStop(scopeKey, reason);
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
     if (reason === 'api' || reason === 'user') {
@@ -703,7 +683,7 @@ export function killActiveAgent(scopeKeyOrReason = 'user', scopedReason?: string
     const activeProcess = run?.process ?? null;
     if (!activeProcess) {
         if (reason === 'api' || reason === 'user' || reason === 'steer' || reason === 'interrupt') activeMainProcesses.delete(scopeKey);
-        return hadTimer || cancelledPendingMain || abortedInProcess || cancelledClaude;
+        return hadTimer || cancelledPendingMain || cancelledClaude;
     }
     const policy = getKillPolicy(scopeKey, reason);
     console.log(`[jaw:kill] reason=${reason} scope=${scopeKey} cli=${getActiveMainCli(scopeKey) || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
@@ -827,33 +807,27 @@ export function waitForAllProcessesEnd(timeoutMs = 2000): Promise<void> {
 
 export function canSteerAgent(scopeKey: string): boolean {
     const run = activeMainProcesses.get(scopeKey);
-    if (run?.meta.cli === 'jwc' && jawRuntimesByScope.get(scopeKey)?.busy === true) return true;
     // Route CLI steering through either the in-band hook or the native replacement hook.
     // Each owning hook decides whether the current turn can still accept the input.
     return typeof run?.steerTurnInBand === 'function' || typeof run?.replaceTurn === 'function';
 }
 
-export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled';
+export type SteerOutcome = 'steered' | 'fallback-queue' | 'new-run' | 'cancelled' | 'retired';
 
 export async function steerAgent(
     scopeKey: string,
     newPrompt: string,
     source: string,
-    meta?: { chatSessionId?: string; target?: RemoteTarget; chatId?: string | number; requestId?: string; remoteKey?: string; replyViaTarget?: boolean },
+    meta?: { cli?: string; chatSessionId?: string; target?: RemoteTarget; chatId?: string | number; requestId?: string; remoteKey?: string; replyViaTarget?: boolean },
 ): Promise<SteerOutcome> {
     const run = activeMainProcesses.get(scopeKey);
-    const runtime = runtimeForScope(scopeKey);
     const chatSessionId = meta?.chatSessionId || run?.meta.chatSessionId || getActiveChatSession();
-    if (run?.meta.cli === 'jwc' && runtime.busy) {
-        insertMessage.run('user', newPrompt, source, '', settings["workingDir"] || null, chatSessionId);
-        broadcast('new_message', { role: 'user', content: newPrompt, source, scope: scopeKey, sessionId: chatSessionId });
-        broadcast('steer_started', stripUndefined({ prompt: newPrompt, origin: source || 'web', scope: scopeKey, sessionId: chatSessionId, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, remoteKey: meta?.remoteKey, replyViaTarget: meta?.replyViaTarget, mode: 'native-input' }));
-        await runtime.steer(settings["workingDir"] || process.cwd(), newPrompt);
-        // A steer injects into the turn already running; no new completion
-        // event will ever carry this id. Settling here is what stops a caller
-        // from waiting for an answer that structurally cannot arrive.
-        settleOnce(meta?.requestId, 'steered');
-        return 'steered';
+    // This is admission for NEW input, not the already admitted run's selection.
+    // A watched settings change must not inject into or stop that run's lease.
+    if (isRetiredCliSelection(resolveMainCli(meta?.cli, settings, getSession() as SessionRow | undefined))) {
+        settleOnce(meta?.requestId, 'failed', { error: RETIRED_RUNTIME_DIAGNOSTIC,
+            scope: scopeKey, sessionId: chatSessionId });
+        return 'retired';
     }
     if (typeof run?.replaceTurn === 'function') {
         const capturedSessionOwner = getSessionOwnershipGeneration(scopeKey);
@@ -1302,6 +1276,23 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     let cli = resolveMainCli(opts.cli, settings, session);
     if (mainRun) mainRun.meta.cli = cli;
 
+    if (isRetiredCliSelection(cli)) {
+        const message = `${RETIRED_RUNTIME_DIAGNOSTIC}: Select an available runtime before sending another request.`;
+        const released = mainManaged && activeMainProcesses.get(scopeKey) === mainRun
+            && releaseMainRun(scopeKey, null, ownerGeneration);
+        settleOnce(opts.requestId, 'failed', { error: RETIRED_RUNTIME_DIAGNOSTIC, text: message,
+            scope: scopeKey, sessionId: chatSessionId });
+        broadcast('agent_done', {
+            text: message, error: true, origin, cli, scope: scopeKey, sessionId: chatSessionId,
+            ...(opts.requestId ? { requestId: opts.requestId } : {}), ...empTag,
+        }, isEmployee ? 'internal' : 'public');
+        try { opts.lifecycle?.onExit?.(78); } catch { console.warn('[runtime] retirement exit observer failed'); }
+        resolve!({ text: message, code: 78 });
+        if (released) void processQueue(scopeKey);
+        return { child: null, promise: resultPromise };
+    }
+
+
     // Namespace selection is captured once for this run. Builtin native
     // Codex/Pi keep their existing bucket keys; only switchable adapters use
     // the new namespace. Reject unavailable native choices before fallback,
@@ -1382,63 +1373,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 });
             }
         }
-    }
-
-    // ─── jwc in-process branch (110.3 §B) ───────────────────────────────
-    // Resident engine, no ChildProcess. Mirrors the main-managed lifecycle
-    // (insertMessage → beginLiveRun → run → persist → clearLiveRun → processQueue)
-    // so scoped busy/queue/SSE behave identically. Employees fall through.
-    if (cli === 'jwc' && mainManaged && !opts.internal) {
-        const jawRuntime = runtimeForScope(scopeKey);
-        const jwcLabel = 'main';
-        const jwcOverrides = settings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
-        const jwcPerCli = settings["perCli"]?.['jwc'] as Record<string, string> | undefined;
-        const jwcModel = jwcOverrides?.['model'] || jwcPerCli?.['model'] || 'claude-fable-5';
-        const jwcProvider = jwcOverrides?.['provider'] || jwcPerCli?.['provider'] || 'anthropic';
-        const jwcCwd = settings["workingDir"] || process.cwd();
-        if (!opts._skipInsert) {
-            insertMessage.run('user', prompt, 'jwc', jwcModel, settings["workingDir"] || null, chatSessionId);
-        }
-        mainRun!.starting = true;
-        beginLiveRun(liveScope, 'jwc');
-        broadcast('agent_status', { running: true, agentId: jwcLabel, cli: 'jwc' });
-        const jwcEffort = jwcOverrides?.['effort'] || jwcPerCli?.['effort'] || '';
-        jawRuntime.setModelPattern(`${jwcProvider}/${jwcModel}`);
-        jawRuntime.setThinkingLevel(jwcEffort || undefined);
-        jawRuntime.setLiveScope(liveScope);
-        const settleJwcTurn = (result: { text: string; code: number }): void => {
-            const live = getLiveRun(liveScope);
-            const rawFinalText = result.code === 0 ? live.text : result.text;
-            const finalText = applyOutputPolicy(rawFinalText, { scope: 'main' }).text;
-            // Persist may throw (better-sqlite3 is sync: DB lock / schema). Cleanup MUST
-            // still run or this scope's starting flag stays true and its queue deadlocks.
-            try {
-                insertMessageWithTraceRun.run(
-                    'assistant', finalText, 'jwc', jwcModel, null,
-                    JSON.stringify(sanitizeToolLogForDurableStorage(live.toolLog)),
-                    settings["workingDir"] || null, live.traceRunId || null, chatSessionId,
-                );
-                broadcast('agent_done', { text: finalText, origin, ...(result.code === 0 ? {} : { error: true }) });
-            } catch (err) {
-                console.error('[jwc:persist]', err instanceof Error ? err.message : String(err));
-                broadcast('agent_done', { text: finalText, origin, error: true });
-            } finally {
-                clearLiveRun(liveScope);
-                broadcast('agent_status', { running: false, agentId: jwcLabel, cli: 'jwc' });
-                mainRun!.starting = false;
-                jawRuntime.setLiveScope(undefined);
-                releaseMainRun(scopeKey, null, ownerGeneration);
-                resolve!({ text: finalText, code: result.code });
-                void processQueue(scopeKey);
-            }
-        };
-        // jawRuntime.prompt is designed never to reject, but guard defensively so a
-        // broken turn never leaves the queue wedged or emits an unhandled rejection.
-        jawRuntime.prompt(jwcCwd, prompt).then(settleJwcTurn, err => {
-            console.error('[jwc:turn]', err instanceof Error ? err.message : String(err));
-            settleJwcTurn({ text: `❌ jwc turn failed: ${err instanceof Error ? err.message : String(err)}`, code: 1 });
-        });
-        return { child: null, promise: resultPromise };
     }
 
     if (cli === 'opencode') {

@@ -1,3 +1,5 @@
+import { isRetiredCliSelection } from '../../../../../../../src/types/cli-engine';
+export { isRetiredCliSelection };
 import type { RuntimeTransport } from '../../../../../../../src/shared/runtime-contract';
 
 export type CliMeta = {
@@ -47,7 +49,7 @@ export type ActiveOverride = {
 
 const CODEX_MODELS: ReadonlyArray<string> = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 
-export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'jwc', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
+export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
 
 export const CLI_META: Record<string, CliMeta> = {
     agy: {
@@ -137,28 +139,6 @@ export const CLI_META: Record<string, CliMeta> = {
             'claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-    },
-    jwc: {
-        label: 'JWC',
-        defaultProvider: 'anthropic',
-        providers: ['anthropic'],
-        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-        efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        modelsByProvider: {
-            anthropic: [
-                'claude-fable-5',
-                'claude-sonnet-5',
-                'claude-opus-5',
-                'claude-opus-4-8',
-                'claude-opus-4-7',
-                'claude-opus-4-6',
-                'claude-sonnet-4-6',
-                'claude-haiku-4-5',
-            ],
-        },
-        effortsByProvider: {
-            anthropic: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        },
     },
     codex: {
         label: 'Codex',
@@ -284,6 +264,7 @@ export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> 
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
     const out: Record<string, CliMeta> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (isRetiredCliSelection(key)) continue;
         if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
         const record = value as Record<string, unknown>;
         const modelsByProvider = stringArrayRecord(record['modelsByProvider']);
@@ -357,10 +338,16 @@ export function coerceEffortForModel(
 }
 
 export function metaFor(cli: string, registry?: Record<string, CliMeta> | null): CliMeta {
+    if (isRetiredCliSelection(cli)) return { label: 'JWC (retired)', models: [], efforts: [] };
     return registry?.[cli] || CLI_META[cli] || { label: cli, models: [], efforts: [] };
 }
 
-export function orderRuntimeCliOptions(cliOptions: ReadonlyArray<string>): string[] {
+export function selectableRuntimeOptions(cliOptions: ReadonlyArray<string>): string[] {
+    return cliOptions.filter(value => !isRetiredCliSelection(value));
+}
+
+export function orderRuntimeCliOptions(input: ReadonlyArray<string>): string[] {
+    const cliOptions = selectableRuntimeOptions(input);
     const primary = PRIMARY_CLIS.filter((value) => cliOptions.includes(value));
     const secondary = cliOptions.filter((value) => !PRIMARY_CLIS.includes(value));
     return [...primary, ...secondary];

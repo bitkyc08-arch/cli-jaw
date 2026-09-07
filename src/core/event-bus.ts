@@ -25,7 +25,6 @@ export type EventTopic =
     | 'agents'      // agent_added, agent_updated, agent_deleted
     | 'widget'      // widget_updated
     | 'trace'       // internal-only (agent:claude-e:*) — never SSE-public
-    | 'jwc'         // Legacy Jaw runtime status; removed with the retired runtime
     | 'code'        // Native Code sessions; persisted per-session sequence and item updates
     | 'system';     // system_notice, alert_escalation, fallback bucket
 
@@ -37,7 +36,7 @@ export type EventTopic =
 export const PUBLIC_SSE_TOPICS: ReadonlySet<EventTopic> = new Set<EventTopic>([
     'agent', 'orchestrate', 'goal', 'workflow', 'memory', 'worker',
     'message', 'queue', 'bgtask', 'heartbeat', 'schedule', 'session',
-    'settings', 'agents', 'widget', 'jwc', 'code', 'system',
+    'settings', 'agents', 'widget', 'code', 'system',
 ]);
 
 export function isPublicSseTopic(topic: EventTopic): boolean {
