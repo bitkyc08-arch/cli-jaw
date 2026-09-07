@@ -51,7 +51,7 @@ test('jaw-ceo frontend installs workbench launcher outside instance groups', asy
             settings: null, settingsOpen: false, onSettingsClose() {} })));
         const tabs = dom.window.document.querySelector('.workbench-mode-tabs');
         assert.equal(tabs?.nextElementSibling?.id, 'ceo-test');
-        assert.equal(tabs?.nextElementSibling?.nextElementSibling?.getAttribute('aria-label'), 'Instance settings');
+        assert.equal(tabs?.nextElementSibling?.nextElementSibling, null, 'settings gear belongs to the command bar');
         dom.window.close();
     } finally { globals['React'] = previous; }
     assert.equal(router.includes('jawCeoNavigatorContent'), false, 'CEO must not be injected into Navigator');

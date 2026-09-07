@@ -12,9 +12,9 @@ test('Classic settings has one lazy shared iframe and no duplicate Slack fields'
     const { JSDOM } = await import('jsdom');
     const dom = new JSDOM(read('public/index.html'), { url: 'http://127.0.0.1:3457/' });
     try {
-        const tab = dom.window.document.querySelector('#tabSettings')!;
+        const tab = dom.window.document.querySelector('#settingsPage')!;
         assert.equal(tab.children.length, 1);
-        const frame = tab.querySelector('iframe.settings-frame')!;
+        const frame = tab.querySelector('iframe')!;
         assert.equal(frame.getAttribute('src'), 'dist/settings/index.html');
         assert.equal(frame.getAttribute('loading'), 'lazy');
         assert.equal(frame.getAttribute('title'), 'Instance settings');
@@ -33,10 +33,10 @@ test('Classic iframe bridge preserves proxy URL, accepts only its frame and disp
     globalThis.fetch = async () => new Response('{}', { headers: { 'content-type': 'application/json' } });
     t.after(() => { globalThis.fetch = originalFetch; });
     document.head.innerHTML = '<base href="http://127.0.0.1/i/3465/">';
-    document.body.innerHTML = '<div id="tabSettings"><iframe class="settings-frame"></iframe></div>';
+    document.body.innerHTML = '<div class="chat-area"><div class="chat-header"><button id="btnSettings" aria-pressed="false">Settings</button></div><textarea id="chatInput"></textarea></div><section id="settingsPage" hidden><iframe></iframe></section>';
     document.documentElement.dataset['theme'] = 'dark';
     t.mock.module('../../public/js/provider-icons.js', { namedExports: { providerIcon: () => '', providerLabel: (value: string) => value } });
-    const { initSettingsFrame } = await import('../../public/js/features/settings.ts');
+    const { initSettingsFrame, toggleSettingsPage } = await import('../../public/js/features/settings.ts');
     const dispose = initSettingsFrame();
     t.after(dispose);
     const frame = document.querySelector<HTMLIFrameElement>('iframe')!;
@@ -57,6 +57,23 @@ test('Classic iframe bridge preserves proxy URL, accepts only its frame and disp
     document.documentElement.dataset['theme'] = 'light';
     await new Promise<void>(resolve => queueMicrotask(resolve));
     assert.deepEqual(messages.at(-1)?.data, { type: 'jaw-preview-theme-sync', theme: 'light' });
+    const header = document.querySelector('.chat-header');
+    toggleSettingsPage(true);
+    assert.equal(document.querySelector('#settingsPage .chat-header'), header);
+    assert.equal(document.querySelector<HTMLElement>('.chat-area')?.inert, true);
+    assert.equal(document.querySelector('#settingsPage iframe'), frame);
+    assert.equal(document.getElementById('btnSettings')?.getAttribute('aria-pressed'), 'true');
+    toggleSettingsPage(false);
+    assert.deepEqual(messages.at(-1)?.data, { type: 'settings:request-back' });
+    assert.equal(document.getElementById('settingsPage')?.hidden, false, 'frame owns dirty confirmation');
+    receive(window, window.location.origin, 'settings:back');
+    receive(frame.contentWindow!, 'https://other.invalid', 'settings:back');
+    assert.equal(document.getElementById('settingsPage')?.hidden, false);
+    receive(frame.contentWindow!, window.location.origin, 'settings:back');
+    assert.equal(document.getElementById('settingsPage')?.hidden, true);
+    assert.equal(document.querySelector('.chat-area .chat-header'), header);
+    assert.equal(document.querySelector<HTMLElement>('.chat-area')?.inert, false);
+    assert.equal(document.activeElement?.id, 'chatInput');
     const before = messages.length;
     dispose();
     frame.dispatchEvent(new window.Event('load'));
