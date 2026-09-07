@@ -2,8 +2,9 @@ import '../setup/isolated-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, renameSync, symlinkSync, rmSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname, basename } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import type { PiRuntimeEvent } from '../../src/agent/pi-runtime.ts';
 import type { ExitHandlerParams } from '../../src/agent/lifecycle-handler.ts';
@@ -11,6 +12,15 @@ import type { RuntimeEvent, RuntimeEventBody } from '../../src/shared/runtime-co
 import type { RuntimeEventContext } from '../../src/agent/runtime/events.ts';
 
 type Callbacks = { onEvent?: (event: PiRuntimeEvent) => void; onRawRecord?: (record: unknown) => void; cwd?: string };
+type CleanupReceipt = Readonly<{ rpc: 'not-started' | 'closed' | 'unconfirmed';
+    version: 'not-started' | 'closed' | 'unconfirmed'; cwdDisposition: 'removable' | 'retain'; reason: string | null }>;
+const removable: CleanupReceipt = Object.freeze({ rpc: 'closed', version: 'closed', cwdDisposition: 'removable', reason: null });
+const retained: CleanupReceipt = Object.freeze({ rpc: 'closed', version: 'unconfirmed', cwdDisposition: 'retain', reason: 'fixture-unconfirmed' });
+const ownedFixturePaths = new Set<string>();
+function ownFixtureDirectory(): string {
+    const root = mkdtempSync(join(tmpdir(), 'pi-deletion-workspace-'));
+    ownedFixturePaths.add(root); return root;
+}
 const fixture = {
     mode: 'ok' as 'ok' | 'acquire-failure' | 'direct-failure' | 'turn-failure' | 'raw-limit',
     calls: [] as Callbacks[], acquisitions: [] as Array<Record<string, unknown>>,
@@ -19,6 +29,10 @@ const fixture = {
     lifecycleGate: null as Promise<void> | null, lifecycleFailure: false,
     turnGate: null as Promise<void> | null, cancelGate: null as Promise<void> | null,
     deferredResult: false,
+    cleanupMode: 'removable' as 'removable' | 'retain' | 'missing' | 'reject',
+    cleanupGate: null as Promise<CleanupReceipt> | null,
+    directPaths: [] as string[],
+    onDirectCreate: null as ((cwd: string) => void) | null,
     contexts: [] as RuntimeEventContext[], events: [] as RuntimeEvent[],
     lifecycle: [] as ExitHandlerParams[], legacy: [] as Array<{ type: string; data: Record<string, unknown> }>,
 };
@@ -47,9 +61,9 @@ function child(): ChildProcess {
         stdout: new EventEmitter(), stderr: new EventEmitter(), kill: () => true,
     }) as unknown as ChildProcess;
 }
-async function protocol(callbacks: Callbacks) {
+async function protocol(callbacks: Callbacks, turnGate = fixture.turnGate) {
     fixture.calls.push(callbacks);
-    if (fixture.turnGate) await fixture.turnGate;
+    if (turnGate) await turnGate;
     if (fixture.mode === 'turn-failure') throw new Error('fixture Pi turn failed');
     const raw = (record: unknown) => callbacks.onRawRecord?.(record);
     const semantic = (event: PiRuntimeEvent) => callbacks.onEvent?.(event);
@@ -77,8 +91,23 @@ test.mock.module('../../src/agent/pi-runtime.js', { namedExports: {
     ...pi,
     spawnPiRpc: (_profile: unknown, _settings: unknown, callbacks: Callbacks) => {
         fixture.direct++;
+        assert.ok(callbacks.cwd);
+        fixture.directPaths.push(callbacks.cwd);
+        // Only controlled test workspaces or the product allocation for our fixed worker label.
+        const canonical = realpathSync(callbacks.cwd);
+        assert.ok(ownedFixturePaths.has(callbacks.cwd) || (dirname(canonical) === realpathSync(tmpdir())
+            && basename(canonical).startsWith('jaw-emp-pi-fixture-worker-')),
+            `unexpected test cwd: ${callbacks.cwd}`);
+        ownedFixturePaths.add(callbacks.cwd);
+        fixture.onDirectCreate?.(callbacks.cwd);
         if (fixture.mode === 'direct-failure') { fixture.calls.push(callbacks); throw new Error('fixture direct creation failed'); }
-        return { child: child(), done: Promise.resolve().then(() => protocol(callbacks)) };
+        const turnGate = fixture.turnGate;
+        const cleanup = fixture.cleanupGate ?? (fixture.cleanupMode === 'reject'
+            ? Promise.reject(new Error('fixture cleanup receipt rejected'))
+            : Promise.resolve(fixture.cleanupMode === 'retain' ? retained : removable));
+        void cleanup.catch(() => {}); // The baseline may not consume it; do not make an unhandled rejection the RED oracle.
+        return { child: child(), done: Promise.resolve().then(() => protocol(callbacks, turnGate)),
+            ...(fixture.cleanupMode === 'missing' ? {} : { cleanup }) };
     },
 } });
 const pool = await import('../../src/agent/runtime-pool.ts');
@@ -137,9 +166,11 @@ test.beforeEach(() => {
     fixture.acquireGate = null;
     fixture.lifecycleGate = null; fixture.lifecycleFailure = false; fixture.deferredResult = false;
     fixture.turnGate = null; fixture.cancelGate = null;
+    fixture.cleanupMode = 'removable'; fixture.cleanupGate = null; fixture.directPaths.length = 0; fixture.onDirectCreate = null;
     activeMainProcesses.clear(); activeProcesses.clear();
-    config.settings['workingDir'] = process.env['CLI_JAW_HOME']!;
+    config.settings['workingDir'] = ownFixtureDirectory();
     mkdirSync(join(config.settings['workingDir'], 'prompts'), { recursive: true });
+    mkdirSync(join(config.JAW_HOME, 'prompts'), { recursive: true });
     config.settings['fallbackOrder'] = []; config.settings['activeOverrides'] = {};
     config.settings['pi'] = pi.normalizePiSettings(pi.DEFAULT_PI_SETTINGS);
     config.settings['perCli'] = { ...config.settings['perCli'], pi: { model: 'fixture-pi', effort: 'high', provider: 'progrok' } };
@@ -148,7 +179,12 @@ test.beforeEach(() => {
     addBroadcastListener(legacyListener);
     unsubscribe = subscribe(event => { if (event.event === 'agent_runtime' || event.event === 'agent_runtime_gap') publicEvents.push(event.event); });
 });
-test.afterEach(() => { removeBroadcastListener(legacyListener); unsubscribe(); });
+test.afterEach(() => {
+    removeBroadcastListener(legacyListener); unsubscribe();
+    // These tests launch no OS children: every direct/pool child is an EventEmitter without a PID.
+    for (const root of ownedFixturePaths) rmSync(root, { recursive: true, force: true });
+    ownedFixturePaths.clear();
+});
 function opts(employee = false) {
     return { cli: 'pi', model: 'fixture-pi', effort: 'high', scopeKey: 'pi-test-scope', chatSessionId: chatId,
         requestId: 'pi-test-request', runtimeParentItemId: 'jaw-parent-item', origin: 'web',
@@ -470,4 +506,101 @@ test('late Pi acquire rejection cannot clean up a replacement owner with the sam
         fixture.acquireGate = null;
         context.mock.timers.reset();
     }
+});
+
+for (const mode of ['ok', 'turn-failure'] as const) {
+    for (const cleanupMode of ['removable', 'retain', 'missing', 'reject'] as const) {
+        test(`direct Pi ${mode} consumes ${cleanupMode} cleanup at the actual employee deletion boundary`, { timeout: 10_000 }, async t => {
+            fixture.mode = mode; fixture.cleanupMode = cleanupMode;
+            const warnings: string[] = []; t.mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args.join(' ')); });
+            const run = spawnAgent('cleanup receipt', opts(true));
+            const cwd = fixture.directPaths[0]!; const sentinel = join(cwd, 'owned-sentinel');
+            writeFileSync(sentinel, 'owned worker');
+            const result = await run.promise;
+            assert.equal(result.code, mode === 'ok' ? 0 : 1);
+            assert.equal(fixture.lifecycle.length, 1);
+            assert.equal(fixture.events.filter(event => event.kind === 'turn-end').length, 1);
+            assert.equal(existsSync(cwd), cleanupMode !== 'removable', `cleanup mode=${cleanupMode}`);
+            if (cleanupMode !== 'removable') {
+                assert.equal(readFileSync(sentinel, 'utf8'), 'owned worker');
+                assert.ok(warnings.some(line => line.includes(cwd)), 'retention has a real local path diagnostic');
+            }
+        });
+    }
+}
+
+test('direct Pi setup failure retains cwd when physical cleanup is uncertified', { timeout: 10_000 }, async t => {
+    fixture.cleanupMode = 'retain'; let hit = 0;
+    const throwing = (type: string, data: Record<string, unknown>) => {
+        if (type === 'agent_status' && data.cli === 'pi' && data.running === true && hit++ === 0) throw Error('direct setup fixture');
+    };
+    addBroadcastListener(throwing); t.after(() => removeBroadcastListener(throwing));
+    const run = spawnAgent('setup failure retain', opts(true));
+    const cwd = fixture.directPaths[0]!; writeFileSync(join(cwd, 'sentinel'), 'retain');
+    const result = await run.promise;
+    assert.ok(hit > 0); assert.equal(result.code, 1);
+    assert.equal(readFileSync(join(cwd, 'sentinel'), 'utf8'), 'retain');
+    assert.equal(fixture.events.filter(event => event.kind === 'turn-end').length, 1);
+});
+
+test('direct Pi release waits for its cleanup receipt before deleting or resolving the caller', { timeout: 10_000 }, async () => {
+    const gate = Promise.withResolvers<CleanupReceipt>(); fixture.cleanupGate = gate.promise;
+    const run = spawnAgent('held cleanup', opts(true)); const cwd = fixture.directPaths[0]!;
+    let completed = false; void run.promise.then(() => { completed = true; });
+    try {
+        for (let i = 0; i < 50 && fixture.lifecycle.length === 0; i++) await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(fixture.lifecycle.length, 1);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(completed, false); assert.equal(existsSync(cwd), true);
+    } finally { gate.resolve(removable); await run.promise; }
+    assert.equal(existsSync(cwd), false);
+});
+
+for (const creationFailure of [false, true]) test(`Pi empty custom sysPrompt never owns workspace deletion, creationFailure=${creationFailure}`, { timeout: 10_000 }, async () => {
+    const workspace = config.settings['workingDir']; const sentinel = join(workspace, 'workspace-sentinel');
+    writeFileSync(sentinel, 'workspace must survive');
+    const replacementSettings = ownFixtureDirectory();
+    fixture.onDirectCreate = cwd => {
+        assert.equal(cwd, workspace, 'explicit empty prompt reaches the no-allocation branch');
+        config.settings['workingDir'] = replacementSettings;
+    };
+    if (creationFailure) {
+        fixture.mode = 'direct-failure';
+        assert.throws(() => spawnAgent('no allocated cwd', { ...opts(true), sysPrompt: '' }), /fixture direct creation failed/);
+    } else {
+        const gate = Promise.withResolvers<void>(); fixture.turnGate = gate.promise;
+        const run = spawnAgent('no allocated cwd', { ...opts(true), sysPrompt: '' });
+        gate.resolve(); await run.promise;
+    }
+    assert.equal(readFileSync(sentinel, 'utf8'), 'workspace must survive');
+    assert.equal(existsSync(replacementSettings), true);
+});
+
+test('same Pi employee label and fixed clock allocate independent owned directories', { timeout: 10_000 }, async t => {
+    const now = Date.now(); t.mock.method(Date, 'now', () => now);
+    const firstGate = Promise.withResolvers<void>(), secondGate = Promise.withResolvers<void>();
+    fixture.turnGate = firstGate.promise; const first = spawnAgent('first', opts(true));
+    fixture.turnGate = secondGate.promise; const second = spawnAgent('second', { ...opts(true), scopeKey: 'pi-second-scope' });
+    const [a, b] = fixture.directPaths;
+    try {
+        assert.ok(a && b); assert.notEqual(a, b, 'same label/time is not allocation identity');
+        writeFileSync(join(a, 'sentinel'), 'first'); writeFileSync(join(b, 'sentinel'), 'second');
+        firstGate.resolve(); await first.promise;
+        assert.equal(existsSync(a), false); assert.equal(readFileSync(join(b, 'sentinel'), 'utf8'), 'second');
+    } finally { firstGate.resolve(); secondGate.resolve(); await Promise.all([first.promise, second.promise]); }
+    assert.equal(existsSync(b!), false);
+});
+
+for (const replacement of ['directory', 'symlink'] as const) test(`Pi cleanup retains a replaced ${replacement} despite removable receipt`, { timeout: 10_000 }, async () => {
+    const gate = Promise.withResolvers<void>(); fixture.turnGate = gate.promise;
+    const run = spawnAgent('replace owner', opts(true)); const cwd = fixture.directPaths[0]!;
+    const preserved = cwd + '-preserved'; renameSync(cwd, preserved); ownedFixturePaths.add(preserved);
+    const target = replacement === 'directory' ? cwd : ownFixtureDirectory();
+    if (replacement === 'directory') mkdirSync(target);
+    else symlinkSync(target, cwd, process.platform === 'win32' ? 'junction' : 'dir');
+    writeFileSync(join(target, 'sentinel'), 'replacement must survive');
+    gate.resolve(); await run.promise;
+    assert.equal(existsSync(cwd), true, 'cleanup must not delete even the replacement symlink');
+    assert.equal(readFileSync(join(target, 'sentinel'), 'utf8'), 'replacement must survive');
+    assert.equal(existsSync(preserved), true);
 });
