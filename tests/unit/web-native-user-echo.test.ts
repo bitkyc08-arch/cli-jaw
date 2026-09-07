@@ -10,12 +10,19 @@ mock.module('../../public/js/event-channel.js', { namedExports: {
     subscribe(topic: string, _event: unknown, callback: typeof dispatch) { if (topic === '*') dispatch = callback; return () => {}; },
     onChannelOpen(callback: () => void) { opened = callback; }, onChannelDisconnect() {}, onChannelUnavailable() {},
 } });
-mock.module('../../public/js/features/trace-drawer.js', { namedExports: { closeTraceDrawer() {}, openTraceDrawer() {} } });
+mock.module('../../public/js/features/trace-drawer.js', { namedExports: {
+    closeTraceDrawer() {}, openTraceDrawer() { assert.fail('unexpected raw Trace action'); },
+} });
 let ui: typeof import('../../public/js/ui.ts'), ws: typeof import('../../public/js/ws.ts');
 let live: typeof import('../../public/js/features/activity-live.ts');
 let state: typeof import('../../public/js/state.ts')['state'];
 let vs: ReturnType<typeof import('../../public/js/virtual-scroll.ts')['getVirtualScroll']>;
 let activeRun: Record<string, unknown> | null = null, serial = 0;
+const bootstrapLoad = Promise.withResolvers<void>();
+const bootstrapRelease = Promise.withResolvers<void>();
+const bootstrapDone = Promise.withResolvers<void>();
+const sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+const unexpectedRequests: string[] = [], requests: string[] = [];
 test.before(async () => {
     setupWebUiDom();
     const style = document.createElement('style');
@@ -25,22 +32,76 @@ test.before(async () => {
     for (const [key, value] of Object.entries({ clientWidth: 900, clientHeight: 600, offsetWidth: 900, offsetHeight: 600 }))
         Object.defineProperty(container, key, { configurable: true, value });
     container.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 900, bottom: 600, width: 900, height: 600, toJSON() { return {}; } });
-    mock.method(globalThis, 'fetch', async input => {
-        const p = String(input);
-        if (p.includes('/api/runtime/requests?')) return Response.json({ ok: true, data: { requests: [] } });
-        if (p.includes('/api/traces/activity-runs')) return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
-        if (p.includes('/orchestrate/snapshot')) return Response.json({
-            activityIdentity: { sessionId: 'chat', scope: 'local:chat' }, orc: { state: 'IDLE', scope: 'local:chat', ctx: null },
-            heartbeat: { pending: 0, deferredPending: 0 }, workers: [], runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun,
-        });
-        return Response.json({ ok: true, data: p.includes('/messages?') ? [] : { count: 0 } });
+    mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
+        const key = `${init?.method ?? (input instanceof Request ? input.method : 'GET')} ${url.pathname}${url.search}`;
+        requests.push(key);
+        try {
+            assert.equal(url.origin, window.location.origin); assert.ok(key.startsWith('GET '));
+            if (url.pathname === '/api/messages') {
+                assert.deepEqual([...url.searchParams], [['limit', '3000'], ['withSession', '1']]);
+                return Response.json({ ok: true, data: { sessionId: 'chat', messages: [] } });
+            }
+            if (url.pathname === '/api/runtime/requests') {
+                assert.deepEqual([...url.searchParams], [['sessionId', 'chat']]);
+                return Response.json({ ok: true, data: { requests: [] } });
+            }
+            if (url.pathname === '/api/traces/activity-runs') {
+                assert.deepEqual([...url.searchParams], [['session', 'chat'], ['after', '']]);
+                return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
+            }
+            if (/^\/api\/traces\/echo-\d+\/activity$/.test(url.pathname)) {
+                assert.deepEqual([...url.searchParams], [['session', 'chat'], ['after', '0'], ['limit', '40']]);
+                return Response.json({ ok: false, error: 'activity_unavailable' }, { status: 503 });
+            }
+            if (url.pathname === '/api/bgtask' && url.search === '?status=running') return Response.json({ tasks: [] });
+            if (!url.search) {
+                if (url.pathname === '/api/orchestrate/snapshot') return Response.json({
+                    activityIdentity: { sessionId: 'chat', scope: 'local:chat' }, orc: { state: 'IDLE', scope: 'local:chat', ctx: null },
+                    heartbeat: { pending: 0, deferredPending: 0 }, workers: [], runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun,
+                });
+                if (url.pathname === '/api/auth/token') return Response.json({ token: 'fixture-token' });
+                if (url.pathname === '/api/settings') return Response.json({ workingDir: process.env.CLI_JAW_HOME });
+                if (url.pathname === '/api/goal') return Response.json({ ok: true, goal: null });
+                if (url.pathname === '/api/messages/count') return Response.json({ ok: true, data: { count: 0 } });
+                if (url.pathname === '/api/memory-files' || url.pathname === '/api/memory/status')
+                    return Response.json({ error: 'fixture_sidebar_unavailable' }, { status: 503 });
+            }
+            throw new Error('Unexpected HTTP route');
+        } catch (error) { unexpectedRequests.push(`${key}: ${String(error)}`); throw error; }
     });
-    ui = await import('../../public/js/ui.ts'); live = await import('../../public/js/features/activity-live.ts');
+    ui = await import('../../public/js/ui.ts');
+    mock.module('../../public/js/ui.js', { namedExports: { ...ui,
+        async loadMessages() { bootstrapLoad.resolve(); await bootstrapRelease.promise; return ui.loadMessages(); },
+        reconcileChatBottomAfterRestore: (...args: Parameters<typeof ui.reconcileChatBottomAfterRestore>) => {
+            ui.reconcileChatBottomAfterRestore(...args);
+            if (args[0] === 'reconnect') bootstrapDone.resolve();
+        },
+    } });
+    const memory = await import('../../public/js/features/memory.ts');
+    const background = await import('../../public/js/features/bgtask-badge.ts');
+    mock.module('../../public/js/features/memory.js', { namedExports: { ...memory,
+        async refreshMemorySidebar() { await memory.refreshMemorySidebar(); sidebarDone[0]!.resolve(); },
+    } });
+    mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { ...background,
+        async refreshBgtaskBadge() { await background.refreshBgtaskBadge(); sidebarDone[1]!.resolve(); },
+    } });
+    live = await import('../../public/js/features/activity-live.ts');
     ({ state } = await import('../../public/js/state.ts'));
     vs = (await import('../../public/js/virtual-scroll.ts')).getVirtualScroll();
     ws = await import('../../public/js/ws.ts'); ws.connect(); opened();
-    for (let i = 0; i < 100 && !state.activityIdentity; i++) await tick();
+    await bootstrapLoad.promise;
+    try {
+        assert.equal(state.activityIdentity, null, 'held real history cannot admit the snapshot');
+        assert.equal(requests.some(key => key.includes('/api/orchestrate/snapshot')), false);
+    } finally {
+        bootstrapRelease.resolve(); await bootstrapDone.promise;
+        await Promise.all(sidebarDone.map(done => done.promise));
+    }
     assert.deepEqual(state.activityIdentity, { sessionId: 'chat', scope: 'local:chat' });
+    const historyRead = requests.indexOf('GET /api/messages?limit=3000&withSession=1');
+    assert.ok(historyRead >= 0 && historyRead < requests.indexOf('GET /api/orchestrate/snapshot'));
+    assert.deepEqual(unexpectedRequests, []);
 });
 
 for (const status of ['stopped', 'error'] as const) test(`Legacy exposes the canonical ${status} label without Activity details or a made-up final`, async () => {
@@ -65,7 +126,11 @@ test.beforeEach(async () => {
     document.getElementById('chatMessages')!.replaceChildren();
     await ws.syncOrchestrateSnapshot('reset', { hydrateRun: true });
 });
-test.after(() => { ui.cleanupToolActivity(); live.clearLiveActivity(); vs.clear(); resetWebUiDom(); mock.restoreAll(); });
+test.afterEach(() => { assert.deepEqual(unexpectedRequests, []); });
+test.after(() => {
+    ui.cleanupToolActivity(); live.clearLiveActivity(); vs.clear(); resetWebUiDom(); mock.restoreAll();
+    assert.deepEqual(unexpectedRequests, []);
+});
 function runtime(runId: string, seq: number, body: RuntimeEventBody) {
     dispatch({ event: 'agent_runtime', version: 1, runId, sessionId: 'chat', scope: 'local:chat', turnId: 'turn', seq, ...body });
 }
