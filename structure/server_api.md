@@ -433,3 +433,9 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 | Jaw CEO (manager) | `/api/jaw-ceo/*` (same sub-router as core server) |
 
 Text responses from the hub outbound relay may include `bodyDelivered`, a server-generated receipt. Native hub-member completions require both `ok === true` and `bodyDelivered === true`; missing/false receipts are unconfirmed and are not automatically resent. Request payloads cannot set the receipt or native guard options. Existing untagged callers retain the prior `ok` contract.
+
+### Linux file-open dispatch
+
+`POST /api/file/open` keeps the existing auth middleware and `{path}` input. Missing/invalid paths return `400 path_required`; nonexistent targets return `404 file_not_found`. Document paths (including supported line/column suffixes) open directly; other files open their parent directory, and directories open themselves. An existing literal filename takes precedence over suffix stripping.
+
+On Linux, `xdg-open` launches asynchronously with detached lifecycle and ignored stdio. The handler returns `200 {ok:true,data:{opened,resolvedTarget,strategy}}` after the process spawns, without waiting for the desktop application's lifetime. Launch failures such as missing executable or execute permission return `500 {ok:false,error:"open_failed"}`. A later opener failure/nonzero exit does not change the completed HTTP response; success confirms dispatch, not a visible desktop window. macOS and Windows behavior is unchanged.

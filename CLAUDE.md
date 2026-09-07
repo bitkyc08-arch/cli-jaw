@@ -18,6 +18,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 The Classic permission selector saves explicit Auto/Safe choices. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.
 
+- Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `structure/server_api.md`.
+
 - Classic history restoration uses bounded targeted replay and preserves recorded
   scope; unrelated live runs continue. Exact saved answers come from the run+chat
   MESSAGE lookup, not redacted journal finals. Resolved-session loading and captured

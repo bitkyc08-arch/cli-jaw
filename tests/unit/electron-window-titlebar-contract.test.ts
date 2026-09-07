@@ -17,10 +17,10 @@ test('resolveWindowChromeOptions uses hiddenInset traffic lights on darwin', () 
     const light = resolveWindowChromeOptions('darwin', false);
 
     assert.equal(dark.titleBarStyle, 'hiddenInset');
-    assert.deepEqual(dark.trafficLightPosition, { x: 16, y: 18 });
+    assert.deepEqual(dark.trafficLightPosition, { x: 16, y: 20 });
     assert.equal(dark.titleBarOverlay, undefined);
     assert.equal(light.titleBarStyle, 'hiddenInset');
-    assert.deepEqual(light.trafficLightPosition, { x: 16, y: 18 });
+    assert.deepEqual(light.trafficLightPosition, { x: 16, y: 20 });
     assert.equal(light.titleBarOverlay, undefined);
 });
 

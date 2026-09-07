@@ -150,7 +150,6 @@
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace.is-side-panel-open {
         --right-panel-width: 50vw;
     }
-    .command-search { width: clamp(260px, 38vw, 620px); }
     .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1023px) {
