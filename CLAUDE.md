@@ -16,6 +16,7 @@ Native Code interruption seals callbacks before persisting accepted buffered con
 - Before public pushes, check the index with `npm run check:private-boundary` and outgoing commit trees with `node scripts/check-private-boundary.mjs --range <remote-base> HEAD`; enable the checkout-local pre-push hook as described in [CONTRIBUTING.md](CONTRIBUTING.md#local-private-path-check). Review content separately. CI runs after upload and cannot prevent initial disclosure.
 
 - Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `structure/frontend.md`.
+- Manager terminal presentation preserves backend PTY ownership across hide/unmount. Keep hydration-first bounded creation, explicit recovery, stable tab identity and focus ownership separate from native Code API sessions; theme updates must not recreate shells. See `structure/frontend.md`.
 
 ## Build & Deploy Contract
 

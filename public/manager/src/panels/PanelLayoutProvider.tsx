@@ -1,5 +1,6 @@
 import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { createTerminalShortcutQueue, type PendingTerminalAction } from '../terminal/terminal-shortcut-queue';
 import { panelShortcutBus } from './panel-shortcut-bus';
 import type { BottomPanelTab, RightSidebarTabKind, RightSidebarOpenTab, RightSidebarTabsState, RightSidebarFilesTabState, RightSidebarDesignTabState, FileFolderLayoutState, FileFolderViewMode } from './types';
 import {
@@ -654,18 +655,6 @@ type PanelLayoutContextValue = {
 
 const PanelLayoutContext = createContext<PanelLayoutContextValue | null>(null);
 
-type TerminalShortcutQueueWindow = Window & {
-    __cliJawPendingTerminalActions?: Array<'focusTerminal' | 'newTerminalSession'>;
-};
-
-function dispatchTerminalShortcutAfterMount(detail: 'focusTerminal' | 'newTerminalSession'): void {
-    const win = window as TerminalShortcutQueueWindow;
-    win.__cliJawPendingTerminalActions = [...(win.__cliJawPendingTerminalActions ?? []), detail];
-    window.setTimeout(() => {
-        document.dispatchEvent(new CustomEvent('jaw:shortcut-action', { detail: 'flushTerminalShortcutQueue' }));
-    }, 0);
-}
-
 function getActiveRightTabKind(state: PanelLayoutState): RightSidebarTabKind | null {
     const { tabs } = state.rightPanel;
     if (!tabs.activeTabId) return null;
@@ -679,6 +668,17 @@ export function PanelLayoutProvider(props: {
     onStateChange?: ((state: PanelLayoutState) => void) | undefined;
 }) {
     const [state, dispatch] = useReducer(reducer, initialState);
+
+    // The helper preserves __cliJawPendingTerminalActions for lazy mounts.
+    const terminalQueueRef = useRef<ReturnType<typeof createTerminalShortcutQueue> | null>(null);
+    const dispatchTerminalShortcutAfterMount = useCallback((detail: PendingTerminalAction) => {
+        terminalQueueRef.current ??= createTerminalShortcutQueue(window);
+        terminalQueueRef.current.enqueue(detail);
+    }, []);
+    useEffect(() => () => {
+        terminalQueueRef.current?.dispose();
+        terminalQueueRef.current = null;
+    }, []);
 
     const hydratedRef = useRef(false);
     useEffect(() => {
@@ -735,7 +735,7 @@ export function PanelLayoutProvider(props: {
                     return false;
             }
         });
-    }, [state.bottomPanel.open, state.bottomPanel.activeTab, effectiveRightOpen]);
+    }, [state.bottomPanel.open, state.bottomPanel.activeTab, effectiveRightOpen, dispatchTerminalShortcutAfterMount]);
 
     const value = useMemo(() => ({
         state, dispatch, effectiveRightOpen, activeRightTabKind,
