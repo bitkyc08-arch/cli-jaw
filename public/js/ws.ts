@@ -1121,7 +1121,7 @@ function handleChannelDown(): void {
     activityStreamHealthy = false; suspendRuntimeAdmission();
     nativeRequests.unavailable();
     console.log('[channel] disconnected');
-    import('./ui.js').then(m => m.cleanupToolActivity());
+    cleanupToolActivity();
     if (channelDownToastTimer !== null) return; // earliest outage owns the deadline
     channelDownToastTimer = window.setTimeout(() => {
         channelDownToastTimer = null;

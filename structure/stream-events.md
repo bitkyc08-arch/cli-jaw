@@ -204,6 +204,12 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 
 현재 Web UI는 `public/js/event-channel.ts`를 통해 SSE payload를 받고, topic/event subscription을 `public/js/ws.ts`의 기존 handler path로 연결한다. legacy WebSocket fallback도 같은 handler set을 사용하므로 UI event 처리 코드는 transport와 분리되어 있다.
 
+An opened channel's disconnect clears the current tool presentation synchronously
+inside `handleChannelDown`, using the existing UI import. It must not schedule an
+unowned import callback that can later clear a restored/new turn. Initial
+never-open failure still takes the separate unavailable/fallback path; reconnect
+hydration remains owned by `snapshotReady`, and the disconnect-toast grace is unchanged.
+
 ### 백엔드 emit은 있으나 Web UI 직접 분기는 없는 이벤트
 
 | Type | 현재 처리 경로 |
