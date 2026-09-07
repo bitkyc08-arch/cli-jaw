@@ -453,13 +453,13 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                         });
                     }}
                 >
-                    <option value="steer">steer (기본) — 실행 중인 턴에 즉시 주입</option>
+                    <option value="steer">steer (기본) — 실행 중 지시 변경</option>
                     <option value="followup">followup — 끝나면 순서대로 실행</option>
                     <option value="collect">collect — 모아서 한 번에 실행</option>
                     <option value="interrupt">interrupt — 현재 실행을 중단하고 즉시 실행</option>
                 </select>
                 <span className="settings-field-hint">
-                    다중 세션이 켜져 있을 때 적용됩니다. steer는 jwc·codex-app 런타임에서 진행 중인 턴을 중단하지 않고 맥락을 유지한 채 주입하며, 그 외 런타임은 중단된 출력을 이어받아 즉시 리다이렉트(kill-steer)합니다. 대기열을 원하면 followup을 선택하세요.
+                    다중 세션이 켜져 있을 때 적용됩니다. jwc·codex-app은 같은 턴에 입력을 전달합니다. Cursor·Grok의 native 모드는 현재 요청의 취소와 정리가 끝난 뒤 같은 세션에 다시 요청합니다(cancel-reprompt). 그 외 런타임은 중단 후 새 실행으로 이어갑니다(kill-steer). 보존되는 맥락은 런타임에 따라 다릅니다. 끝난 뒤 실행하려면 followup을 선택하세요.
                 </span>
             </label>
             <CliProbeNotice status={cliStatus[draft.cli]} exhausted={cliStatusExhausted} />
