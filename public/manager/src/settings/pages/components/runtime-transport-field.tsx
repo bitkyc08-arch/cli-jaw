@@ -59,8 +59,8 @@ export function RuntimeTransportField({ cli, original, dirty, disabled = false, 
             {value === 'native' ? (
                 <p className="settings-percli-note">
                     {cli === 'claude'
-                        ? 'Claude native supports Auto / Safe permissions.'
-                        : 'Native requires Auto-only permissions; no native worker assignments.'}
+                        ? 'Claude native supports Auto (YOLO) / Safe permissions.'
+                        : 'Native requires Auto (YOLO) permissions; no native worker assignments.'}
                 </p>
             ) : null}
         </div>

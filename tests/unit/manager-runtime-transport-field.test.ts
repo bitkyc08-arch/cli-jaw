@@ -100,9 +100,9 @@ for (const cli of eligible) {
         assert.match(view.container.textContent!, /next run/i);
         assert.match(view.container.textContent!, /presentation/i);
         assert.doesNotMatch(view.container.textContent!, /verified ready|readiness verified/i);
-        if (cli === 'claude') assert.match(view.container.textContent!, /Auto.*Safe/);
+        if (cli === 'claude') assert.match(view.container.textContent!, /Auto \(YOLO\).*Safe/);
         else {
-            assert.match(view.container.textContent!, /Auto.only/);
+            assert.match(view.container.textContent!, /requires Auto \(YOLO\) permissions/);
             assert.match(view.container.textContent!, /no native worker|native workers.*not supported/i);
         }
         await view.choose(printLabel);

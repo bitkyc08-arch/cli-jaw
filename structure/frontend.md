@@ -17,7 +17,7 @@ Legacy TUI output in `bin/commands/tui/ws-handler.ts` separates turn-clock start
 
 ### Classic permission selector
 
-The sidebar permission badge opens a native Auto/Safe dropdown. `settings-core.ts` keeps the configured-policy readout separate from the pending selection and saves only the selected literal through the existing settings API. Identical selections do not write. Custom arrays, missing values and unrecognized settings remain explicit readouts until the user chooses a supported policy. A failed save restores the confirmed selection and shows an inline error; reads begun before or during a save cannot overwrite its result. Server startup preserves the saved policy without coercing Safe to Auto. This control does not change runtime policy support or active-run invalidation.
+The sidebar permission badge opens a native Auto (YOLO) / Safe dropdown. YOLO is the display label for the stored `auto` policy, not an additional choice. `settings-core.ts` keeps the configured-policy readout separate from the pending selection and saves only the selected literal through the existing settings API. Identical selections do not write. Custom arrays, missing values and unrecognized settings remain explicit readouts until the user chooses a supported policy. A failed save restores the confirmed selection and shows an inline error; reads begun before or during a save cannot overwrite its result. Server startup preserves the saved policy without coercing `safe` to `auto`. This control does not change runtime policy support or active-run invalidation.
 
 ### Interactive TUI Activity
 

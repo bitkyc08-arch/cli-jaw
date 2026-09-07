@@ -544,7 +544,7 @@ export async function updateSettings(): Promise<void> {
 }
 
 function configuredPermLabel(value: unknown): string {
-    if (value === 'auto') return 'Auto';
+    if (value === 'auto') return 'Auto (YOLO)';
     if (value === 'safe') return 'Safe';
     if (value === null || value === undefined) return 'Not provided';
     if (Array.isArray(value) && value.every(entry => typeof entry === 'string'))
