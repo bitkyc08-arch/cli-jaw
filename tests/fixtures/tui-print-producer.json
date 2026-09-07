@@ -1,0 +1,342 @@
+{
+  "backendHead": "2a043b14a531ee1db9c2d51b25e1c86f71daac54",
+  "source": "Historical parser/lifecycle/event-bus fixtures captured at the recorded backendHead from tests/unit/print-activity-lifecycle.test.ts and tests/unit/print-bypass-paths.test.ts, with provider/network boundaries stubbed. Consumer replay only, not fresh backend or provider capture.",
+  "captures": [
+    {
+      "scenario": "normal",
+      "identity": {
+        "sessionId": "print-chat-1",
+        "scope": "print-scope-1"
+      },
+      "frames": [
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "sessionId": "print-chat-1",
+          "scope": "print-scope-1",
+          "turnId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "codex"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "sessionId": "print-chat-1",
+          "scope": "print-scope-1",
+          "turnId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "seq": 3,
+          "itemId": "item-1",
+          "text": "PRINT_ACTUAL_SELECTED_ANSWER",
+          "operation": "replace",
+          "kind": "message",
+          "phase": "unknown"
+        },
+        {
+          "type": "agent_done",
+          "traceRunId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "text": "PRINT_ACTUAL_SELECTED_ANSWER",
+          "toolLog": [
+            {
+              "icon": "💬",
+              "label": "PRINT_ACTUAL_SELECTED_ANSWER",
+              "detail": "PRINT_ACTUAL_SELECTED_ANSWER",
+              "toolType": "tool",
+              "status": "done",
+              "traceRunId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+              "traceSeq": 4,
+              "detailAvailable": true,
+              "detailBytes": 149,
+              "rawRetentionStatus": "available"
+            }
+          ],
+          "origin": "web"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "sessionId": "print-chat-1",
+          "scope": "print-scope-1",
+          "turnId": "tr_9f1d274b54b746d596cc6f9e6af80e64",
+          "seq": 5,
+          "kind": "turn-end",
+          "status": "done",
+          "finalText": "PRINT_ACTUAL_SELECTED_ANSWER"
+        }
+      ],
+      "expected": {
+        "answer": "PRINT_ACTUAL_SELECTED_ANSWER",
+        "activityCount": 1,
+        "degraded": false
+      }
+    },
+    {
+      "scenario": "empty",
+      "identity": {
+        "sessionId": "print-chat-2",
+        "scope": "print-scope-2"
+      },
+      "frames": [
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "sessionId": "print-chat-2",
+          "scope": "print-scope-2",
+          "turnId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "codex"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "sessionId": "print-chat-2",
+          "scope": "print-scope-2",
+          "turnId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "seq": 4,
+          "kind": "tool",
+          "itemId": "item-1",
+          "name": "printf fixture",
+          "status": "done",
+          "detail": "printf fixture"
+        },
+        {
+          "type": "agent_done",
+          "traceRunId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "text": "",
+          "toolLog": [
+            {
+              "icon": "⚡",
+              "label": "printf fixture",
+              "detail": "printf fixture",
+              "toolType": "tool",
+              "stepRef": "codex:item:tool-only",
+              "status": "done",
+              "traceRunId": "tr_b510b90fa58e4367a644bde620b21d50",
+              "traceSeq": 3,
+              "detailAvailable": true,
+              "detailBytes": 174,
+              "rawRetentionStatus": "available"
+            }
+          ],
+          "origin": "web"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "sessionId": "print-chat-2",
+          "scope": "print-scope-2",
+          "turnId": "tr_b510b90fa58e4367a644bde620b21d50",
+          "seq": 5,
+          "kind": "turn-end",
+          "status": "done",
+          "finalText": ""
+        }
+      ],
+      "expected": {
+        "answer": "",
+        "activityCount": 1,
+        "degraded": false
+      }
+    },
+    {
+      "scenario": "terminal-gap",
+      "identity": {
+        "sessionId": "print-chat-3",
+        "scope": "print-scope-3"
+      },
+      "frames": [
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "sessionId": "print-chat-3",
+          "scope": "print-scope-3",
+          "turnId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "codex"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "sessionId": "print-chat-3",
+          "scope": "print-scope-3",
+          "turnId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "seq": 3,
+          "itemId": "item-1",
+          "text": "PRINT_ACTUAL_SELECTED_ANSWER",
+          "operation": "replace",
+          "kind": "message",
+          "phase": "unknown"
+        },
+        {
+          "type": "agent_done",
+          "traceRunId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "text": "PRINT_ACTUAL_SELECTED_ANSWER",
+          "toolLog": [
+            {
+              "icon": "💬",
+              "label": "PRINT_ACTUAL_SELECTED_ANSWER",
+              "detail": "PRINT_ACTUAL_SELECTED_ANSWER",
+              "toolType": "tool",
+              "status": "done",
+              "traceRunId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+              "traceSeq": 4,
+              "detailAvailable": true,
+              "detailBytes": 149,
+              "rawRetentionStatus": "available"
+            }
+          ],
+          "origin": "web"
+        },
+        {
+          "type": "agent_runtime_gap",
+          "runId": "tr_b764dcc556aa43c4b9a944fcceaf255d",
+          "sessionId": "print-chat-3",
+          "scope": "print-scope-3",
+          "reason": "projection_degraded"
+        }
+      ],
+      "expected": {
+        "answer": "PRINT_ACTUAL_SELECTED_ANSWER",
+        "activityCount": 1,
+        "degraded": true
+      }
+    },
+    {
+      "scenario": "acp-error",
+      "identity": {
+        "sessionId": "default",
+        "scope": "default"
+      },
+      "frames": [
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_8256180e964a44d390c4a6968590e7cb",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_8256180e964a44d390c4a6968590e7cb",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "copilot"
+        },
+        {
+          "type": "agent_done",
+          "text": "❌ Copilot ACP spawn failed: fixture ACP failure",
+          "error": true,
+          "origin": "web"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_8256180e964a44d390c4a6968590e7cb",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_8256180e964a44d390c4a6968590e7cb",
+          "seq": 3,
+          "kind": "turn-end",
+          "status": "error",
+          "finalText": null,
+          "error": "Copilot ACP spawn failed: fixture ACP failure"
+        }
+      ],
+      "expected": {
+        "answer": "❌ Copilot ACP spawn failed: fixture ACP failure",
+        "activityCount": 1,
+        "degraded": false
+      }
+    },
+    {
+      "scenario": "agy-retry",
+      "identity": {
+        "sessionId": "default",
+        "scope": "default"
+      },
+      "frames": [
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_dc9c2afc9f3e48ab9df27235df56792b",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_dc9c2afc9f3e48ab9df27235df56792b",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "agy"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_dc9c2afc9f3e48ab9df27235df56792b",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_dc9c2afc9f3e48ab9df27235df56792b",
+          "seq": 3,
+          "kind": "turn-end",
+          "status": "stopped",
+          "finalText": null,
+          "error": "AGY stale resume; retrying fresh"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "seq": 2,
+          "kind": "turn-start",
+          "provider": "agy"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "seq": 4,
+          "itemId": "item-1",
+          "text": "Fresh answer",
+          "operation": "replace",
+          "kind": "message",
+          "phase": "unknown"
+        },
+        {
+          "type": "agent_done",
+          "traceRunId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "text": "Fresh answer",
+          "toolLog": [],
+          "origin": "web"
+        },
+        {
+          "type": "agent_runtime",
+          "version": 1,
+          "runId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "sessionId": "default",
+          "scope": "default",
+          "turnId": "tr_b484df9b6ebb46c6b9bd924607008866",
+          "seq": 5,
+          "kind": "turn-end",
+          "status": "done",
+          "finalText": "Fresh answer"
+        }
+      ],
+      "expected": {
+        "answer": "Fresh answer",
+        "activityCount": 2,
+        "degraded": false
+      }
+    }
+  ],
+  "consumerOracle": "Historical recorded consumer frames, not current backend execution. Expectations are independently specified; no expectation is derived from agent_done or journal text."
+}

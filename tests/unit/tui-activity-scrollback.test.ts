@@ -1,13 +1,18 @@
 import '../setup/isolated-home.ts';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
-import { composeFrame, computeStablePrefixIndex } from '../../bin/commands/tui/fullscreen-mode.js';
+import { setImmediate } from 'node:timers/promises';
+import { composeFrame, computeStablePrefixIndex, renderTranscriptItem } from '../../bin/commands/tui/fullscreen-mode.js';
+import { handleWsMessage } from '../../bin/commands/tui/ws-handler.js';
+import { requestTuiActivityAnswer, cancelTuiActivityAnswers } from '../../bin/commands/tui/activity-answer-read.js';
 import { releaseCommittedActivity } from '../../bin/commands/tui/activity-replay.js';
 import { closeTuiActivityHistory, handleActivityHistoryKey, loadTuiActivityHistory } from '../../bin/commands/tui/activity-history.js';
 import type { TuiContext } from '../../bin/commands/tui/types.js';
 import { createTuiStore } from '../../src/cli/tui/store.js';
 import { createActivityItem, updateActivityItem } from '../../src/cli/tui/activity.js';
 import { appendActivityAnswer } from '../../src/cli/tui/activity-answer.js';
+import { appendUserItem } from '../../src/cli/tui/transcript.js';
+import { stopSpinner } from '../../src/cli/tui/spinner.js';
 import { openActivityHistory } from '../../src/cli/tui/activity-history.js';
 import { Viewport } from '../../src/cli/tui/render/viewport.js';
 import { Screen, VIEWPORT_FILL } from '../../src/cli/tui/render/frame.js';
@@ -107,6 +112,10 @@ async function withHarness(lane: 'standard' | 'dumb' | 'zellij', run: (h: Harnes
     try { screen.enter(); await run(h); }
     finally {
         closeTuiActivityHistory(ctx);
+        cancelTuiActivityAnswers(ctx);
+        ctx.activityReplay?.reset();
+        if (ctx.footerTimer) clearInterval(ctx.footerTimer);
+        stopSpinner();
         screen.exit(); process.stdout.write = write;
         if (cols) Object.defineProperty(process.stdout, 'columns', cols); else delete process.stdout.columns;
         if (rows) Object.defineProperty(process.stdout, 'rows', rows); else delete process.stdout.rows;
@@ -120,6 +129,158 @@ type Harness = {
     cycle(beforeRender?: () => void): { stable: number; commit: ReturnType<Viewport['peekStableCommitRows']>; queued: boolean; flushed: number };
     resize(width: number, height: number): void;
 };
+
+// wp37 P5: drive the WS and exact saved-read owners, never mark a pending row
+// released by hand. The existing Screen/Viewport fixture is the flush oracle.
+function settlementFixture(t: TestContext, h: Harness) {
+    const id = { ...identity, scope: 'local:chat' };
+    const unexpected: string[] = [];
+    let calls = 0;
+    const http: { reply: () => Response | Promise<Response> } = {
+        reply: () => Response.json({ ok: true, data: { message: null } }),
+    };
+    const saved = (content: string) => Response.json({ ok: true, data: { message: {
+        id: 37, role: 'assistant', content, trace_run_id: id.runId, session_id: id.sessionId,
+    } } });
+    t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname !== '/api/messages/by-trace/' + id.runId || url.searchParams.get('session') !== id.sessionId
+            || init?.method !== 'GET' || init.redirect !== 'error') {
+            unexpected.push(url.href); throw new Error('unexpected P5 request');
+        }
+        calls++; return http.reply();
+    });
+    t.after(() => assert.deepEqual(unexpected, [], 'unexpected HTTP errors cannot be swallowed'));
+    const wire = (body: Record<string, unknown>) => handleWsMessage(h.ctx, Buffer.from(JSON.stringify(body)));
+    const runtime = (body: Record<string, unknown>) => wire({ type: 'agent_runtime', ...id, ...body });
+    const print = (text: string) => wire({ type: 'agent_done', traceRunId: id.runId, text });
+    runtime({ seq: 1, kind: 'turn-start', provider: 'codex' });
+    const target = h.ctx.store.transcript.items.find(i => i.type === 'activity');
+    assert.ok(target?.type === 'activity');
+    const answers = () => h.ctx.store.transcript.items.filter(i => i.type === 'assistant' && i.activityKey === target.key);
+    return { id, runtime, wire, print, target, answers, saved, http, calls: () => calls };
+}
+async function drainSettlement(ctx: TuiContext): Promise<void> {
+    for (let i = 0; i < 100 && (ctx.activityAnswers?.active || ctx.activityAnswers?.queue.length); i++) await setImmediate();
+    assert.equal(ctx.activityAnswers?.active ?? null, null);
+    assert.equal(ctx.activityAnswers?.queue.length ?? 0, 0);
+}
+function flushCompletedA(h: Harness, target: ReturnType<typeof settlementFixture>['target']): void {
+    assert.notEqual(target.answerReadState, 'pending', 'initial lookup must drain before real release');
+    // A submitted next-user block creates real viewport pressure before B starts.
+    const prompt = Array.from({ length: 35 }, (_, i) => 'NEXT_USER_LINE_' + i).join('\n');
+    appendUserItem(h.ctx.store.transcript, prompt, prompt);
+    h.paint({ rows: [VIEWPORT_FILL, 'initial', '>'] });
+    h.cycle(); h.cycle();
+    assert.ok(h.releases() > 0, 'Screen acknowledged a native flush');
+    assert.equal(target.released, true);
+    assert.ok(h.viewport.currentFrontier().itemIndex >= 1);
+}
+
+test('D17 unmarked print receipt flushed before canonical close stays released and updates only status', async t => {
+    await withHarness('standard', async h => {
+        const f = settlementFixture(t, h);
+        f.print(SENTINEL); await drainSettlement(h.ctx);
+        assert.equal(f.target.terminalStatus, 'finished');
+        const answer = f.answers()[0]!; assert.ok(answer?.type === 'assistant');
+        flushCompletedA(h, f.target);
+        assert.equal(answer.text, ''); assert.equal(answer.activityReleased, true); assert.equal(h.count(), 1);
+        const outputStart = h.output().length;
+        f.runtime({ seq: 7, kind: 'turn-end', status: 'done', finalText: 'JOURNAL_ONLY' }); await drainSettlement(h.ctx);
+        assert.deepEqual(f.answers().map(i => i.text), ['']);
+        assert.equal(f.target.released, true); assert.equal(f.target.terminalStatus, 'done');
+        assert.equal(f.target.degraded, false); assert.equal(h.ctx.streaming, false);
+        h.cycle(); assert.equal(h.count(), 1); assert.doesNotMatch(h.output().slice(outputStart), /COMMITTED_ANSWER_SENTINEL|JOURNAL_ONLY/);
+    });
+});
+
+for (const released of [false, true]) {
+    test('D19 print startup body after null canonical ' + (released ? 'released' : 'unreleased') + ' has no false correction', async t => {
+        await withHarness('standard', async h => {
+            const f = settlementFixture(t, h);
+            f.runtime({ seq: 7, kind: 'turn-end', status: 'error', finalText: null }); await drainSettlement(h.ctx);
+            assert.equal(f.answers().length, 0, 'null journal is not an assistant receipt');
+            if (released) flushCompletedA(h, f.target);
+            f.print('original startup diagnostic'); f.print('original startup diagnostic'); await drainSettlement(h.ctx);
+            assert.deepEqual(f.answers().map(i => i.text), ['original startup diagnostic']);
+            const answer = f.answers()[0]!; assert.ok(answer.type === 'assistant');
+            assert.equal(f.target.terminalStatus, 'error'); assert.equal(f.target.released, released);
+            assert.equal(answer.activitySource, 'compatibility'); assert.equal(answer.activityStatus, undefined);
+            assert.equal(answer.activityCorrection, false); assert.equal(answer.activityDiagnostic, false);
+            assert.doesNotMatch(renderTranscriptItem(answer, 80).join('\n'), /Updated/);
+        });
+    });
+}
+
+test('D20 saved answer flushed before equal unmarked print is not repopulated', async t => {
+    await withHarness('standard', async h => {
+        const f = settlementFixture(t, h); f.http.reply = () => f.saved(SENTINEL);
+        f.runtime({ seq: 7, kind: 'turn-end', status: 'done', finalText: 'JOURNAL_ONLY' }); await drainSettlement(h.ctx);
+        const answer = f.answers()[0]!; assert.ok(answer?.type === 'assistant');
+        assert.equal(answer.activitySource, 'saved'); assert.equal(answer.text, SENTINEL);
+        flushCompletedA(h, f.target); assert.equal(h.count(), 1);
+        const outputStart = h.output().length;
+        f.print(SENTINEL); f.print(SENTINEL); await drainSettlement(h.ctx); h.cycle();
+        assert.deepEqual(f.answers().map(i => i.text), ['']); assert.equal(f.answers()[0], answer);
+        assert.equal(answer.activityReleased, true); assert.equal(h.count(), 1);
+        assert.doesNotMatch(h.output().slice(outputStart), /COMMITTED_ANSWER_SENTINEL|JOURNAL_ONLY/);
+    });
+});
+
+test('D21 released compatibility answer refines once after explicit saved retry without touching B (absent/unavailable)', async t => {
+    for (const initial of ['absent', 'unavailable'] as const) await withHarness('standard', async h => {
+        const f = settlementFixture(t, h);
+        f.http.reply = () => initial === 'absent' ? Response.json({ ok: true, data: { message: null } })
+            : Response.json({ error: 'temporarily unavailable' }, { status: 503 });
+        f.print(SENTINEL);
+        assert.equal(f.target.answerReadState, 'pending');
+        assert.equal(computeStablePrefixIndex(h.ctx.store.transcript.items), 0);
+        await drainSettlement(h.ctx);
+        assert.equal(f.target.answerReadState, initial); assert.equal(f.calls(), 1);
+        const original = f.answers()[0]!; assert.ok(original?.type === 'assistant');
+        flushCompletedA(h, f.target);
+        assert.equal(original.text, ''); assert.equal(original.activityReleased, true); assert.equal(h.count(), 1);
+        const bId = 'tr_0000000000000002';
+        f.runtime({ seq: 1, runId: bId, turnId: 'turn-b', kind: 'turn-start', provider: 'codex' });
+        f.runtime({ seq: 3, runId: bId, turnId: 'turn-b', kind: 'tool', itemId: 'b-tool', name: 'Read',
+            status: 'running', output: 'B_TOOL_PREVIEW' });
+        f.wire({ type: 'agent_runtime_gap', ...f.id, runId: bId, reason: 'projection_degraded' });
+        f.wire({ type: 'agent_output', traceRunId: bId, sessionId: f.id.sessionId, scope: f.id.scope, text: 'B_PREVIEW' });
+        const bIndex = h.ctx.store.transcript.items.findIndex(i => i.type === 'activity' && i.model.identity.runId === bId);
+        const bRows = h.ctx.store.transcript.items.slice(bIndex), beforeRows = bRows.map(i => JSON.stringify(i));
+        const owner = h.ctx.activeActivityKey, clock = h.ctx.turnStartedAt, timer = h.ctx.footerTimer;
+        const sink = { push() {}, end() { assert.fail('old A cannot flush B sink'); } };
+        h.ctx.streamSink = sink; h.ctx.inputActive = false;
+        const response = Promise.withResolvers<Response>();
+        f.http.reply = () => response.promise;
+        try {
+            requestTuiActivityAnswer(h.ctx, f.target, { retry: true });
+            assert.equal(f.calls(), 2); assert.equal(f.target.answerReadState, 'pending');
+            response.resolve(f.saved('SAVED_CORRECTION')); await drainSettlement(h.ctx);
+            assert.equal(f.target.answerReadState, 'saved');
+            assert.deepEqual(f.answers().map(i => i.text), ['', 'SAVED_CORRECTION']);
+            assert.equal(f.answers()[0], original); assert.equal(original.text, ''); assert.equal(original.activityReleased, true);
+            const correction = f.answers()[1]!; assert.ok(correction.type === 'assistant');
+            assert.equal(correction.activityCorrection, true); assert.equal(correction.activitySource, 'saved');
+            assert.equal(renderTranscriptItem(correction, 80).join('\n').match(/Updated answer/g)?.length, 1);
+            h.cycle();
+            requestTuiActivityAnswer(h.ctx, f.target, { retry: true });
+            assert.equal(appendActivityAnswer(h.ctx.store.transcript, f.target.key, { finalText: 'SAVED_CORRECTION' }, 'saved'), false);
+            f.print('WRONG_LATE_PRINT'); f.print('WRONG_LATE_PRINT'); await drainSettlement(h.ctx); h.cycle();
+            assert.equal(f.calls(), 2); assert.deepEqual(f.answers().map(i => i.text), ['', 'SAVED_CORRECTION']);
+            assert.equal(f.answers().filter(i => i.activityCorrection).length, 1);
+            const rendered = [...h.term.scrollback, h.term.visibleText()].join('\n');
+            assert.equal(rendered.split('SAVED_CORRECTION').length - 1, 1, 'one correction in actual terminal cells');
+            assert.equal(rendered.split('Updated answer').length - 1, 1, 'one correction label after duplicate input');
+            assert.equal(h.ctx.activeActivityKey, owner); assert.equal(h.ctx.turnStartedAt, clock);
+            assert.equal(h.ctx.footerTimer, timer); assert.equal(h.ctx.streamSink, sink);
+            assert.equal(h.ctx.inputActive, false); assert.equal(h.ctx.streaming, true);
+            for (const [i, row] of bRows.entries()) assert.equal(h.ctx.store.transcript.items[bIndex + i], row);
+            assert.deepEqual(bRows.map(i => JSON.stringify(i)), beforeRows);
+            assert.equal(h.count(), 1);
+        } finally { response.resolve(Response.json({ ok: true, data: { message: null } })); }
+    });
+});
 
 for (const lane of ['dumb', 'zellij'] as const) test(`${lane} refusal preserves Activity/answer payload and logical frontier`, async () => {
     await withHarness(lane, h => {

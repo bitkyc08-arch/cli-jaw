@@ -8,6 +8,7 @@ import { bindActivityContext, invalidateActivityContext, releaseCommittedActivit
 import { handleKeyInput, flushPendingEscape } from '../../bin/commands/tui/input-handler.js';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.js';
 import { apiJson } from '../../bin/commands/tui/api.js';
+import { computeStablePrefixIndex } from '../../bin/commands/tui/fullscreen-mode.js';
 import { appendTextToComposer, getComposerDisplayText, consumePasteProtocol } from '../../src/cli/tui/composer.js';
 import { splitKeyInput, classifyKeyAction } from '../../src/cli/tui/keymap.js';
 import { createActivityItem, updateActivityItem } from '../../src/cli/tui/activity.js';
@@ -59,6 +60,64 @@ async function flushAnswerReads(ctx: TuiContext): Promise<void> {
         await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(ctx.activityAnswers?.active ?? null, null);
     assert.equal(ctx.activityAnswers?.queue.length ?? 0, 0);
+}
+
+for (const committed of [true, false]) {
+    test('D10 gap fallback REST ' + (committed ? 'committed' : 'tail-failed') + ' restore preserves row identity and saved-answer authority', async t => {
+        const ctx = context(), unexpected: string[] = [];
+        const tailStarted = Promise.withResolvers<void>(), releaseTail = Promise.withResolvers<void>();
+        const saved = Promise.withResolvers<Response>();
+        let tailReads = 0, savedReads = 0;
+        t.after(() => { releaseTail.resolve(); saved.resolve(savedAnswer(null)); cleanup(ctx); assert.deepEqual(unexpected, []); });
+        t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+            const url = new URL(String(input));
+            assert.equal(init?.method, 'GET'); assert.equal(init?.redirect, 'error');
+            if (url.pathname === '/api/orchestrate/snapshot') return snapshot();
+            if (url.pathname === '/api/messages/by-trace/' + runId) {
+                savedReads++; assert.equal(url.searchParams.get('session'), 'chat'); return saved.promise;
+            }
+            if (url.pathname === '/api/traces/' + runId + '/activity') {
+                assert.equal(url.searchParams.get('session'), 'chat');
+                if (url.searchParams.get('after') === '0') return page([start,
+                    { ...identity, seq: 9, kind: 'turn-end', status: 'done', finalText: 'JOURNAL_ONLY' }]);
+                tailReads++; assert.equal(url.searchParams.get('after'), '9'); tailStarted.resolve();
+                await releaseTail.promise;
+                if (!committed) throw new Error('injected tail network failure');
+                return page([], { through: 9, nextAfter: 9 });
+            }
+            unexpected.push(url.pathname); throw new Error('unexpected D10 HTTP route');
+        });
+        runtime(ctx, start);
+        const wire = (body: Record<string, unknown>) => handleWsMessage(ctx, Buffer.from(JSON.stringify(body)));
+        wire({ type: 'agent_runtime_gap', ...identity, reason: 'projection_degraded' });
+        for (const [text, thinking] of [['REST_PREVIEW', false], ['REST_THOUGHT', true]] as const)
+            wire({ type: 'agent_output', traceRunId: runId, sessionId: 'chat', scope: 'local:chat', text, thinking });
+        const items = ctx.store.transcript.items, rows = items.slice();
+        const before = rows.map(row => JSON.stringify(row));
+        const restoring = restoreActiveActivity(ctx); await tailStarted.promise;
+        assert.deepEqual(rows.map(row => JSON.stringify(row)), before, 'seed must not publish before tail commits');
+        releaseTail.resolve(); await restoring;
+        assert.equal(tailReads, 1); assert.equal(ctx.store.transcript.items, items);
+        for (const [i, row] of rows.entries()) assert.equal(items[i], row);
+        if (committed) {
+            assert.equal(savedReads, 1);
+            assert.equal(computeStablePrefixIndex(items), 0, 'pending saved answer still prevents release');
+            assert.ok(!items.some(row => 'text' in row && /REST_PREVIEW|REST_THOUGHT|JOURNAL_ONLY/.test(row.text)));
+            saved.resolve(savedAnswer('REST_FINAL')); await flushAnswerReads(ctx);
+            assert.deepEqual(items.filter(row => row.type === 'assistant').map(row => row.text).filter(Boolean), ['REST_FINAL']);
+            assert.equal(items.length, rows.length + 1);
+            assert.equal(computeStablePrefixIndex(items), items.length);
+            wire({ type: 'agent_done', traceRunId: runId, text: 'WRONG_COMPATIBILITY' });
+            await flushAnswerReads(ctx);
+            assert.deepEqual(items.filter(row => row.type === 'assistant').map(row => row.text).filter(Boolean), ['REST_FINAL']);
+        } else {
+            assert.equal(savedReads, 0);
+            assert.deepEqual(items.filter(row => row.type === 'assistant').map(row => row.text).filter(Boolean), ['REST_PREVIEW']);
+            assert.ok(rows.some(row => row.type === 'thinking' && row.streaming && row.text === 'REST_THOUGHT'));
+            assert.ok(items.some(row => row.type === 'status' && /restore unavailable/.test(row.text)));
+            assert.ok(!items.some(row => 'text' in row && /JOURNAL_ONLY|REST_FINAL/.test(row.text)));
+        }
+    });
 }
 
 test('selected history loads one payload and descriptor discovery without moving selection', async () => {
