@@ -113,12 +113,10 @@ test('hydration is wired through render finalization, live messages, and virtual
     assert.match(messageHistorySrc, /seedCompletedElicitationsFromMessages\(safeMsgs\)/);
     assert.match(messageHistorySrc, /seedCompletedElicitationsFromMessages\(safeCached\)/);
 
-    const lazyIdx = messageHistorySrc.indexOf('vs.onLazyRender = ');
-    const postIdx = messageHistorySrc.indexOf('vs.onPostRender = ');
-    assert.ok(lazyIdx >= 0, 'message-history must define onLazyRender');
-    assert.ok(postIdx >= 0, 'message-history must define onPostRender');
-    assert.match(messageHistorySrc.slice(lazyIdx, lazyIdx + 1400), /hydrateElicitationBlocks\(el\)/);
-    assert.match(messageHistorySrc.slice(postIdx, postIdx + 700), /hydrateElicitationBlocks\(viewport\)/);
+    // Callback assignment spelling is not wiring behavior. The elicitation
+    // first-user/history cases in web-structured-hydration.test.ts drive the
+    // public entrypoints, automatic callbacks and real VS disconnect/remount,
+    // preserving scoped hydration and exactly one widget without manual setup.
 
     assert.match(chatMessagesSrc, /hydrateElicitationBlocks\(div\)/);
     assert.match(chatMessagesSrc, /hydrateElicitationBlocks\(viewport\)/);
