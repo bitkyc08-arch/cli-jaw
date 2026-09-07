@@ -282,7 +282,10 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
         const count = requests().length;
         latest().emit('agent_runtime_requests_changed', { version: 1, ...A });
         await until(() => requests().length === count + 1);
-        latest().fail(); assert.equal(root().hidden, false); assert.match(status(), /unavailable/);
+        const beforeDisconnect = effects.length;
+        latest().fail();
+        assert.deepEqual(effects.slice(beforeDisconnect), [{ name: 'cleanupToolActivity', args: [] }]);
+        assert.equal(root().hidden, false); assert.match(status(), /unavailable/);
         read.resolve(listed([pending()])); await drained();
         assert.equal(root().querySelector('form'), null); assert.match(status(), /unavailable/);
         serve = async () => listed([pending()]); button('Refresh requests').click();
