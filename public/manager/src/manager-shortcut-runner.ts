@@ -10,6 +10,7 @@ import { getInstanceJumpSelector, jumpInstanceIndexFromAction, readRenderedInsta
  * behaviour is identical — App passes current render values on every call.
  */
 export interface ManagerShortcutRunnerDeps {
+    toggleInstanceSettings: () => void;
     selectedInstance: DashboardInstance | null;
     filtered: DashboardInstance[];
     activeDetailTab: DashboardDetailTab;
@@ -23,6 +24,7 @@ export interface ManagerShortcutRunnerDeps {
 }
 
 export function runManagerShortcut(action: DashboardShortcutAction, deps: ManagerShortcutRunnerDeps): void {
+    if (action === 'toggleInstanceSettings') { deps.toggleInstanceSettings(); return; }
     if (panelShortcutBus.dispatch(action)) return;
     const jumpIndex = jumpInstanceIndexFromAction(action);
     if (jumpIndex != null) {
@@ -76,7 +78,7 @@ export function runManagerShortcut(action: DashboardShortcutAction, deps: Manage
     if (action === 'switchTab3') { deps.handleTabChange('logs'); return; }
     if (action === 'switchTab4') { deps.handleTabChange('settings'); return; }
     if (action === 'previousTab' || action === 'nextTab') {
-        const tabs: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings'];
+        const tabs: DashboardDetailTab[] = ['overview', 'preview', 'logs'];
         const idx = tabs.indexOf(deps.activeDetailTab);
         const dir = action === 'nextTab' ? 1 : -1;
         deps.handleTabChange(tabs[(idx + dir + tabs.length) % tabs.length]);
@@ -123,6 +125,7 @@ export function runManagerShortcut(action: DashboardShortcutAction, deps: Manage
 }
 
 const CAPTURE_TOGGLE_ACTIONS = new Set<DashboardShortcutAction>([
+    'toggleInstanceSettings',
     'toggleLeftSidebar',
     'toggleRightPanel',
     'resetSidebarWidth',
