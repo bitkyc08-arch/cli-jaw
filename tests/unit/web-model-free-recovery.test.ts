@@ -158,6 +158,12 @@ let cache: typeof import('../../public/js/features/idb-cache.ts');
 let virtual: typeof import('../../public/js/virtual-scroll.ts');
 let state: typeof import('../../public/js/state.ts')['state'];
 let now = Date.now();
+const bootstrapLoad = Promise.withResolvers<void>();
+const bootstrapRelease = Promise.withResolvers<void>();
+const bootstrapDone = Promise.withResolvers<void>();
+const sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+const unexpectedRequests: string[] = [];
+const requests: string[] = [];
 const originals = new Map(['IDBKeyRange', 'HTMLButtonElement'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 
 test.before(async () => {
@@ -166,46 +172,90 @@ test.before(async () => {
     Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { only: (value: unknown) => value } });
     Object.defineProperty(globalThis, 'HTMLButtonElement', { configurable: true, value: window.HTMLButtonElement });
     mock.method(Date, 'now', () => now); mock.method(console, 'log', () => {});
-    mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, window.location.origin);
-        if (url.pathname === '/api/orchestrate/snapshot') return Response.json({
-            activityIdentity: identity, orc: { state: 'IDLE', scope: identity.scope, ctx: null },
-            heartbeat: { pending: 0, deferredPending: 0 }, workers: [], runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun,
-        });
-        if (url.pathname === '/api/messages') return Response.json({ ok: true, data: { sessionId: identity.sessionId, messages: [] } });
-        if (url.pathname.includes('/by-trace/')) {
-            savedReads++; savedStarted.resolve(); await savedRelease.promise;
-            if (savedReply.kind === 'absent') return Response.json({ ok: true, data: { message: null } });
-            if (savedReply.kind === 'saved') return Response.json({ ok: true, data: { message: {
-                id: savedReply.id, role: 'assistant', content: savedReply.content,
-                trace_run_id: url.pathname.split('/').at(-1), session_id: identity.sessionId,
-            } } });
-            return Response.json({ ok: false, error: 'activity_answer_unavailable' }, { status: 503 });
-        }
-        if (url.pathname.endsWith('/activity')) {
-            journalReads++;
-            assert.equal(url.searchParams.get('session'), identity.sessionId);
-            const runId = url.pathname.split('/')[3];
-            return Response.json({ ok: true, data: { runId, sessionId: identity.sessionId, scope: 'historical:execution-scope',
-                status: 'done', events: [], nextAfter: 0, through: 0, hasMore: false, incomplete: true, loss: 'unavailable' } });
-        }
-        if (url.pathname === '/api/traces/activity-runs') return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
-        if (url.pathname === '/api/runtime/requests') return Response.json({ ok: true, data: { requests: [] } });
-        if (url.pathname === '/api/auth/token') return Response.json({ token: 'fixture-token' });
-        return Response.json({ ok: true, data: { count: 0 } });
+        const key = `${init?.method ?? (input instanceof Request ? input.method : 'GET')} ${url.pathname}${url.search}`;
+        requests.push(key);
+        try {
+            assert.equal(url.origin, window.location.origin);
+            assert.ok(key.startsWith('GET '));
+            if (url.pathname === '/api/orchestrate/snapshot' && !url.search) return Response.json({
+                activityIdentity: identity, orc: { state: 'IDLE', scope: identity.scope, ctx: null },
+                heartbeat: { pending: 0, deferredPending: 0 }, workers: [], runtime: { queuePending: 0, busy: !!activeRun }, queued: [], activeRun,
+            });
+            if (url.pathname === '/api/messages') {
+                assert.deepEqual([...url.searchParams], [['limit', '3000'], ['withSession', '1']]);
+                return Response.json({ ok: true, data: { sessionId: identity.sessionId, messages: [] } });
+            }
+            if (/^\/api\/messages\/by-trace\/tr_model_free_\d{16}$/.test(url.pathname)) {
+                assert.deepEqual([...url.searchParams], [['session', identity.sessionId]]);
+                savedReads++; savedStarted.resolve(); await savedRelease.promise;
+                if (savedReply.kind === 'absent') return Response.json({ ok: true, data: { message: null } });
+                if (savedReply.kind === 'saved') return Response.json({ ok: true, data: { message: {
+                    id: savedReply.id, role: 'assistant', content: savedReply.content,
+                    trace_run_id: url.pathname.split('/').at(-1), session_id: identity.sessionId,
+                } } });
+                return Response.json({ ok: false, error: 'activity_answer_unavailable' }, { status: 503 });
+            }
+            if (/^\/api\/traces\/tr_model_free_\d{16}\/activity$/.test(url.pathname)) {
+                journalReads++;
+                assert.deepEqual([...url.searchParams], [['session', identity.sessionId], ['after', '0'], ['limit', '40']]);
+                const runId = url.pathname.split('/')[3];
+                return Response.json({ ok: true, data: { runId, sessionId: identity.sessionId, scope: 'historical:execution-scope',
+                    status: 'done', events: [], nextAfter: 0, through: 0, hasMore: false, incomplete: true, loss: 'unavailable' } });
+            }
+            if (url.pathname === '/api/traces/activity-runs') {
+                assert.deepEqual([...url.searchParams], [['session', identity.sessionId], ['after', '']]);
+                return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
+            }
+            if (url.pathname === '/api/runtime/requests') {
+                assert.deepEqual([...url.searchParams], [['sessionId', identity.sessionId]]);
+                return Response.json({ ok: true, data: { requests: [] } });
+            }
+            if (url.pathname === '/api/bgtask' && url.search === '?status=running') return Response.json({ tasks: [] });
+            if (!url.search) {
+                if (url.pathname === '/api/auth/token') return Response.json({ token: 'fixture-token' });
+                if (url.pathname === '/api/settings') return Response.json({ workingDir: process.env.CLI_JAW_HOME });
+                if (url.pathname === '/api/goal') return Response.json({ ok: true, goal: null });
+                if (url.pathname === '/api/messages/count') return Response.json({ ok: true, data: { count: 0 } });
+                if (url.pathname === '/api/memory-files' || url.pathname === '/api/memory/status')
+                    return Response.json({ error: 'fixture_sidebar_unavailable' }, { status: 503 });
+            }
+            throw new Error('Unexpected HTTP route');
+        } catch (error) { unexpectedRequests.push(`${key}: ${String(error)}`); throw error; }
     });
     ui = await import('../../public/js/ui.ts');
-    mock.module('../../public/js/ui.js', { namedExports: { ...ui, finalizeAgent: (...args: Parameters<typeof ui.finalizeAgent>) => {
+    mock.module('../../public/js/ui.js', { namedExports: { ...ui,
+        async loadMessages() { bootstrapLoad.resolve(); await bootstrapRelease.promise; return ui.loadMessages(); },
+        reconcileChatBottomAfterRestore: (...args: Parameters<typeof ui.reconcileChatBottomAfterRestore>) => {
+            ui.reconcileChatBottomAfterRestore(...args);
+            if (args[0] === 'reconnect') bootstrapDone.resolve();
+        },
+        finalizeAgent: (...args: Parameters<typeof ui.finalizeAgent>) => {
         finalizations++; return ui.finalizeAgent(...args);
     } } });
+    const memory = await import('../../public/js/features/memory.ts');
+    const background = await import('../../public/js/features/bgtask-badge.ts');
+    mock.module('../../public/js/features/memory.js', { namedExports: { ...memory,
+        async refreshMemorySidebar() { await memory.refreshMemorySidebar(); sidebarDone[0]!.resolve(); },
+    } });
+    mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { ...background,
+        async refreshBgtaskBadge() { await background.refreshBgtaskBadge(); sidebarDone[1]!.resolve(); },
+    } });
     live = await import('../../public/js/features/activity-live.ts');
     history = await import('../../public/js/features/activity-history.ts');
     cache = await import('../../public/js/features/idb-cache.ts');
     virtual = await import('../../public/js/virtual-scroll.ts');
     ({ state } = await import('../../public/js/state.ts'));
     ws = await import('../../public/js/ws.ts'); ws.connect(); opened();
-    for (let i = 0; i < 100 && !state.activityIdentity; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    await bootstrapLoad.promise;
+    assert.equal(state.activityIdentity, null, 'held history cannot admit a snapshot');
+    bootstrapRelease.resolve();
+    await bootstrapDone.promise;
+    await Promise.all(sidebarDone.map(done => done.promise));
     assert.deepEqual(state.activityIdentity, identity);
+    assert.deepEqual(unexpectedRequests, []);
+    assert.ok(requests.indexOf('GET /api/messages?limit=3000&withSession=1') < requests.indexOf('GET /api/orchestrate/snapshot'));
     await port.drain();
 });
 test.beforeEach(async () => {
@@ -224,6 +274,7 @@ test.after(async () => {
     history.disposeActivityHistory(); virtual.getVirtualScroll().clear(); live.clearLiveActivity(); ui.cleanupToolActivity();
     resetWebUiDom(); mock.restoreAll();
     for (const [key, value] of originals) { if (value) Object.defineProperty(globalThis, key, value); else Reflect.deleteProperty(globalThis, key); }
+    assert.deepEqual(unexpectedRequests, []);
 });
 
 async function recoverModelFree(virtualized = false, beforeFinalize: () => void | Promise<void> = () => {}) {
