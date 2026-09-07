@@ -6,6 +6,9 @@ import { join } from 'path';
 import { resolveHomePath } from '../core/path-expand.js';
 import { probeGrokModels } from '../core/probe-exec.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { createHash } from 'node:crypto';
+import { parseClaudeUsageWindows, parseCodexUsageWindows, type NativeUsageWindows } from './quota-native-window.js';
+import { asQuotaRecord, quotaNumber, quotaPercent, quotaResetIso, readQuotaBytes, readQuotaJson } from './quota-wire.js';
 
 interface GrokSessionUsage {
     sourcePath: string;
@@ -124,89 +127,128 @@ export function readClaudeCreds(): ClaudeCreds | null {
     return readClaudeCredsFromFile();
 }
 
+export function getCodexCredentialsPath(configDir = process.env['CODEX_HOME'], homeDir = os.homedir()): string {
+    return join(configDir?.trim() ? resolveHomePath(configDir, homeDir) : join(homeDir, '.codex'), 'auth.json');
+}
 export function readCodexTokens() {
     try {
-        const authPath = join(os.homedir(), '.codex', 'auth.json');
-        const j = JSON.parse(fs.readFileSync(authPath, 'utf8'));
-        if (j?.tokens?.access_token) return { access_token: j.tokens.access_token, account_id: j.tokens.account_id ?? '' };
-    } catch (e: unknown) { console.debug('[quota:codex] token read failed', (e as Error).message); }
-    return null;
+        const j = JSON.parse(fs.readFileSync(getCodexCredentialsPath(), 'utf8'));
+        const access = j?.tokens?.access_token;
+        const account = j?.tokens?.account_id;
+        if (typeof access !== 'string' || !access.trim()) return null;
+        return { access_token: access, account_id: typeof account === 'string' ? account : '' };
+    } catch {
+        // Native credential read failure is status-only; never log JSON parse excerpts.
+        return null;
+    }
 }
-
-let _claudeUsageCache: { data: Record<string, unknown>; ts: number } | null = null;
-const CLAUDE_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
 interface ClaudeCredsLike { quotaCapable?: boolean; account?: unknown; source?: string; token?: string }
 interface CodexTokensLike { access_token?: string; account_id?: string }
-
+type ClaudeSnapshot = NativeUsageWindows & { raw: unknown };
+type ClaudeProbe = ClaudeSnapshot | { authenticated: false } | { error: true; reason?: string; windows?: never[] };
+const CLAUDE_FRESH_TTL_MS = 30_000;
+const CLAUDE_FALLBACK_TTL_MS = 5 * 60_000;
+const CLAUDE_CACHE_MAX_ENTRIES = 16;
+const claudeUsageCache = new Map<string, { data: ClaudeSnapshot; ts: number }>();
+const claudeUsageInflight = new Map<string, Promise<ClaudeProbe>>();
+function pruneClaudeUsageCache(now: number): void {
+    for (const [key, entry] of claudeUsageCache) {
+        if (now - entry.ts >= CLAUDE_FALLBACK_TTL_MS) claudeUsageCache.delete(key);
+    }
+    while (claudeUsageCache.size > CLAUDE_CACHE_MAX_ENTRIES) {
+        const key = claudeUsageCache.keys().next().value;
+        if (key === undefined) break;
+        claudeUsageCache.delete(key);
+    }
+}
 export async function fetchClaudeUsage(creds: ClaudeCredsLike | null | undefined) {
     if (!creds) return null;
     if (creds.quotaCapable === false) {
         return { authenticated: true, account: creds.account, windows: [], source: creds.source };
     }
-    if (!creds.token) return null;
-    try {
-        const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
-            headers: { 'Authorization': `Bearer ${creds.token}`, 'anthropic-beta': 'oauth-2025-04-20' },
-            signal: AbortSignal.timeout(8000),
-        });
-        if (!resp.ok) {
-            if (resp.status === 401 || resp.status === 403) return { authenticated: false };
-            if (resp.status === 429) {
-                if (_claudeUsageCache && Date.now() - _claudeUsageCache.ts < CLAUDE_CACHE_TTL) {
-                    return { ..._claudeUsageCache.data, cached: true };
+    if (typeof creds.token !== 'string' || !creds.token.trim()) return null;
+    const token = creds.token;
+    const key = createHash('sha256').update(token).digest('hex');
+    const now = Date.now();
+    pruneClaudeUsageCache(now);
+    const cached = claudeUsageCache.get(key);
+    if (cached && now - cached.ts < CLAUDE_FRESH_TTL_MS) {
+        return { ...structuredClone(cached.data), account: creds.account, cached: true };
+    }
+    let pending = claudeUsageInflight.get(key);
+    if (!pending) {
+        const probe = async (): Promise<ClaudeProbe> => {
+            try {
+                const signal = AbortSignal.timeout(8000);
+                const resp = await fetch('https://api.anthropic.com/api/oauth/usage', {
+                    redirect: 'error',
+                    headers: {
+                        'Accept': 'application/json, text/plain, */*',
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'claude-cli/2.1.63 (external, cli)',
+                        'anthropic-beta': 'claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05',
+                        'Authorization': `Bearer ${token}`,
+                    }, signal,
+                });
+                if (!resp.ok) {
+                    try { void resp.body?.cancel().catch(() => undefined); } catch { /* best effort */ }
+                    if (resp.status === 401 || resp.status === 403) {
+                        claudeUsageCache.delete(key);
+                        return { authenticated: false };
+                    }
+                    if (resp.status === 429) return { error: true, reason: 'rate_limited', windows: [] };
+                    return { error: true };
                 }
-                return {
-                    account: creds.account,
-                    windows: [{ label: '5-hour', percent: 100, resetsAt: null }],
-                    error: true, reason: 'rate_limited',
-                };
-            }
-            return { error: true };
+                const raw = await readQuotaJson(resp);
+                const parsed = parseClaudeUsageWindows(raw);
+                if (!parsed) return { error: true };
+                const result = { ...parsed, raw };
+                claudeUsageCache.set(key, { data: structuredClone(result), ts: Date.now() });
+                pruneClaudeUsageCache(Date.now());
+                return result;
+            } catch { return { error: true }; }
+        };
+        const owned = probe().finally(() => {
+            if (claudeUsageInflight.get(key) === owned) claudeUsageInflight.delete(key);
+        });
+        claudeUsageInflight.set(key, owned);
+        pending = owned;
+    }
+    const result = await pending;
+    if ('error' in result && result.reason === 'rate_limited') {
+        const fallback = claudeUsageCache.get(key);
+        if (fallback && Date.now() - fallback.ts < CLAUDE_FALLBACK_TTL_MS) {
+            return { ...structuredClone(fallback.data), account: creds.account, cached: true };
         }
-        const data = await resp.json() as Record<string, { utilization?: number; resets_at?: string | null } | undefined>;
-        const windows = [];
-        const labelMap = { five_hour: '5-hour', seven_day: '7-day', seven_day_sonnet: '7-day Sonnet', seven_day_opus: '7-day Opus' };
-        for (const [key, label] of Object.entries(labelMap)) {
-            const w = data[key];
-            if (w?.utilization != null) {
-                windows.push({ label, percent: Math.round(w.utilization), resetsAt: w.resets_at ?? null });
-            }
-        }
-        const result = { account: creds.account, windows, raw: data };
-        _claudeUsageCache = { data: result, ts: Date.now() };
-        return result;
-    } catch { return { error: true }; }
+        return { ...result, account: creds.account };
+    }
+    if ('raw' in result) return { ...structuredClone(result), account: creds.account };
+    return result;
 }
-
 export async function fetchCodexUsage(tokens: CodexTokensLike | null | undefined) {
-    if (!tokens) return null;
+    if (!tokens || typeof tokens.access_token !== 'string' || !tokens.access_token.trim()) return null;
     try {
+        const signal = AbortSignal.timeout(8000);
         const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', {
+            redirect: 'error',
             headers: { 'Authorization': `Bearer ${tokens.access_token}`, 'ChatGPT-Account-Id': tokens.account_id ?? '' },
-            signal: AbortSignal.timeout(8000),
+            signal,
         });
         if (!resp.ok) {
+            try { void resp.body?.cancel().catch(() => undefined); } catch { /* best effort */ }
             if (resp.status === 401 || resp.status === 403) return { authenticated: false };
             return { error: true };
         }
-        const data = await resp.json() as {
-            email?: string | null;
-            plan_type?: string | null;
-            rate_limit?: {
-                primary_window?: { used_percent?: number; reset_at?: number };
-                secondary_window?: { used_percent?: number; reset_at?: number };
-            };
+        const raw = await readQuotaJson(resp);
+        const parsed = parseCodexUsageWindows(raw);
+        if (!parsed) return { error: true };
+        const data = raw as Record<string, unknown>;
+        const account = {
+            email: typeof data['email'] === 'string' ? data['email'] : null,
+            plan: typeof data['plan_type'] === 'string' ? data['plan_type'] : null,
         };
-        const account = { email: data.email ?? null, plan: data.plan_type ?? null };
-        const windows = [];
-        if (data.rate_limit?.primary_window) {
-            windows.push({ label: '5-hour', percent: data.rate_limit.primary_window.used_percent ?? 0, resetsAt: data.rate_limit.primary_window.reset_at ? new Date(data.rate_limit.primary_window.reset_at * 1000).toISOString() : null });
-        }
-        if (data.rate_limit?.secondary_window) {
-            windows.push({ label: '7-day', percent: data.rate_limit.secondary_window.used_percent ?? 0, resetsAt: data.rate_limit.secondary_window.reset_at ? new Date(data.rate_limit.secondary_window.reset_at * 1000).toISOString() : null });
-        }
-        return { account, windows, raw: data };
+        return { account, ...parsed, raw };
     } catch { return { error: true }; }
 }
 
@@ -277,16 +319,19 @@ interface GrokBillingData {
     limit: number;
     used: number;
     percent: number;
-    limitUsd: number;
-    usedUsd: number;
+    limitUsd?: number;
+    usedUsd?: number;
     periodLabel: string;
     periodStart?: string | null;
-    periodEnd: string;
+    periodEnd?: string;
     email: string | null;
     source: string;
 }
 
 const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing';
+const GROK_JSON_CREDITS_URL = `${GROK_BILLING_URL}?format=credits`;
+// OpenCodex b94051fe91e745806102988f6dff2fec8de078ef xai-transport compatibility.
+const GROK_QUOTA_CLIENT_VERSION = '0.2.93';
 const GROK_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user';
 const GROK_WEB_CREDITS_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig';
 
@@ -300,37 +345,50 @@ interface GrokTokenCandidate {
     token: string;
     source: string;
     email?: string | null;
+    userId?: string;
+}
+
+function grokUserIdFromAccessToken(token: string): string | undefined {
+    const payload = token.split('.')[1];
+    if (!payload) return undefined;
+    try {
+        const sub = asQuotaRecord(JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')))?.['sub'];
+        return typeof sub === 'string' && sub.trim() ? sub.trim() : undefined;
+    } catch { return undefined; }
 }
 
 function readGrokTokenCandidates(homeDir = os.homedir()): GrokTokenCandidate[] {
     const candidates: GrokTokenCandidate[] = [];
     try {
         const authPath = join(homeDir, '.grok', 'auth.json');
-        const data = JSON.parse(fs.readFileSync(authPath, 'utf8')) as Record<string, unknown>;
-        const entries = Object.entries(data)
-            .filter(([, entry]) => entry && typeof entry === 'object' && typeof (entry as Record<string, unknown>)['key'] === 'string')
-            .map(([scope, entry]) => {
-                const obj = entry as Record<string, unknown>;
-                return {
-                    token: obj['key'] as string,
-                    source: scope.startsWith('https://auth.x.ai::') ? 'grok:auth-json-oidc' : 'grok:auth-json',
-                    email: typeof obj['email'] === 'string' ? obj['email'] as string : null,
-                    priority: scope.startsWith('https://auth.x.ai::') ? 0 : 1,
-                };
-            })
-            .sort((a, b) => a.priority - b.priority);
-        for (const entry of entries) candidates.push({ token: entry.token, source: entry.source, email: entry.email });
-    } catch { /* best effort */ }
-    try {
-        const authPath = join(homeDir, '.progrok', 'auth.json');
-        const data = JSON.parse(fs.readFileSync(authPath, 'utf8')) as { accessToken?: string };
-        if (typeof data.accessToken === 'string' && data.accessToken.trim()) {
-            candidates.push({ token: data.accessToken, source: 'progrok:auth-json', email: null });
+        const data = asQuotaRecord(JSON.parse(fs.readFileSync(authPath, 'utf8')));
+        const entries = Object.entries(data ?? {})
+            .sort(([a], [b]) => Number(!a.startsWith('https://auth.x.ai::')) - Number(!b.startsWith('https://auth.x.ai::')));
+        for (const [scope, value] of entries) {
+            const entry = asQuotaRecord(value);
+            if (!entry || typeof entry['key'] !== 'string' || !entry['key'].trim()) continue;
+            const token = entry['key'].trim();
+            const userId = typeof entry['user_id'] === 'string' && entry['user_id'].trim()
+                ? entry['user_id'].trim() : grokUserIdFromAccessToken(token);
+            candidates.push({
+                token,
+                source: scope.startsWith('https://auth.x.ai::') ? 'grok:auth-json-oidc' : 'grok:auth-json',
+                email: typeof entry['email'] === 'string' ? entry['email'] : null,
+                ...(userId ? { userId } : {}),
+            });
         }
-    } catch { /* best effort */ }
+    } catch { /* native auth is optional */ }
+    try {
+        const data = asQuotaRecord(JSON.parse(fs.readFileSync(join(homeDir, '.progrok', 'auth.json'), 'utf8')));
+        if (typeof data?.['accessToken'] === 'string' && data['accessToken'].trim()) {
+            const token = data['accessToken'].trim();
+            const userId = grokUserIdFromAccessToken(token);
+            candidates.push({ token, source: 'progrok:auth-json', email: null, ...(userId ? { userId } : {}) });
+        }
+    } catch { /* legacy auth is optional */ }
     const seen = new Set<string>();
-    return candidates.filter((candidate) => {
-        if (!candidate.token || seen.has(candidate.token)) return false;
+    return candidates.filter(candidate => {
+        if (seen.has(candidate.token)) return false;
         seen.add(candidate.token);
         return true;
     });
@@ -434,79 +492,114 @@ export function parseGrokCreditsGrpcWeb(buf: Buffer, now = new Date()): Pick<Gro
     };
 }
 
-async function fetchGrokWeeklyCredits(token: string): Promise<Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null> {
-    const resp = await fetch(GROK_WEB_CREDITS_URL, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-XAI-Token-Auth': 'xai-grok-cli',
-            'Origin': 'https://grok.com',
-            'Referer': 'https://grok.com/?_s=usage',
-            'Accept': 'application/grpc-web+proto',
-            'Content-Type': 'application/grpc-web+proto',
-            'x-grpc-web': '1',
-            'x-user-agent': 'connect-es/2.1.1',
-        },
-        body: Buffer.from([0, 0, 0, 0, 0]),
-        signal: AbortSignal.timeout(8000),
-    });
-    if (!resp.ok) return null;
-    return parseGrokCreditsGrpcWeb(Buffer.from(await resp.arrayBuffer()));
+export function parseGrokCreditsResponse(value: unknown): {
+    percent: number; periodEnd?: string;
+} | null {
+    const config = asQuotaRecord(asQuotaRecord(value)?.['config']);
+    const period = asQuotaRecord(config?.['currentPeriod']);
+    if (!config || period?.['type'] !== 'USAGE_PERIOD_TYPE_WEEKLY') return null;
+    const percent = config['creditUsagePercent'] === undefined
+        ? 0 : quotaPercent(config['creditUsagePercent']);
+    if (percent === undefined) return null;
+    const periodEnd = quotaResetIso(period['end']);
+    return { percent, ...(periodEnd ? { periodEnd } : {}) };
 }
 
-async function fetchGrokBilling(): Promise<GrokBillingData | null> {
-    const tokens = readGrokTokenCandidates();
-    if (!tokens.length) return null;
+type GrokWeeklyCredits = Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'>;
+
+async function fetchGrokWeeklyCreditsJson(candidate: GrokTokenCandidate): Promise<GrokWeeklyCredits | null> {
+    if (!candidate.userId) return null;
     try {
-        for (const candidate of tokens) {
-            const weekly = await fetchGrokWeeklyCredits(candidate.token);
-            if (weekly) {
-                return {
-                    tier: 'SuperGrok',
-                    limit: 100,
-                    used: weekly.percent,
-                    percent: weekly.percent,
-                    limitUsd: 0,
-                    usedUsd: 0,
-                    periodLabel: weekly.periodLabel,
-                    periodEnd: weekly.periodEnd,
-                    email: candidate.email ?? null,
-                    source: weekly.source,
-                };
-            }
+        const response = await fetch(GROK_JSON_CREDITS_URL, {
+            redirect: 'error',
+            headers: {
+                Accept: 'application/json', Authorization: `Bearer ${candidate.token}`,
+                'x-userid': candidate.userId,
+                'x-xai-token-auth': 'xai-grok-cli',
+                'x-authenticateresponse': 'authenticate-response',
+                'x-grok-client-version': GROK_QUOTA_CLIENT_VERSION,
+            },
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok) return null;
+        const parsed = parseGrokCreditsResponse(await readQuotaJson(response));
+        return parsed ? { ...parsed, periodLabel: 'weekly', source: 'grok:cli-chat-proxy-billing-credits' } : null;
+    } catch { return null; }
+}
+
+async function fetchGrokWeeklyCredits(token: string): Promise<Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null> {
+    try {
+        const resp = await fetch(GROK_WEB_CREDITS_URL, {
+            method: 'POST',
+            redirect: 'error',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-XAI-Token-Auth': 'xai-grok-cli',
+                'Origin': 'https://grok.com',
+                'Referer': 'https://grok.com/?_s=usage',
+                'Accept': 'application/grpc-web+proto',
+                'Content-Type': 'application/grpc-web+proto',
+                'x-grpc-web': '1',
+                'x-user-agent': 'connect-es/2.1.1',
+            },
+            body: Buffer.from([0, 0, 0, 0, 0]),
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!resp.ok) return null;
+        return parseGrokCreditsGrpcWeb(Buffer.from(await readQuotaBytes(resp)));
+    } catch { return null; }
+}
+
+async function fetchGrokMonthlyBilling(candidate: GrokTokenCandidate): Promise<GrokBillingData | null> {
+    try {
+        const headers = { Accept: 'application/json', Authorization: `Bearer ${candidate.token}` };
+        const [billingRes, userRes] = await Promise.allSettled([
+            fetch(GROK_BILLING_URL, { headers, redirect: 'error', signal: AbortSignal.timeout(8000) }),
+            fetch(GROK_USER_URL, { headers, redirect: 'error', signal: AbortSignal.timeout(5000) }),
+        ]);
+        if (billingRes.status !== 'fulfilled' || !billingRes.value.ok) return null;
+        const billing = asQuotaRecord(asQuotaRecord(await readQuotaJson(billingRes.value))?.['config']);
+        if (!billing) return null;
+        const limit = quotaNumber(asQuotaRecord(billing['monthlyLimit'])?.['val']);
+        const used = quotaNumber(asQuotaRecord(billing['used'])?.['val']);
+        if (limit === undefined || used === undefined || limit <= 0) return null;
+        const percent = quotaPercent(used / limit * 100);
+        if (percent === undefined) return null;
+        let email = candidate.email ?? null;
+        if (userRes.status === 'fulfilled' && userRes.value.ok) {
+            try {
+                const user = asQuotaRecord(await readQuotaJson(userRes.value, 5000));
+                if (typeof user?.['email'] === 'string') email = user['email'];
+            } catch { /* optional identity metadata must not discard valid billing */ }
         }
+        const periodEnd = quotaResetIso(billing['billingPeriodEnd']);
+        return {
+            tier: grokTierFromLimit(limit), limit, used, percent,
+            limitUsd: limit / 100, usedUsd: used / 100,
+            periodLabel: 'monthly', periodStart: quotaResetIso(billing['billingPeriodStart']),
+            ...(periodEnd ? { periodEnd } : {}), email,
+            source: candidate.source === 'progrok:auth-json' ? 'progrok:billing-api' : 'grok:cli-chat-proxy-billing-api',
+        };
+    } catch { return null; }
+}
+
+export async function fetchGrokBilling(homeDir = os.homedir()): Promise<GrokBillingData | null> {
+    const tokens = readGrokTokenCandidates(homeDir);
+    const weeklyReaders = [fetchGrokWeeklyCreditsJson, (candidate: GrokTokenCandidate) => fetchGrokWeeklyCredits(candidate.token)];
+    for (const read of weeklyReaders) {
         for (const candidate of tokens) {
-            const headers = { Authorization: `Bearer ${candidate.token}` };
-            const [billingRes, userRes] = await Promise.allSettled([
-                fetch(GROK_BILLING_URL, { headers, signal: AbortSignal.timeout(8000) }),
-                fetch(GROK_USER_URL, { headers, signal: AbortSignal.timeout(5000) }),
-            ]);
-            if (billingRes.status !== 'fulfilled' || !billingRes.value.ok) continue;
-            const billing = (await billingRes.value.json() as {
-                config: { monthlyLimit: { val: number }; used: { val: number }; billingPeriodStart?: string; billingPeriodEnd: string };
-            }).config;
-            const limit = billing.monthlyLimit.val;
-            const used = billing.used.val;
-            let email: string | null = candidate.email ?? null;
-            if (userRes.status === 'fulfilled' && userRes.value.ok) {
-                const user = await userRes.value.json() as { email?: string };
-                email = user.email ?? email;
-            }
-            return {
-                tier: grokTierFromLimit(limit),
-                limit, used,
-                percent: limit > 0 ? Math.round((used / limit) * 100) : 0,
-                limitUsd: limit / 100,
-                usedUsd: used / 100,
-                periodLabel: 'monthly',
-                periodStart: billing.billingPeriodStart ?? null,
-                periodEnd: billing.billingPeriodEnd,
-                email,
-                source: candidate.source === 'progrok:auth-json' ? 'progrok:billing-api' : 'grok:cli-chat-proxy-billing-api',
+            const weekly = await read(candidate);
+            if (weekly) return {
+                tier: 'SuperGrok', limit: 100, used: weekly.percent,
+                ...weekly, email: candidate.email ?? null,
             };
         }
-        return null;
-    } catch { return null; }
+    }
+    for (const candidate of tokens) {
+        const monthly = await fetchGrokMonthlyBilling(candidate);
+        if (monthly) return monthly;
+    }
+    return null;
 }
 
 export async function fetchGrokStatus(binary = 'grok') {
