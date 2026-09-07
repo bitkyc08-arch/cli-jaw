@@ -2,7 +2,7 @@ export const TITLEBAR_OVERLAY_HEIGHT = 40;
 export const TITLEBAR_OVERLAY_COLOR = '#01000000';
 export const TITLEBAR_DARK_SYMBOL_COLOR = '#f8fafc';
 export const TITLEBAR_LIGHT_SYMBOL_COLOR = '#1f2937';
-export const TRAFFIC_LIGHT_POSITION = { x: 16, y: 18 } as const;
+export const TRAFFIC_LIGHT_POSITION = { x: 16, y: 20 } as const;
 
 export type WindowChromePlatform = 'darwin' | 'win32' | 'linux' | string;
 

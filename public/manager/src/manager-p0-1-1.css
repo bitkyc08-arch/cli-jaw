@@ -7,7 +7,8 @@
 }
 .command-center.command-bar.is-electron-titlebar,
 :root[data-cli-jaw-desktop="true"] .command-center.command-bar {
-    --electron-titlebar-left-reserve: 90px;
+    /* 16px inset + 3 * 12px lights + 2 * 8px gaps + 40px clearance (audit-folded: 108px). */
+    --electron-titlebar-left-reserve: 108px;
     padding: 0 10px 0 var(--electron-titlebar-left-reserve);
 }
 :root[data-window-fullscreen="true"] .command-center.command-bar.is-electron-titlebar,
@@ -41,9 +42,16 @@
         grid-template-columns: auto minmax(0, 1fr) auto;
         grid-template-areas: "drawer search actions";
     }
+    .command-primary .command-title { display: none; }
 }
 .command-title { grid-area: title; }
-.command-search { grid-area: search; width: 100%; max-width: none; }
+.command-search { grid-area: search; width: 100%; max-width: 100%; }
+@media (min-width: 1024px) {
+    .command-search {
+        width: clamp(220px, 28vw, 420px);
+        justify-self: start;
+    }
+}
 .command-actions { grid-area: actions; }
 
 .command-title {
