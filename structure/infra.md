@@ -131,6 +131,13 @@ the cmd shim or direct Node entry point instead.
 
 ### Direct smoke utilities
 
+`test.yml`의 `windows-unit`은 기존 Windows 서비스·설치·실행 검사에 더해
+`claude-sdk-windows-launch`, `claude-sdk-session`, `claude-sdk-control`,
+`claude-sdk-core-hardening`, `claude-sdk-deferred-core`의 명시적 테스트 파일을 실행한다.
+SDK query와 프로세스 경계는 fixture로 격리하며, macOS에서 같은 파일을 실행한 결과는
+실제 Windows job의 성공 증거를 대신하지 않는다. 기존 10개 파일·Node 22·aggregate
+검증과 code-change skip 거부 조건은 유지한다.
+
 #### 테스트 격리는 프로세스 단위지 DB 단위가 아니다
 
 `tests/run.mts` 는 `isolation:'process'` 로 파일마다 자식 프로세스를 띄우지만, **모든
@@ -143,8 +150,9 @@ the cmd shim or direct Node entry point instead.
 - `src/core/db.ts` 의 `journal_mode = WAL` + `busy_timeout = 5000`. WAL 에서 리더는
   라이터를 막지 않으므로 평범한 동시 접근은 잠금이 되지 않는다.
 - 파일별 opt-in 격리 `tests/setup/isolated-home.ts`. 이건 좁고 구체적인 위험
-  — `isAlive` 를 스텁한 전역 파괴적 sweep 이 다른 프로세스의 행을 지우는 경우 —
-  에만 필요하며, DB 를 여는 파일 전부가 아니라 그런 sweep 을 하는 파일만 넣는다.
+  — `isAlive` 를 스텁한 전역 파괴적 sweep 이 다른 프로세스의 행을 지우거나,
+  session singleton을 sentinel로 교체·복원하는 검사가 다른 파일을 덮는 경우 —
+  에만 필요하며, DB 를 여는 파일 전부가 아니라 이런 공유 상태 위험이 있는 파일에 넣는다.
 
 로그에서 `database is locked` 를 봤다고 곧장 경합이라고 결론내지 말 것.
 `tests/unit/memory-search-provider.test.ts` 는 `BEGIN IMMEDIATE` 를 4.2초 잡는 자식을

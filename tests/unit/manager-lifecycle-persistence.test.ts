@@ -1,8 +1,10 @@
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { setImmediate as checkpoint } from 'node:timers/promises';
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DashboardLifecycleManager } from '../../src/manager/lifecycle.js';
@@ -34,6 +36,31 @@ class FakeChild extends EventEmitter {
 
 function tmpRoot(): string {
     return mkdtempSync(join(tmpdir(), 'jaw-persist-test-'));
+}
+
+// Synchronous prune methods intentionally schedule persistence. Observe the
+// public promises, not the store's caught internal queue, before removing roots.
+function capturePersistence(t: TestContext): () => Promise<void> {
+    const pending: Promise<void>[] = [];
+    for (const method of ['save', 'deleteMarker'] as const) {
+        const original = LifecycleStore.prototype[method];
+        t.mock.method(LifecycleStore.prototype, method, function (this: LifecycleStore, ...args: unknown[]) {
+            const operation = Reflect.apply(original, this, args) as Promise<void>;
+            pending.push(operation);
+            return operation;
+        });
+    }
+    return async () => {
+        let seen = 0;
+        const failures: unknown[] = [];
+        while (seen < pending.length) {
+            const batch = pending.slice(seen); seen = pending.length;
+            for (const result of await Promise.allSettled(batch)) {
+                if (result.status === 'rejected') failures.push(result.reason);
+            }
+        }
+        if (failures.length) throw new AggregateError(failures, 'Fixture persistence failed');
+    };
 }
 
 function makeOnline(port: number): DashboardInstance {
@@ -390,7 +417,8 @@ test('stopAll on hydrated detached registry sends SIGTERM and prunes persisted s
 
 test('activeEntry prunes detached entry whose PID is gone', async (t) => {
     const root = tmpRoot();
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const drain = capturePersistence(t);
+    t.after(async () => { try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); } });
     const home = join(root, '.cli-jaw-3458');
     await plantPersistedEntry(root, 3458, 99030, 'l'.repeat(32), home);
     let alive = true;
@@ -413,7 +441,8 @@ test('activeEntry prunes detached entry whose PID is gone', async (t) => {
 
 test('decorateScanResult prunes detached entry when scan reports offline', async (t) => {
     const root = tmpRoot();
-    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const drain = capturePersistence(t);
+    t.after(async () => { try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); } });
     const home = join(root, '.cli-jaw-3458');
     await plantPersistedEntry(root, 3458, 99040, 'm'.repeat(32), home);
     const manager = new DashboardLifecycleManager({
@@ -431,6 +460,81 @@ test('decorateScanResult prunes detached entry when scan reports offline', async
     });
     assert.equal(result.instances[0]?.lifecycle?.owner, 'none');
     assert.equal(result.instances[0]?.lifecycle?.canStart, true);
+});
+
+for (const first of ['write', 'delete'] as const) test(`fixture drain waits for both real operations when ${first} finishes first`, async t => {
+    const root = tmpRoot(), home = join(root, 'home');
+    const drain = capturePersistence(t);
+    let releaseWrite!: () => void, releaseDelete!: () => void;
+    let enteredWrite!: () => void, enteredDelete!: () => void, gated = false;
+    const writeGate = new Promise<void>(resolve => { releaseWrite = resolve; });
+    const deleteGate = new Promise<void>(resolve => { releaseDelete = resolve; });
+    const writing = new Promise<void>(resolve => { enteredWrite = resolve; });
+    const deleting = new Promise<void>(resolve => { enteredDelete = resolve; });
+    t.after(async () => {
+        releaseWrite(); releaseDelete();
+        try { await drain(); } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+    const store = new LifecycleStore({ managerPort: MGR, storageRoot: root, fsImpl: {
+        mkdir, readFile, rename, existsSync,
+        writeFile: async (...args: Parameters<typeof writeFile>) => {
+            if (gated) { enteredWrite(); await writeGate; }
+            return writeFile(...args);
+        },
+        rm: async (...args: Parameters<typeof rm>) => { enteredDelete(); await deleteGate; return rm(...args); },
+    } });
+    await store.writeMarker(home, { schemaVersion: 1, managedBy: 'cli-jaw-dashboard', managerPort: MGR,
+        port: 3458, pid: 99030, token: 'fixture-token', startedAt: '2026-09-07T00:00:00Z' });
+    gated = true;
+    const saved = store.save([]), removed = store.deleteMarker(home);
+    let drained = false;
+    const waiting = drain().then(() => { drained = true; });
+    await Promise.all([writing, deleting]);
+    assert.equal(drained, false);
+    if (first === 'write') { releaseWrite(); await saved; }
+    else { releaseDelete(); await removed; }
+    await checkpoint(); // Let a prematurely completed drain publish its result.
+    assert.equal(drained, false, 'the other real filesystem operation is still pending');
+    assert.equal(existsSync(root), true);
+    releaseWrite(); releaseDelete(); await waiting;
+    assert.equal(drained, true);
+    assert.deepEqual((await store.load()).entries, []);
+    assert.equal(existsSync(join(home, '.dashboard-managed.json')), false);
+});
+
+test('fixture drain collects failures only after every public persistence operation settles', async t => {
+    const root = tmpRoot(), home = join(root, 'home');
+    const drain = capturePersistence(t);
+    let failWrites = false, releaseDelete!: () => void;
+    const deleteGate = new Promise<void>(resolve => { releaseDelete = resolve; });
+    const writeFailure = new Error('fixture write failed');
+    const store = new LifecycleStore({ managerPort: MGR, storageRoot: root, fsImpl: {
+        mkdir, readFile, rename, existsSync,
+        writeFile: async (...args: Parameters<typeof writeFile>) => {
+            if (failWrites) throw writeFailure;
+            return writeFile(...args);
+        },
+        rm: async () => { await deleteGate; throw 0; },
+    } });
+    let waiting: Promise<unknown> | undefined;
+    t.after(async () => {
+        releaseDelete();
+        try { await waiting; } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+    await store.writeMarker(home, { schemaVersion: 1, managedBy: 'cli-jaw-dashboard', managerPort: MGR,
+        port: 3458, pid: 99030, token: 'fixture-token', startedAt: '2026-09-07T00:00:00Z' });
+    failWrites = true;
+    const saved = store.save([]);
+    void store.deleteMarker(home); // drain attaches to the exact returned promise.
+    let settled = false;
+    waiting = drain().then(() => { settled = true; return null; }, error => { settled = true; return error; });
+    await assert.rejects(saved, /fixture write failed/);
+    await checkpoint();
+    assert.equal(settled, false, 'one failure cannot skip the other pending operation');
+    releaseDelete();
+    const error = await waiting;
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [writeFailure, 0]);
 });
 
 test('concurrent start(port) calls only spawn one child (per-port lock)', async (t) => {
