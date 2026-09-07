@@ -1,5 +1,6 @@
-import test, { mock } from 'node:test';
+import test, { mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createClaudeProcessOwner } from '../../src/agent/runtime/claude-sdk-process.ts';
 // Session recording is injected below; do not initialize a real shared SQLite.
 mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
@@ -39,6 +40,56 @@ async function fixture(extra: Record<string, unknown> = {}) {
         context(value: typeof context) { context = value; } };
 }
 const result = (text: unknown = 'answer') => ({ type: 'result', subtype: 'success', is_error: false, result: text, session_id: 'native', usage: { input_tokens: 3, output_tokens: 4 } });
+
+const heldChildOptions = () => ({ command: process.execPath,
+    args: ['-e', "process.stdout.write('SDK_CHILD_READY\\n'); process.stdin.on('data', data => { if (data.toString().trim() === 'PING') process.stdout.write('SDK_CHILD_PONG\\n'); }); setInterval(()=>{},1000);"],
+    env: process.env, signal: new AbortController().signal });
+
+function trackHeldChild(t: TestContext, child: ChildProcessWithoutNullStreams) {
+    let buffer = '', bytes = 0, failure: Error | undefined;
+    const lines: string[] = [];
+    let pending: { expected: string; resolve(): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> } | undefined;
+    const pump = () => {
+        if (!pending || (!failure && lines.length === 0)) return;
+        const waiting = pending; pending = undefined; clearTimeout(waiting.timer);
+        const line = lines.shift();
+        if (failure) waiting.reject(failure);
+        else if (line !== waiting.expected) waiting.reject(new Error(`Unexpected held-child marker: ${line}`));
+        else waiting.resolve();
+    };
+    child.stdout.on('data', (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 4096) { failure = new Error('Held-child output exceeded bound'); pump(); return; }
+        buffer += chunk.toString();
+        while (buffer.includes('\n')) {
+            const at = buffer.indexOf('\n'); lines.push(buffer.slice(0, at)); buffer = buffer.slice(at + 1);
+        }
+        pump();
+    });
+    child.once('error', error => { failure = error; pump(); });
+    const closed = new Promise<void>(resolve => child.once('close', () => {
+        failure ??= new Error('Held child closed before requested marker'); pump(); resolve();
+    }));
+    t.after(async () => {
+        if (pending) { clearTimeout(pending.timer); pending = undefined; }
+        // This fixed Node fixture creates no descendants. Fallback cleanup must
+        // not let a failed owner assertion strand it; it never makes the test pass.
+        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([closed, new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('Held child cleanup did not close')), 10_000);
+            })]);
+        } finally { clearTimeout(timer); }
+    });
+    return { closed, expectLine(expected: string) {
+        assert.equal(pending, undefined, 'one held-child observation at a time');
+        return new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => { pending = undefined; reject(new Error('Held-child marker deadline')); }, 10_000);
+            pending = { expected, resolve, reject, timer }; pump();
+        });
+    } };
+}
 
 test('one reader and query serve sequential turns with captured jaw identity', async t => {
     const f = await fixture(); t.after(() => f.session.close());
@@ -123,22 +174,41 @@ test('custom child drains stderr beyond pipe capacity and observes actual exit',
     child.stdout.resume(); await owner.wait();
     assert.equal(child.exitCode, 0); assert.equal(owner.activeCount, 0); assert.equal(owner.stderrBytes, 1024 * 1024);
 });
-test('custom child termination waits for exit, not killed flag', async () => {
+test('custom child termination waits for exit, not killed flag', { timeout: 15_000 }, async t => {
     const owner = createClaudeProcessOwner();
-    const child = owner.spawn({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),2000)'],
-        env: process.env, signal: new AbortController().signal });
-    child.stdout.resume(); owner.terminate(); await owner.wait();
-    assert.equal(owner.activeCount, 0); assert.notEqual(child.exitCode, 23); assert.ok(child.exitCode !== null || child.signalCode !== null);
+    const child = owner.spawn(heldChildOptions());
+    const observed = trackHeldChild(t, child);
+    await observed.expectLine('SDK_CHILD_READY');
+    owner.terminate();
+    assert.equal(owner.activeCount, 1, 'termination request is not observed process close');
+    await owner.wait();
+    assert.equal(owner.activeCount, 0);
+    assert.ok(child.exitCode !== null || child.signalCode !== null);
+    await observed.closed;
 });
-test('query factory error after child spawn retires only its created child', async () => {
-    let child;
-    await assert.rejects(fixture({ queryFactory: ({ options }) => {
-        child = options.spawnClaudeCodeProcess({ command: process.execPath, args: ['-e', 'setTimeout(()=>process.exit(23),2000)'],
-            env: process.env, signal: new AbortController().signal });
+test('query factory error after child spawn retires only its created child', { timeout: 15_000 }, async t => {
+    const foreignOwner = createClaudeProcessOwner();
+    const foreign = foreignOwner.spawn(heldChildOptions());
+    const foreignObserved = trackHeldChild(t, foreign);
+    await foreignObserved.expectLine('SDK_CHILD_READY');
+    let child: ChildProcessWithoutNullStreams | undefined;
+    let observed: ReturnType<typeof trackHeldChild> | undefined;
+    await assert.rejects(fixture({
+        // Real process cleanup uses production's 5000ms default, not the 100ms
+        // budget for in-memory fake readers. Windows has a real 2000ms grace.
+        closeTimeoutMs: undefined,
+        queryFactory: ({ options }) => {
+        child = options.spawnClaudeCodeProcess(heldChildOptions());
+        observed = trackHeldChild(t, child);
         throw new Error('factory failure');
     } }), /factory failure/);
+    assert.ok(child); assert.ok(observed);
     assert.ok(child.exitCode !== null || child.signalCode !== null);
-    assert.notEqual(child.exitCode, 23);
+    await observed.closed;
+    foreign.stdin.write('PING\n');
+    await foreignObserved.expectLine('SDK_CHILD_PONG');
+    assert.equal(foreign.exitCode, null); assert.equal(foreign.signalCode, null);
+    assert.equal(foreignOwner.activeCount, 1, 'failed factory owns no sibling process');
 });
 test('turn-start observer can revoke ownership before input offer', async () => {
     let current = true;
