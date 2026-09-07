@@ -1,6 +1,7 @@
 import test, { mock, type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ClaudeTurnContext } from '../../src/agent/runtime/claude-sdk-session.ts';
 import { createClaudeProcessOwner } from '../../src/agent/runtime/claude-sdk-process.ts';
 // Session recording is injected below; do not initialize a real shared SQLite.
 mock.module('../../src/trace/activity-journal.js', { namedExports: { appendActivityBody: () => null, markActivityFailure: () => {} } });
@@ -40,6 +41,74 @@ async function fixture(extra: Record<string, unknown> = {}) {
         context(value: typeof context) { context = value; } };
 }
 const result = (text: unknown = 'answer') => ({ type: 'result', subtype: 'success', is_error: false, result: text, session_id: 'native', usage: { input_tokens: 3, output_tokens: 4 } });
+
+test('session-created hook exposes the owner before the query factory can fail', async () => {
+    const order: string[] = [];
+    await assert.rejects(fixture({
+        onSessionCreated(session: Awaited<ReturnType<typeof createClaudeSdkSession>>) {
+            order.push('registered'); assert.equal(session.alive, false); assert.equal(session.activeProcessCount, 0);
+        },
+        queryFactory() { order.push('factory'); throw new Error('fixture_start_failed'); },
+    }), /fixture_start_failed/);
+    assert.deepEqual(order, ['registered', 'factory']);
+});
+
+test('native session ID callback precedes result metadata and excludes child and invalid init frames', async t => {
+    const observed: Array<{ context: Readonly<ClaudeTurnContext> | null; id: string }> = [];
+    let initialized!: () => void;
+    const ready = new Promise<void>(resolve => { initialized = resolve; });
+    const f = await fixture({ onNativeSessionId(context: Readonly<ClaudeTurnContext> | null, id: string) {
+        assert.equal(f.session.nativeSessionId, id);
+        observed.push({ context, id }); initialized();
+    } });
+    t.after(() => f.session.close());
+    let settled = false;
+    const pending = f.session.send({ text: 'one' }, () => {}).then(value => { settled = true; return value; });
+    f.output.push({ type: 'system', subtype: 'init', session_id: 'child', parent_tool_use_id: 'unknown-child', permissionMode: 'default' });
+    f.output.push({ type: 'system', subtype: 'init', session_id: '', permissionMode: 'default' });
+    f.output.push({ type: 'system', subtype: 'init', session_id: 'native', permissionMode: 'default' });
+    await ready;
+    assert.equal(settled, false); assert.deepEqual(f.metadata, []);
+    assert.deepEqual(observed.map(entry => entry.id), ['native']);
+    assert.equal(observed[0]?.context?.turnId, 'turn1');
+    f.output.push(result('answer'));
+    assert.equal((await pending).finalText, 'answer'); assert.equal(f.metadata.length, 1);
+    assert.equal(observed.length, 1, 'terminal metadata is a separate existing callback');
+});
+
+test('idle valid root init reports null context while idle child init remains private', async t => {
+    const observed: Array<{ context: Readonly<ClaudeTurnContext> | null; id: string }> = [];
+    let initialized!: () => void;
+    const ready = new Promise<void>(resolve => { initialized = resolve; });
+    const f = await fixture({ onNativeSessionId(context: Readonly<ClaudeTurnContext> | null, id: string) {
+        observed.push({ context, id }); initialized();
+    } });
+    t.after(() => f.session.close());
+    f.output.push({ type: 'system', subtype: 'init', session_id: 'child', parent_tool_use_id: 'stale-child', permissionMode: 'default' });
+    f.output.push({ type: 'system', subtype: 'init', session_id: 'idle-native', permissionMode: 'default' });
+    await ready;
+    assert.deepEqual(observed, [{ context: null, id: 'idle-native' }]);
+    assert.equal(f.session.nativeSessionId, 'idle-native'); assert.equal(f.contextReads, 0);
+});
+
+for (const invalid of ['stale-owner', 'wrong-correlation', 'wrong-policy'] as const) {
+    test(`native session ID callback cannot escape ${invalid} init admission`, async t => {
+        let current = true;
+        const ids: string[] = [];
+        const f = await fixture({
+            getTurnContext: () => ({ runId: 'r', sessionId: 'j', scope: 's', turnId: 't', audience: 'internal', isCurrent: () => current }),
+            onNativeSessionId(_context: Readonly<ClaudeTurnContext> | null, id: string) { ids.push(id); },
+        });
+        t.after(() => f.session.close());
+        const pending = f.session.send({ text: 'one' }, () => {});
+        if (invalid === 'stale-owner') current = false;
+        f.output.push({ type: 'system', subtype: 'init', session_id: 'foreign-native',
+            permissionMode: invalid === 'wrong-policy' ? 'bypassPermissions' : 'default',
+            ...(invalid === 'wrong-correlation' ? { user_message_uuid: 'foreign-message' } : {}) });
+        assert.equal((await pending).status, 'error');
+        assert.deepEqual(ids, []); assert.equal(f.session.nativeSessionId, '');
+    });
+}
 
 const heldChildOptions = () => ({ command: process.execPath,
     args: ['-e', "process.stdout.write('SDK_CHILD_READY\\n'); process.stdin.on('data', data => { if (data.toString().trim() === 'PING') process.stdout.write('SDK_CHILD_PONG\\n'); }); setInterval(()=>{},1000);"],

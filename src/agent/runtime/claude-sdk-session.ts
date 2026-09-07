@@ -33,6 +33,8 @@ export interface ClaudeSessionOptions {
     signal?: AbortSignal;
     deferTurnEnd?: boolean;
     onMetadata?(context: Readonly<ClaudeTurnContext>, metadata: ClaudeResultMetadata): void;
+    onNativeSessionId?(context: Readonly<ClaudeTurnContext> | null, id: string): void;
+    onSessionCreated?(session: ClaudeSdkSession): void;
     queryFactory?(input: { prompt: AsyncIterable<SDKUserMessage>; options: Options }): ClaudeQuery;
     record?(context: RuntimeEventContext, body: RuntimeEventBody): RuntimeEvent | null;
     transcript?(context: RuntimeEventContext): RuntimeTranscriptObserver;
@@ -304,7 +306,15 @@ export class ClaudeSdkSession implements NativeRuntimeSession {
                     && raw['permissionMode'] !== 'default') { this.fail('claude_safe_mode_not_confirmed'); break; }
                 if (raw['type'] === 'system' && raw['subtype'] === 'init') {
                     const id = raw['session_id'];
-                    if (typeof id === 'string' && id && id.length <= 1024) this.id = id;
+                    if (typeof id === 'string' && id && id.length <= 1024) {
+                        this.id = id;
+                        if (this.options.onNativeSessionId) {
+                            try { this.options.onNativeSessionId(turn?.context ?? null, id); }
+                            catch { console.warn('[claude-native] native_session_id_observer_failed'); }
+                            if (this.closing || this.turn !== turn) continue;
+                            if (turn && !this.current(turn.context)) { this.fail('claude_owner_stale'); break; }
+                        }
+                    }
                 }
                 if (typeof resultId === 'string') {
                     if (this.terminalIds.size >= 512) { this.fail('claude_terminal_capacity'); break; }
@@ -394,6 +404,10 @@ export async function createClaudeSdkSession(options: ClaudeSessionOptions): Pro
     const factory = captured.queryFactory ?? (await loadClaudeSdk()).query;
     if (captured.signal?.aborted) throw new Error('claude_acquire_aborted');
     const session = new ClaudeSdkSession(captured);
+    if (captured.onSessionCreated) {
+        try { captured.onSessionCreated(session); }
+        catch (error) { await session.close(); throw error; }
+    }
     await session.start(factory);
     if (captured.signal?.aborted) { await session.close(); throw new Error('claude_acquire_aborted'); }
     if (!session.alive) { await session.close(); throw new Error(session.lastError ?? 'claude_acquire_failed'); }
