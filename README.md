@@ -856,6 +856,8 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt cont
 
 Desktop QA has an explicit [isolated launch profile](structure/infra.md#isolated-desktop-qa): fixed task-owned homes and ports, no global app registration or Manager lifecycle actions. It requires a prepared, scrubbed launch environment; it is not a sandbox for arbitrary commands or proof that a packaged artifact passed QA.
 
+Sidecar builds use [owned staging and target-runtime smoke checks](structure/infra.md#sidecar-build-and-smoke-ownership). Failed builds retain evidence rather than overwriting unknown output; a skipped or timed-out smoke is not verification.
+
 ---
 
 ## How It Compares

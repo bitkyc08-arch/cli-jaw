@@ -49,7 +49,7 @@ Activity persistence uses the existing SQLite trace tables: nullable `trace_runs
 | `gate:gate-docs` | `node scripts/release-gates.mjs gate-docs` — `structure/INDEX.md` must list exactly the live gates, with the right count, and each must have its `gate:<name>` npm script |
 | `gate:sidecar-prune-safety` | `node scripts/release-gates.mjs sidecar-prune-safety` — the sidecar prune list must never delete a package the server imports (a packaged app died on `node-fetch`) |
 | `gate:native-load` | `node scripts/release-gates.mjs native-load` — `node-pty` must actually `dlopen` and `spawn-helper` must genuinely execute. Needs `electron/node_modules`, so it reports `SKIPPED` (exit 3) when absent and only hard-fails under `JAW_GATE_REQUIRE_NATIVE=1`, which `desktop-release.yml` sets after `npm ci --prefix electron` |
-| `gate:sidecar-smoke` | `node scripts/release-gates.mjs sidecar-smoke` — critical sidecar modules must import from the bundled tree, not merely resolve. Reports `SKIPPED` (exit 3) with no bundle; hard-fails under `JAW_GATE_REQUIRE_SIDECAR=1` or when a caller passes `--server-root` explicitly, as `scripts/bundle-sidecar.sh` does right after bundling |
+| `gate:sidecar-smoke` | `node scripts/release-gates.mjs sidecar-smoke` — target Node executes a byte-verified isolated artifact copy; finite imports and server import/listener/HTTP/stop/close have separate checks. Default absent bundle is `SKIPPED` (exit 3), never verified; explicit `--server-root` or `JAW_GATE_REQUIRE_SIDECAR=1` requires a real artifact. `--report NEW_FILE` selects retained evidence outside the artifact. |
 | `scripts/pick-gyp-python.sh` | prints a `python3` that can `import distutils`, which node-gyp still requires; wired into `electron:dist:mac` because Homebrew Python 3.12+ breaks the node-pty rebuild |
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
@@ -191,6 +191,41 @@ PTY 도구는 설치된 Node/tsx/xterm과 Python 3 POSIX 표준 라이브러리�
 | Docker local source | `Dockerfile.dev` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
 | Compose | `docker-compose.yml` | 단일 `jaw` service, `${PORT:-3457}:3457`, `.env`, named volume `jaw-data` |
 
+### Sidecar build and smoke ownership
+
+`scripts/bundle-sidecar.sh <platform> <arch>` is a matching-host runtime-verified
+build, not implicit cross-compilation or release. It validates target/lockfile
+and output provenance before work, takes an exclusive `.server-build.lock`, and
+uses a unique source/dependency snapshot plus staging tree. Root backend build
+skips global-link lifecycle hooks but runs the existing compiled-asset checker
+explicitly; locked dependencies, prune, native-load and no-JWC checks remain.
+Original `dist` is not rebuilt in place. Relative contained source links retain
+their text; external/absolute links and unrecognized output refuse adoption.
+
+The smoke parent `scripts/check-sidecar-smoke.mjs` and child
+`scripts/sidecar-smoke-probe.mjs` execute the artifact's Node against the three
+fixed critical targets. The execution copy lives outside checkout dependency
+ancestors so missing packages cannot borrow repository `node_modules`. Copied
+module/binary identity, private IPC, actual primary listener and HTTP identity,
+bounded errors/output and physical close are checked. Controlled metadata
+commands retain a scrubbed environment; provider/credential probes are not
+authentication evidence. A timeout, non-module exception, unexpected delegation
+or uncertain cleanup is failure, not successful import.
+
+Smoke reports are exclusive, outside the input artifact, and durable before
+payload-home deletion; paired cleanup is separate. Default report directories
+are intentionally retained evidence. The original artifact remains unchanged.
+The bundler binds its runtime candidate through smoke and sealing, then promotes
+only a completed, locally fingerprinted output. `.jaw-sidecar-build.json` is
+local provenance/integrity metadata, not a cryptographic signature.
+
+Successful build snapshots/reports and actual previous-output backups remain
+available for inspection. Interrupted/failed work retains staging/extraction/
+lock when completion is uncertain; do not blindly remove a lock or signal old
+numeric PIDs. Cleanup failure after promotion is not a rollback. Final Electron
+QA must still test the builder-filtered `.app` resources and native UI; these
+gates alone do not certify live providers or every platform.
+
 ### Isolated desktop QA
 
 `CLI_JAW_ISOLATED_QA_ROOT` is an explicit controlled-launch profile, not a normal
@@ -202,7 +237,7 @@ pure on import and owns validation/construction; it does not initialize stores.
 
 | Fixed layout below canonical root R | Environment / role |
 | --- | --- |
-| `home`, `tmp` | `HOME`, `TMPDIR`; constructed `USERPROFILE=home` |
+| `home`, `tmp` | `HOME`, `TMPDIR`; constructed `USERPROFILE=home`, `TEMP=tmp`, `TMP=tmp` (Node on Windows uses TEMP/TMP) |
 | `xdg/config`, `xdg/cache`, `xdg/data`, `xdg/state` | Matching `XDG_*_HOME`; constructed `LOCALAPPDATA=xdg/cache`, `APPDATA=xdg/data` |
 | `worker`, `manager`, `dashboard` | Worker `CLI_JAW_HOME=worker`; Manager/Electron `CLI_JAW_HOME=manager`; `CLI_JAW_DASHBOARD_HOME=dashboard` |
 | `providers/codex`, `providers/claude`, `providers/pi` | `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, `PI_CODING_AGENT_DIR` |

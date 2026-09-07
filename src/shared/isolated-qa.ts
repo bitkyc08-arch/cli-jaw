@@ -26,7 +26,7 @@ const ROOTS = {
     XDG_DATA_HOME: 'xdg/data', XDG_STATE_HOME: 'xdg/state', CLI_JAW_DASHBOARD_HOME: 'dashboard',
     CODEX_HOME: 'providers/codex', CLAUDE_CONFIG_DIR: 'providers/claude', PI_CODING_AGENT_DIR: 'providers/pi',
 } as const;
-const WINDOWS_ROOTS = { USERPROFILE: 'home', APPDATA: 'xdg/data', LOCALAPPDATA: 'xdg/cache' } as const;
+const WINDOWS_ROOTS = { USERPROFILE: 'home', APPDATA: 'xdg/data', LOCALAPPDATA: 'xdg/cache', TEMP: 'tmp', TMP: 'tmp' } as const;
 // GUI/OS connection fields are admitted by the trusted supervisor, not recovered
 // from a login shell. No arbitrary prefix, provider credential or NODE_OPTIONS.
 const BOOTSTRAP_KEYS = ['PATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'COLORTERM',

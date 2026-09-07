@@ -57,6 +57,8 @@ for (const role of ['worker', 'manager', 'electron'] as const) {
         assert.equal(clean['USERPROFILE'], path.join(root, 'home'));
         assert.equal(clean['APPDATA'], path.join(root, 'xdg/data'));
         assert.equal(clean['LOCALAPPDATA'], path.join(root, 'xdg/cache'));
+        assert.equal(clean['TEMP'], path.join(root, 'tmp'));
+        assert.equal(clean['TMP'], path.join(root, 'tmp'));
         assert.deepEqual(readIsolatedQaPolicy(clean, role), policy, 'constructed environment must be admitted again');
     });
 }
@@ -114,7 +116,8 @@ test('worker PORT is explicit and cannot target manager', t => {
 });
 test('optional Windows profile roots must agree when supplied', t => {
     const { root, env } = fixture(t);
-    const values = { USERPROFILE: path.join(root, 'home'), APPDATA: path.join(root, 'xdg/data'), LOCALAPPDATA: path.join(root, 'xdg/cache') };
+    const values = { USERPROFILE: path.join(root, 'home'), APPDATA: path.join(root, 'xdg/data'), LOCALAPPDATA: path.join(root, 'xdg/cache'),
+        TEMP: path.join(root, 'tmp'), TMP: path.join(root, 'tmp') };
     assert.ok(readIsolatedQaPolicy({ ...env, ...values }, 'manager'));
     for (const key of Object.keys(values)) invalid(() => readIsolatedQaPolicy({ ...env, [key]: path.join(root, 'worker') }, 'manager'), key);
 });
