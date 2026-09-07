@@ -68,9 +68,11 @@ import {
     getCachedLatestMessage, type WorkerLatestData,
 } from './worker-events.js';
 import { openUrlInBrowser } from '../core/browser-open.js';
-import { ensureDirs, loadSettings } from '../core/config.js';
+import { ensureDirs, loadSettings, settings } from '../core/config.js';
 import { createJawCeoRouter } from '../routes/jaw-ceo.js';
 import { registerCodeRoutes } from '../routes/code.js';
+import { registerNativeCodeRoutes } from '../routes/code-native.js';
+import { createCodeHost } from '../code-mode/host.js';
 import { registerEventsRoutes } from '../routes/events.js';
 import type {
     DashboardInstance,
@@ -516,6 +518,12 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
 // and SSE stream on the manager server before the SPA fallback so Code mode
 // routes never resolve to index.html.
 registerCodeRoutes(app, (_req, _res, next) => next());
+const nativeCodeHost = createCodeHost({ home: dashboardHome, role: 'manager', port: () => {
+    const address = server.address();
+    return address && typeof address === 'object' ? address.port : port;
+},
+    maxConcurrentSessions: settings['code']?.['maxConcurrentSessions'], idleReapMs: settings['code']?.['idleReapMs'] });
+registerNativeCodeRoutes(app, (_req, _res, next) => next(), () => nativeCodeHost.get());
 registerEventsRoutes(app, (_req, _res, next) => next());
 registerManagerRuntimeMonitorRoutes(app, (_req, _res, next) => next());
 registerEmbeddedBrowserRoutes(app, (_req, _res, next) => next(), { scanFrom, scanCount, managerPort: port });
@@ -1022,6 +1030,8 @@ async function shutdownDashboard(mode?: 'full' | 'locked-skip'): Promise<void> {
     stopRemindersScheduler?.();
     noteWsServer.close();
     notesWatcher.close();
+    try { await nativeCodeHost.dispose(); }
+    catch { console.warn('[dashboard] Code runtime shutdown failed'); }
     await shutdown(mode ?? 'locked-skip');
 }
 

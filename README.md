@@ -15,6 +15,8 @@
 
 </div>
 
+The native Code API (`/api/code/native`) provides isolated Codex, Claude, Cursor, and Grok sessions with durable transcripts and native resume. It uses the installed CLIs and their existing logins. See [native Code sessions](structure/runtime-integration.md#native-code-sessions).
+
 ## Install
 
 <details>

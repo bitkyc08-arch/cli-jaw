@@ -2,6 +2,8 @@
 
 System-level AI agent with full computer control via CLI wrapping (pi, agy, ai-e, claude, claude-e, codex, codex-app, cursor, kiro-code, gemini, grok, opencode, copilot).
 
+Native Code API: `/api/code/native` is composed by `src/code-mode/host.ts` and `src/routes/code-native.ts`. Keep per-backend storage, captured turn ownership, full snapshots/compact replay, byte limits, native approval capabilities, and observed process-exit proof aligned with `structure/runtime-integration.md` and `server_api.md`. It uses direct native adapters rather than Jaw orchestration or its runtime pools.
+
 ## Repository Structure
 
 ```

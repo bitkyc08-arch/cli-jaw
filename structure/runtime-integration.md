@@ -318,3 +318,41 @@ grant deletion authority, and late close never upgrades a retained decision.
 These controls are not an arbitrary-process sandbox or aggregate pool/server
 shutdown certificate. Opaque wrappers and escaped descendants remain explicit
 limits; version output never enters Activity, MESSAGE or channel delivery.
+
+## Native Code sessions
+
+`src/code-mode/` owns the additive `/api/code/native` API. The host composes an
+injectable store, session manager, transcript normalizer and four direct native
+adapters: Codex app-server, Claude Agent SDK, Cursor ACP and Grok ACP. Each
+provider uses its installed CLI and existing login. Catalog availability means
+an executable was found; catalog reads do not start a native session or login.
+
+Each backend uses `code-<role>-<port>.sqlite` under its own home (worker JAW_HOME,
+Manager dashboard home). Storage/recovery initializes lazily after HTTP binding;
+a failed bind cannot recover another process's live rows. Canonical Code session
+IDs are separate from private native resume cursors. Metadata creation is inert;
+prompt admission transactionally records the key, user item and starting state
+before native work. A repeated key returns the existing receipt, and a changed
+payload under that key fails. Restart marks unfinished turns as orphaned without
+replaying prompts. Resume failure preserves history and never silently starts a
+contextless replacement.
+
+Healthy turns reuse their native handle when model/effort/policy are unchanged.
+Each operation captures session, turn, epoch and native handle ownership. Startup
+resources register before asynchronous setup and remain counted even if open
+rejects. Cancellation, cleanup deadlines and late exits cannot transfer ownership
+to a successor. `closed` means observed owned-resource exit/drain, not `killed` or
+logical disconnection. Claude native identity is recorded on validated root init,
+not deferred to the final result. Code approval policy is server-owned; available
+modes are provider-specific (Grok currently exposes Auto only).
+
+A pre-preview observer retains Code content independently of the bounded Jaw
+Activity projection. Embedded structured data is redacted before persistence;
+truncation is explicit. Materialized items remain complete. Sequence-ordered
+`code_item_update` events carry append suffixes or status/phase changes, while
+full replacements use `code_item`. Production coalesces intermediate content for
+50ms and flushes final/control changes. Replay and snapshots are byte-bounded;
+snapshots include the complete active turn or fail explicitly. Hard bounds are
+4MiB/event, 8MiB/replay or snapshot, 32MiB ordinary events/turn and a separate
+2MiB control/terminal reserve. Capacity errors settle as visible failed turns;
+real storage failures prevent success and preserve the last committed history.

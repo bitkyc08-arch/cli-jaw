@@ -74,7 +74,7 @@ graph LR
 | [str_func.md](str_func.md) | 전체 파일 트리 + 함수 시그니처 레퍼런스 | 파일트리, 함수, 마스터맵 |
 | [prompt_flow.md](prompt_flow.md) | 프롬프트가 조립되는 9단계 파이프라인 | 프롬프트, 파이프라인, 주입 |
 | [agent_spawn.md](agent_spawn.md) | CLI spawn + ACP 분기 + Pi RPC + AGY print-mode + Cursor stream-json + Claude E + Gemini + Grok + Kiro-code + Goal autonomy + 오케스트레이션 | spawn, ACP, Pi, AGY, Cursor, claude-e, Gemini, Grok, Kiro, Goal, 멀티에이전트 |
-| [runtime-integration.md](runtime-integration.md) | canonical Codex event/outcome foundation + codex-app/pi 상주 런타임 풀 + cancel 의미론 + exec-parity + 모델 발견 + pi rpc 판정 | runtime events, finality, runtime-pool, codex-app, Pi, opencodex |
+| [runtime-integration.md](runtime-integration.md) | canonical Codex event/outcome foundation + codex-app/pi 상주 런타임 풀 + cancel 의미론 + exec-parity + 모델 발견 + pi rpc 판정; native Code API/session store/compact replay | runtime events, finality, runtime-pool, codex-app, Pi, opencodex |
 | [memory_architecture.md](memory_architecture.md) | History Block + Flush + Advanced Runtime + Task Snapshot | 메모리, flush, runtime, snapshot |
 | [infra.md](infra.md) | config, db, bus, security 등 코어 모듈 + 릴리스 파이프라인(`preview → main → npm`)과 부분 실패·롤백 복구 절차 | 인프라, SQLite, EventBus, 릴리스, 롤백, dist-tag |
 | [commands.md](commands.md) | 55개 슬래시 커맨드(54 non-hidden; `/file`만 hidden) + workflow category(`/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/goal`, `/goalplan`, `/gd`, `/team`; 자동 실행은 `/goal run ...`) + root CLI 28개 cmdline-visible surface + 13개 CLI registry runtime | 커맨드, 디스패처, 레지스트리 |

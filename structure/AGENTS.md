@@ -2,6 +2,8 @@
 
 # structure/ — Sync Guide
 
+- Native Code: synchronize `runtime-integration.md`, `server_api.md`, `INDEX.md` and root guides for `src/code-mode/` and `/api/code/native`. Code uses separate per-backend storage and direct native adapters; preserve append/status replay, complete active snapshots, byte budgets, early resource registration and physical-exit proof.
+
 - Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `server_api.md`.
 
 - Sidecar build/smoke: sync `infra.md` and root notes for transactional source/stage/lock ownership, runtime-candidate/seal matching, outside-checkout target-Node execution, preserved asset/prune/native/no-JWC gates and explicit retained evidence/cleanup. Ordinary import, live server readiness and final packaged native UI are separate proofs; no timeout or skipped green.

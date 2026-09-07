@@ -2,6 +2,8 @@
 
 This repository is a Node.js ESM orchestration runtime for boss/employee dispatch, Web UI, browser/CDP automation, Telegram/Discord/Slack channels, memory, heartbeat, and PABCD orchestration.
 
+The additive `/api/code/native` API owns isolated Codex/Claude/Cursor/Grok sessions through `src/code-mode/host.ts`. Use its dedicated store, native adapters and captured turn/resource ownership; keep full snapshots, compact replay and byte limits synchronized with the runtime and API architecture docs.
+
 ## Documentation Map
 
 - Start at `structure/INDEX.md` for the current architecture map.
