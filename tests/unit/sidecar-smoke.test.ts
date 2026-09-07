@@ -164,8 +164,62 @@ for(const variant of ['nonce','pid','unknown','flood','oversized'] as const)test
         :variant==='unknown'?base.replace("kind:'imported'","kind:'unknown'")
         :variant==='oversized'?base.replace("kind:'imported'","kind:'error',error:'x'.repeat(40000)"):base;
     f.put('dist/src/telegram/bot.js',variant==='flood'?`for(let i=0;i<40;i++)process.send(${message});`:`process.send(${message});`);
-    const result=await f.run();assert.equal(result.ok,false);assert.ok(result.probes[0].issues.some(value=>/IPC|receipt/.test(value)));
-    if(variant==='flood'||variant==='oversized')assert.ok(result.probes[0].issues.includes('IPC bound/shape'));
+    const result=await f.run(),diagnostics=JSON.stringify({error:result.error,probes:result.probes});
+    assert.equal(result.ok,false,diagnostics);assert.ok(result.probes[0].issues.some(value=>/IPC|receipt/.test(value)),diagnostics);
+    if(variant==='flood'){
+        assert.ok(result.probes[0].issues.some(value=>value==='duplicate/invalid import receipt'||value==='IPC bound/shape'),diagnostics);
+        assert.equal(result.probes[0].closed,true,diagnostics);
+        assert.equal(result.probes[0].groupAbsent,process.platform==='win32'?null:true,diagnostics);
+    }
+    if(variant==='oversized')assert.ok(result.probes[0].issues.includes('IPC bound/shape'),diagnostics);
+});
+
+for(const packets of [32,33])test(`actual IPC handler rejects ${packets} synchronous receipts with exact count-bound behavior`,async t=>{
+    const f=fixture(t),spawn=childProcess.spawn;
+    // Keep the real import pending so its normal completion packet cannot
+    // contaminate this controlled batch. Production still owns child cleanup.
+    f.put('dist/src/telegram/bot.js','setInterval(()=>{},1000);await new Promise(()=>{});');
+    let spawns=0,targets=0,delivered=0,listeners=0,closed=false;
+    let target:ReturnType<typeof childProcess.spawn>|undefined;
+    try{
+        t.mock.method(childProcess,'spawn',(...args:Parameters<typeof childProcess.spawn>)=>{
+            const child=spawn(...args),[executable,argv]=args;
+            spawns++;
+            if(spawns===1&&Array.isArray(argv)&&argv.length===4
+                &&argv[0]===path.join(repo,'scripts/sidecar-smoke-probe.mjs')&&argv[2]==='telegram'
+                &&typeof argv[1]==='string'&&typeof argv[3]==='string'&&/^[a-f0-9]{48}$/.test(argv[3])
+                &&executable===path.join(argv[1],process.platform==='win32'?'node.exe':'node')){
+                targets++;target=child;
+                child.once('close',()=>{closed=true;});
+                const message={version:1,caseId:argv[2],nonce:argv[3],kind:'imported',
+                    pid:child.pid,node:process.version,executable};
+                queueMicrotask(()=>{
+                    listeners=child.listenerCount('message');
+                    if(listeners!==1||!child.pid)return;
+                    // One batch prevents cleanup from interleaving between
+                    // the duplicate receipt and the 33rd message.
+                    for(let i=0;i<packets;i++){child.emit('message',message);delivered++;}
+                });
+            }
+            return child;
+        });
+        syncBuiltinESMExports();
+        const result=await f.run(),row=result.probes[0];
+        const diagnostics=JSON.stringify({error:result.error,probes:result.probes,spawns,targets,delivered,listeners,closed});
+        assert.equal(targets,1,diagnostics);assert.equal(listeners,1,diagnostics);assert.equal(delivered,packets,diagnostics);
+        assert.equal(result.ok,false,diagnostics);assert.equal(result.code,1,diagnostics);
+        assert.ok(row,diagnostics);assert.equal(row.id,'telegram',diagnostics);assert.equal(row.pid,target?.pid,diagnostics);
+        assert.equal(row.imported,true,diagnostics);assert.equal(row.node,process.version,diagnostics);
+        assert.equal(row.executable,row.command[0],diagnostics);
+        assert.ok(row.issues.includes('duplicate/invalid import receipt'),diagnostics);
+        assert.equal(row.issues.includes('IPC bound/shape'),packets===33,diagnostics);
+        assert.equal(row.issues.includes('IPC identity'),false,diagnostics);
+        assert.equal(closed,true,diagnostics);assert.equal(row.closed,true,diagnostics);
+        assert.equal(row.groupAbsent,process.platform==='win32'?null:true,diagnostics);
+        assert.ok(row.portsAbsent.every(Boolean),diagnostics);
+    }finally{
+        t.mock.restoreAll();syncBuiltinESMExports();
+    }
 });
 
 test('outbound network, a non-loopback bind and wrong Manager health all fail before certification',async t=>{
