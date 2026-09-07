@@ -79,7 +79,7 @@ test('routes: /read rejects path traversal', async () => {
     const base = freshTmp();
     const home = join(base, '.cli-jaw-3457');
     mkdirSync(join(home, 'memory', 'structured'), { recursive: true });
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/api/dashboard/memory/read?instance=3457&path=${encodeURIComponent('../../etc/passwd')}`);
         assert.ok([400, 404].includes(res.status), `unexpected status ${res.status}`);
@@ -94,7 +94,7 @@ test('routes: /read rejects symlinks (symlink_forbidden)', async () => {
     const decoy = join(base, 'outside.md');
     writeFileSync(decoy, '# secret');
     symlinkSync(decoy, join(memDir, 'evil.md'));
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/api/dashboard/memory/read?instance=3457&path=evil.md`);
         assert.equal(res.status, 400);
@@ -109,7 +109,7 @@ test('routes: /read rejects non-md extension', async () => {
     const memDir = join(home, 'memory', 'structured');
     mkdirSync(memDir, { recursive: true });
     writeFileSync(join(memDir, 'index.sqlite'), '');
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/api/dashboard/memory/read?instance=3457&path=index.sqlite`);
         assert.equal(res.status, 400);
@@ -124,7 +124,7 @@ test('routes: /read reads valid .md file', async () => {
     const memDir = join(home, 'memory', 'structured');
     mkdirSync(memDir, { recursive: true });
     writeFileSync(join(memDir, 'profile.md'), '# Profile\n\nContent.');
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/api/dashboard/memory/read?instance=3457&path=profile.md`);
         assert.equal(res.status, 200);
@@ -137,7 +137,7 @@ test('routes: /instances returns shape', async () => {
     const base = freshTmp();
     const home = join(base, '.cli-jaw-3457');
     mkdirSync(home);
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(`http://127.0.0.1:${srv.port}/api/dashboard/memory/instances`);
         assert.equal(res.status, 200);
@@ -229,7 +229,7 @@ test('FED-12b: a real default /chat/search hit carries no session field', async 
         ).run('fed12buniquetoken row');
     } finally { db.close(); }
 
-    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home }]);
+    const srv = await startServer(async () => [{ port: 3457, profileId: null, homeDisplay: home, ok: true }]);
     try {
         const res = await fetch(
             `http://127.0.0.1:${srv.port}/api/dashboard/memory/chat/search?q=fed12buniquetoken`,
