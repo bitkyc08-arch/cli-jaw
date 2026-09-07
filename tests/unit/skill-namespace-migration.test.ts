@@ -273,52 +273,23 @@ test('SNM-014: a correct compat link is stable across passes', () => {
     });
 });
 
-// The desktop app ships its own CommonJS copy of this migration. It cannot be
-// imported (it runs as a process and needs packaging assets absent from a
-// source checkout), and it has drifted before — its default set was 14 of 17
-// ids. These pin the invariants that actually bit us, the same way
-// desktop-control-skill-contract.test.ts pins the shipped skill.
-const CJS = fs.readFileSync(join(
-    import.meta.dirname, '..', '..',
-    'electron/sidecar/jawcode/packages/jwc/scripts/bootstrap-cli-jaw-home.cjs',
-), 'utf8');
-
-test('SNM-015: the Electron migrator does the reference tree, and does it first', () => {
-    assert.match(CJS, /function migrateRefNamespace\(\)/,
-        'a legacy reference tree re-creates legacy active dirs forever');
-    const call = CJS.indexOf('migrateRefNamespace();');
-    const activeLoop = CJS.indexOf('for (const [legacyId, canonicalId] of LEGACY_SKILL_ALIASES) {', call);
-    assert.ok(call > 0 && activeLoop > call,
-        'the reference tree must be migrated before the active tree');
+// The retired Electron CJS bootstrap is no longer a migration owner. The
+// surviving TS filesystem scenarios above and below retain that contract.
+test('SNM-015: the retired Electron migration bootstrap is absent', () => {
+    const bootstrap = join(import.meta.dirname, '..', '..',
+        'electron/sidecar/jawcode/packages/jwc/scripts/bootstrap-cli-jaw-home.cjs');
+    assert.throws(() => fs.lstatSync(bootstrap), { code: 'ENOENT' });
 });
 
-test('SNM-016: the Electron migrator refuses a borrowed reference tree', () => {
-    const body = CJS.slice(CJS.indexOf('function migrateRefNamespace()'));
-    assert.match(body.slice(0, 700), /isSymbolicLink\(\)\) return;/,
-        'migrating through a symlinked skills_ref writes into another home');
-});
-
-test('SNM-017: the Electron migrator renames rather than always backing up', () => {
-    assert.match(CJS, /legacy skill migrated: \$\{legacyId\} -> \$\{canonicalId\}/,
-        'always backing up empties the active tree and strands in-place edits');
-    assert.match(CJS, /function canonicalIsBlocked\(/);
-    assert.match(CJS, /function isOwnedCompatLink\(/,
-        'a link pointing outside the tree belongs to the user');
-});
-
-test('SNM-018: the Electron migrator resolves link targets instead of string-comparing', () => {
-    assert.match(CJS, /function linkPointsAt\(/);
-    assert.doesNotMatch(CJS, /current === canonicalId/,
-        'a Windows junction reads back absolute, so a literal compare churns every pass');
-});
-
-test('SNM-019: the Electron default set matches the runtime active set', () => {
-    // It shipped with 14 of 17, so the desktop app activated 27 skills where
-    // the CLI activated 30.
-    const base = CJS.slice(CJS.indexOf('const BASE_AUTO_ACTIVATE'), CJS.indexOf(']);', CJS.indexOf('const BASE_AUTO_ACTIVATE')));
-    const ids = [...base.matchAll(/"(jaw-[a-z-]+)"/g)].map(m => m[1]).sort();
-    const expected = [...CODEX_ACTIVE, ...OPENCLAW_ACTIVE].sort();
-    assert.deepEqual(ids, expected);
+test('SNM-019: the TS runtime owns the canonical default active sets', () => {
+    assert.deepEqual([...CODEX_ACTIVE].sort(), ['jaw-pdf']);
+    assert.deepEqual([...OPENCLAW_ACTIVE].sort(), [
+        'jaw-browser', 'jaw-memory', 'jaw-search',
+        'jaw-screen-capture', 'jaw-docx', 'jaw-xlsx', 'jaw-pptx', 'jaw-hwp',
+        'jaw-github', 'jaw-telegram-send', 'jaw-video', 'jaw-pdf-vision',
+        'jaw-diagram', 'jaw-structured-renderers', 'jaw-desktop-control',
+        'jaw-goal', 'jaw-calendar-reminders',
+    ].sort());
 });
 
 test('SNM-020: a user link aimed at another IN-TREE skill is still theirs', () => {
@@ -339,10 +310,20 @@ test('SNM-020: a user link aimed at another IN-TREE skill is still theirs', () =
     });
 });
 
-test('SNM-021: the Electron migrator clears a stray reference link', () => {
-    // TS removes it; CJS used to skip it, so the detector reported the same
-    // home pending forever.
-    assert.doesNotMatch(CJS, /if \(stat\.isSymbolicLink\(\) \|\| !stat\.isDirectory\(\)\) continue;/,
-        'a stray reference link must be removed, not skipped');
-});
+test('SNM-021: the TS migrator clears a stray reference link without touching its target', () => {
+    withBox(root => {
+        const home = makeHome(root, '.cli-jaw');
+        const owner = join(root, 'user-skills');
+        makeSkill(owner, 'browser', 'USER CONTENT\n');
+        const link = join(home, 'skills_ref', 'browser');
+        fs.symlinkSync(join(owner, 'browser'), link, 'junction');
 
+        assert.equal(hasPendingLegacySkillDirs(home), true);
+        const reports = migrateAllJawHomes(home);
+        assert.equal(reports.length, 1);
+        assert.deepEqual(reports[0]!.result.unlinked, ['skills_ref/browser']);
+        assert.throws(() => fs.lstatSync(link), { code: 'ENOENT' });
+        assert.equal(fs.readFileSync(join(owner, 'browser', 'SKILL.md'), 'utf8'), 'USER CONTENT\n');
+        assert.equal(hasPendingLegacySkillDirs(home), false);
+    });
+});

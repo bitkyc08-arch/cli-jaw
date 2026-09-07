@@ -11,6 +11,7 @@ import express from 'express';
 import ts from 'typescript';
 import { readIsolatedQaPolicy, isolatedQaEnvironment } from '../../src/shared/isolated-qa.js';
 import type { DashboardLifecycleAction, DashboardLifecycleResult, DashboardScanResult } from '../../src/manager/types.js';
+import type { CodeHostOptions } from '../../src/code-mode/host.js';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
@@ -163,6 +164,8 @@ async function managerFixture(t: TestContext, options: { normal?: boolean; corru
     const noop = () => undefined;
     const route = () => express.Router();
     const seen: string[] = [];
+    const nativeHostOptions: CodeHostOptions[] = [];
+    const nativeRegistrations: { app: express.Express; getHost: () => unknown; prefix: string }[] = [];
     let direct: (input: { action: string; port: number }) => Promise<{ ok: boolean; data: DashboardLifecycleResult }>;
     let server: http.Server | undefined;
     let listen: http.Server['listen'] | undefined;
@@ -180,7 +183,8 @@ async function managerFixture(t: TestContext, options: { normal?: boolean; corru
         server.listen = (() => { hit('listen'); return server; }) as http.Server['listen'];
         return server;
     } } });
-    stub('../core/config.js', { SETTINGS_PATH: join(f.root, 'manager/settings.json'), ensureDirs: () => hit('ensureDirs'), loadSettings: () => hit('loadSettings') });
+    stub('../core/config.js', { SETTINGS_PATH: join(f.root, 'manager/settings.json'), settings: { code: {} },
+        ensureDirs: () => hit('ensureDirs'), loadSettings: () => hit('loadSettings') });
     stub('./lifecycle.js', { DashboardLifecycleManager: class {
         constructor(readonly options: unknown) { hit('lifecycleConstructor'); }
         async hydrate() { hit('hydrate'); return { adopted: 0, pruned: 0 }; }
@@ -233,6 +237,19 @@ async function managerFixture(t: TestContext, options: { normal?: boolean; corru
     stub('./routes/runtime-monitor.js', { registerManagerRuntimeMonitorRoutes: noop });
     stub('./routes/embedded-browser.js', { registerEmbeddedBrowserRoutes: noop });
     stub('../routes/code.js', { registerCodeRoutes: noop });
+    stub('../routes/code-native.js', { registerNativeCodeRoutes: (app: express.Express,
+        _auth: express.RequestHandler, getHost: () => unknown, prefix: string) => {
+        hit('nativeRegistration');
+        nativeRegistrations.push({ app, getHost, prefix });
+    } });
+    stub('../code-mode/host.js', { createCodeHost: (options: CodeHostOptions) => {
+        hit('nativeHostConstructor');
+        nativeHostOptions.push(options);
+        return {
+            get: () => { hit('nativeHostGet'); throw new Error('FORBIDDEN NATIVE SESSION SENTINEL'); },
+            dispose: async () => { hit('nativeHostDispose'); },
+        };
+    } });
     stub('./memory/embedding/index.js', { VecStore: class {}, getVecDbPath: noop, createProvider: noop, syncAllInstances: noop });
     stub('../routes/jaw-ceo.js', { createJawCeoRouter: (deps: { runLifecycleAction: typeof direct }) => { direct = deps.runLifecycleAction; return route(); } });
 
@@ -280,8 +297,35 @@ async function managerFixture(t: TestContext, options: { normal?: boolean; corru
         }), signal: AbortSignal.timeout(2000) });
         return { status: response.status, body: await response.json() };
     };
-    return { ...f, registry, count, seen, error, request, direct: (action: string, port = 35482) => direct({ action, port }) };
+    return { ...f, registry, count, seen, error, request, nativeHostOptions, nativeRegistrations,
+        direct: (action: string, port = 35482) => direct({ action, port }) };
 }
+
+test('Manager registers the configured native Code host without acquiring a session', async t => {
+    for (const normal of [false, true]) {
+        await t.test(normal ? 'normal' : 'isolated QA', async child => {
+            const f = await managerFixture(child, { normal });
+            assert.equal(f.error, undefined);
+            assert.equal(f.count.ensureDirs, 1);
+            assert.equal(f.count.loadSettings, 1);
+            assert.equal(f.count.nativeHostConstructor, 1);
+            assert.equal(f.count.nativeRegistration, 1);
+            assert.equal(f.nativeHostOptions.length, 1);
+            const options = f.nativeHostOptions[0]!;
+            assert.equal(options.home, join(f.root, 'dashboard'));
+            assert.equal(options.role, 'manager');
+            assert.equal(typeof options.port, 'function');
+            assert.equal(options.maxConcurrentSessions, undefined);
+            assert.equal(options.idleReapMs, undefined);
+            assert.equal(f.nativeRegistrations.length, 1);
+            assert.equal(typeof f.nativeRegistrations[0]!.app, 'function');
+            assert.equal(typeof f.nativeRegistrations[0]!.getHost, 'function');
+            assert.equal(f.nativeRegistrations[0]!.prefix, '/api/code');
+            assert.equal(f.count.nativeHostGet, undefined);
+            assert.equal(f.count.nativeHostDispose, undefined);
+        });
+    }
+});
 
 test('Manager rejects malformed QA env and raw persisted ranges before body side effects', async t => {
     for (const options of [{ invalidEnv: true }, ...[0, 2, '1', null].map(count => ({ corrupt: { scan: { from: 35482, count } } })),
