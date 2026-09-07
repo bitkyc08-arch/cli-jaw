@@ -173,10 +173,11 @@ async function readJson(cycle: CycleState, path: string, limit: number): Promise
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8', { fatal: true });
         let bytes = 0, text = '';
+        let completed = false;
         try {
             for (;;) {
                 const part = await reader.read();
-                if (part.done) break;
+                if (part.done) { completed = true; break; }
                 bytes += part.value.byteLength;
                 requireFact(bytes <= limit, 'read_size_limit');
                 text += decoder.decode(part.value, { stream: true });
@@ -184,7 +185,7 @@ async function readJson(cycle: CycleState, path: string, limit: number): Promise
             text += decoder.decode();
             return JSON.parse(text) as unknown;
         } finally {
-            await reader.cancel().catch(() => {});
+            if (!completed) await reader.cancel().catch(() => {});
             reader.releaseLock();
         }
     } finally {
