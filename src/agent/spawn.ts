@@ -1763,7 +1763,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             // Non-fatal: the absolute Project root in Workspace Context remains authoritative.
         }
 
-        spawnCwd = cli === 'pi' ? piEmployeeTmp!.path : tmpDir;
+        spawnCwd = tmpDir;
         console.log(`[jaw:${agentLabel}] Employee isolated → ${tmpDir}`);
     }
 
