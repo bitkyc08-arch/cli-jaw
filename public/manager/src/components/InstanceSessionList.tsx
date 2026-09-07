@@ -89,7 +89,16 @@ export function InstanceSessionList(props: InstanceSessionListProps) {
         );
     }
 
-    const sessions = snapshot.data?.sessions ?? [];
+    if (snapshot.data === null) {
+        return (
+            <div className="instance-session-list" role="list" aria-label="Chat sessions">
+                <div className="instance-session-empty">Loading sessions…</div>
+            </div>
+        );
+    }
+
+    const sessions = snapshot.data.sessions;
+    if (sessions.length === 0) return null;
     const activeId = snapshot.data?.activeId ?? null;
 
     return (
@@ -125,7 +134,6 @@ export function InstanceSessionList(props: InstanceSessionListProps) {
                     </button>
                 );
             })}
-            {sessions.length === 0 && <div className="instance-session-empty">Loading sessions…</div>}
         </div>
     );
 }
