@@ -11,7 +11,7 @@
     color: var(--text-secondary);
 }
 
-.settings-field input:not([type="checkbox"]):not([type="file"]),
+.settings-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .settings-field textarea,
 .settings-field-select > select,
 .settings-select-trigger {
@@ -19,23 +19,19 @@
     min-height: 38px;
     border: 1px solid var(--border-subtle);
     border-radius: 7px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.42)),
-        var(--surface-raised);
+    background: var(--surface-raised);
     color: var(--text-primary);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.55),
-        0 1px 2px rgba(15, 23, 42, 0.05);
+    box-shadow: none;
     transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
-.settings-field input:not([type="checkbox"]):not([type="file"]),
+.settings-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .settings-field textarea,
 .settings-field-select > select {
     padding: 8px 10px;
 }
 
-.settings-field input:not([type="checkbox"]):not([type="file"]):hover:not(:disabled),
+.settings-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover:not(:disabled),
 .settings-field textarea:hover:not(:disabled),
 .settings-field-select > select:hover:not(:disabled),
 .settings-select-trigger:hover:not(:disabled) {
@@ -43,7 +39,7 @@
     background: var(--surface-base);
 }
 
-.settings-field input:not([type="checkbox"]):not([type="file"]):focus,
+.settings-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
 .settings-field textarea:focus,
 .settings-field-select > select:focus,
 .settings-select-trigger:focus-visible {
@@ -148,63 +144,6 @@
     margin: 4px 8px;
 }
 
-/* ── Dark mode: replace glass gradient with subtle dark glass (explicit dark + auto-dark) ── */
-[data-theme="dark"] .settings-field input:not([type="checkbox"]):not([type="file"]),
-[data-theme="dark"] .settings-field textarea,
-[data-theme="dark"] .settings-field-select > select,
-[data-theme="dark"] .settings-select-trigger {
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-        var(--surface-raised);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.04),
-        0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-[data-theme="dark"] .settings-field input:not([type="checkbox"]):not([type="file"]):focus,
-[data-theme="dark"] .settings-field textarea:focus,
-[data-theme="dark"] .settings-field-select > select:focus,
-[data-theme="dark"] .settings-select-trigger:focus-visible {
-    box-shadow:
-        0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
-}
-
-[data-theme="dark"] .settings-select-menu {
-    box-shadow:
-        0 8px 24px rgba(0, 0, 0, 0.5),
-        0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-@media (prefers-color-scheme: dark) {
-    [data-theme="auto"] .settings-field input:not([type="checkbox"]):not([type="file"]),
-    [data-theme="auto"] .settings-field textarea,
-    [data-theme="auto"] .settings-field-select > select,
-    [data-theme="auto"] .settings-select-trigger {
-        background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
-            var(--surface-raised);
-        box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.04),
-            0 1px 2px rgba(0, 0, 0, 0.3);
-    }
-
-    [data-theme="auto"] .settings-field input:not([type="checkbox"]):not([type="file"]):focus,
-    [data-theme="auto"] .settings-field textarea:focus,
-    [data-theme="auto"] .settings-field-select > select:focus,
-    [data-theme="auto"] .settings-select-trigger:focus-visible {
-        box-shadow:
-            0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent),
-            inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    }
-
-    [data-theme="auto"] .settings-select-menu {
-        box-shadow:
-            0 8px 24px rgba(0, 0, 0, 0.5),
-            0 2px 8px rgba(0, 0, 0, 0.3);
-    }
-}
-
 .settings-select-more {
     width: 100%;
     min-height: 28px;
@@ -274,3 +213,45 @@
         width: 100%;
     }
 }
+
+.settings-shell .settings-field, .settings-shell .dashboard-settings-row {
+    display:grid; grid-template-columns:minmax(0,1fr) minmax(160px,192px);
+    align-items:center; column-gap:32px; row-gap:4px; padding-block:12px; margin:0;
+    border:0; border-radius:0; background:transparent; box-shadow:none;
+}
+.settings-shell .settings-field-label, .settings-shell .dashboard-settings-row-heading { grid-column:1; grid-row:1; font-size:14px; font-weight:600; color:var(--text-primary); }
+.settings-shell .settings-field-description, .settings-shell .dashboard-settings-row-description { grid-column:1; grid-row:2; font-size:13px; line-height:1.45; color:var(--text-secondary); }
+.settings-shell .settings-field > :is(input,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:2; grid-row:1 / span 2; min-width:0; }
+.settings-shell .settings-field-error { grid-column:1 / -1; }
+.settings-shell .settings-select-menu { left:auto; right:0; width:min(100%,560px); }
+.settings-shell .settings-field :is(input:not([type=checkbox]),textarea), .settings-shell .settings-select-trigger { background:var(--surface-raised); box-shadow:none; }
+.settings-shell :is(button,input,textarea,select,summary):focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+@container (max-width:719px) {
+    .settings-shell .settings-field, .settings-shell .dashboard-settings-row { grid-template-columns:minmax(0,1fr); row-gap:12px; }
+    .settings-shell .settings-field > :is(input,textarea,button,.settings-field-row,.settings-chiplist-row,.settings-active-channel-options) { grid-column:1; grid-row:auto; }
+    .settings-shell .settings-field-description { grid-row:auto; }
+}
+@media (prefers-reduced-motion:reduce) { .settings-shell * { transition:none; animation:none; } }
+
+.settings-shell .dashboard-settings-row-main { min-width:0; }
+.settings-shell .dashboard-settings-row-control { grid-column:2; min-width:0; }
+.settings-shell .dashboard-settings-row-control > * { max-width:100%; }
+.settings-shell .settings-field-row input { min-width:0; }
+.settings-shell .settings-field :is(input,textarea) { box-sizing:border-box; }
+.settings-slack-setup { width:min(560px,92vw); max-height:85dvh; overflow:auto; color:var(--text-primary); background:var(--surface-base); border:1px solid var(--border-subtle); padding:24px; }
+.settings-slack-setup::backdrop { background:rgb(0 0 0 / 50%); }
+.settings-slack-setup fieldset { border:0; padding:0; display:grid; gap:12px; }
+.settings-slack-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:48px; }
+.settings-slack-setup label { display:grid; gap:8px; }
+.settings-slack-setup input { min-width:0; max-width:100%; }
+@container (max-width:719px) {
+    .settings-shell .dashboard-settings-row-control { grid-column:1; justify-content:flex-start; }
+    .settings-shell .settings-sidebar-item { padding:6px 10px; }
+}
+
+.settings-shell .settings-active-channel-options { display:flex; flex-wrap:wrap; gap:12px; }
+.settings-shell .settings-radio { display:inline-flex; align-items:center; gap:6px; }
+.settings-shell input:is([type=checkbox],[type=radio]) { width:16px; height:16px; min-height:0; margin:0; justify-self:start; }
+.settings-shell fieldset.settings-field { min-width:0; }
+.settings-shell fieldset.settings-field > legend { margin-bottom:8px; }
+.settings-sidebar-item { justify-content:flex-start; }

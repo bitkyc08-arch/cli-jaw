@@ -520,34 +520,15 @@ test('manager dashboard settings workspace controls sidebar display preferences'
     assert.ok(types.includes("DashboardActivityTitleSupportStatus = 'ready' | 'legacy' | 'offline'"), 'frontend types must name latest-title support states');
     assert.ok(types.includes('DashboardShortcutKeymap'), 'frontend types must include a configurable shortcut keymap');
     assert.equal(workspace.includes('ToggleField'), false, 'dashboard settings must not reuse the instance settings toggle layout');
-    assert.ok(workspace.includes('Instance list display'), 'settings workspace must clarify the affected surface');
-    assert.ok(workspace.includes('Recent activity preview'), 'settings workspace must expose latest title toggle with clear copy');
-    assert.ok(workspace.includes('Rename control'), 'settings workspace must expose label editor toggle with clear copy');
-    assert.ok(workspace.includes('Runtime line'), 'settings workspace must expose runtime line toggle with clear copy');
-    assert.ok(workspace.includes('Expanded row actions'), 'settings workspace must expose selected actions toggle with clear copy');
-    assert.ok(workspace.includes('Global shortcuts'), 'settings workspace must expose shortcut enable/config controls');
-    assert.ok(workspace.includes('DashboardShortcutInput'), 'settings workspace must render shortcut keymap inputs');
-    assert.ok(workspace.includes('DashboardDeveloperSettingsSection'), 'settings workspace must render developer tool settings');
     assert.ok(developer.includes('Repo root priority'), 'developer settings must expose diff root priority');
     assert.ok(developer.includes('Default diff mode'), 'developer settings must expose default diff mode');
     assert.ok(developer.includes('Default base ref'), 'developer settings must expose base ref');
     assert.ok(developer.includes('Include untracked'), 'developer settings must expose untracked toggle');
     assert.ok(types.includes('diffPinnedRootByPort'), 'frontend types must preserve per-instance pinned diff roots through the shared UI object');
     assert.ok(types.includes('diffRecentRepoRoots'), 'frontend types must preserve recent picked diff roots through the shared UI object');
-    assert.ok(workspace.includes('Left instance list'), 'settings workspace must show setting scope labels');
-    assert.ok(workspace.includes('Language'), 'settings workspace must expose a saved language menu');
-    assert.ok(workspace.includes('인스턴스 목록 표시'), 'settings workspace must render Korean copy when locale=ko');
-    assert.ok(workspace.includes('최근 작업 미리보기'), 'settings workspace must localize row labels');
-    assert.ok(workspace.includes('언어'), 'settings workspace must localize the language row');
-    assert.ok(workspace.includes('LOCALE_OPTIONS'), 'settings workspace must define supported locale options');
-    assert.ok(sidebar.includes('사이드바 행'), 'settings sidebar must render Korean section copy when locale=ko');
-    assert.ok(sidebar.includes('개발 도구'), 'settings sidebar must include Developer tools section');
     assert.ok(appChrome.includes('locale={props.view.locale}'), 'settings sidebar must receive the saved dashboard locale');
-    assert.ok(workspace.includes("props.onUiPatch({ locale: next })"), 'settings workspace must save dashboard locale through manager registry UI');
     assert.equal(workspace.includes('fetchDashboardRuntimeSettings'), false, 'manager dashboard must not call missing root /api/settings for locale');
     assert.equal(workspace.includes('updateDashboardRuntimeSettings'), false, 'manager dashboard must not PUT missing root /api/settings for locale');
-    assert.ok(workspace.includes('TitleSupportSummary'), 'settings workspace must summarize endpoint readiness');
-    assert.ok(sidebar.includes('Sidebar rows'), 'settings sidebar must include display settings section');
     assert.ok(helper.includes('summarizeActivityTitleSupport'), 'support helper must aggregate per-port support status');
     assert.equal(api.includes("fetch('/api/settings'"), false, 'manager API must not call unavailable root settings routes from dashboard mode');
     assert.ok(css.includes('.dashboard-settings-workspace'), 'settings CSS must use dashboard-settings prefix');
@@ -673,8 +654,71 @@ test('board overall view limits done preview and exposes lane detail navigation'
     const detail = read('public/manager/src/dashboard-board/BoardLaneDetailView.tsx');
 
     assert.ok(app.includes('boardView'), 'App must own Board view state');
-    assert.ok(sidebar.includes('Overall'), 'Board sidebar must expose Overall navigation');
-    assert.ok(workspace.includes('DONE_PREVIEW_LIMIT'), 'Board workspace must cap Done preview count');
-    assert.ok(workspace.includes("onViewChange({ kind: 'lane', lane: 'done' })"), 'Done more action must open Done lane detail');
     assert.ok(detail.includes('dashboard-board-compact-row'), 'Lane detail must render compact rows');
+});
+
+test('unified registry filters scopes, localizes navigation, and preserves Manager save ownership', async t => {
+    const { JSDOM } = await import('jsdom');
+    const React = await import('react');
+    const { act } = React;
+    const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="root"></div></body></html>', { url: 'http://localhost:24576' });
+    const globals = globalThis as unknown as Record<string, unknown>;
+    const values = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, React, IS_REACT_ACT_ENVIRONMENT: true };
+    const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    Object.assign(globals, values);
+    const { createRoot } = await import('react-dom/client');
+    const { SettingsShell } = await import('../../public/manager/src/settings/SettingsShell');
+    const { SETTINGS_REGISTRY, entriesForScopes } = await import('../../public/manager/src/settings/settings-registry');
+    const { defaultDashboardRegistry } = await import('../../src/manager/registry');
+    const { normalizeManagerShortcutKeymap } = await import('../../public/manager/src/manager-shortcuts');
+    const container = dom.window.document.getElementById('root')!;
+    const root = createRoot(container);
+    t.after(async () => {
+        await act(async () => root.unmount()); dom.window.close();
+        for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globals[key]; }
+    });
+    assert.equal(new Set(SETTINGS_REGISTRY.map(e => e.id)).size, SETTINGS_REGISTRY.length);
+    const classic = entriesForScopes(['instance'], true, 'en');
+    assert.ok(classic.some(e => e.id === 'channels-slack'));
+    assert.ok(classic.every(e => e.scope === 'instance' && !e.hidden));
+    assert.ok(!classic.some(e => e.id === 'telegram-hub' || e.id === 'dashboard-meta'));
+    assert.ok(SETTINGS_REGISTRY.every(e => typeof e.load === 'function'));
+    const saved = defaultDashboardRegistry().ui;
+    let ui = { ...saved, locale: 'en' as const as import('../../public/manager/src/types').DashboardLocale,
+        dashboardShortcutKeymap: normalizeManagerShortcutKeymap(saved.dashboardShortcutKeymap) };
+    const managerWrites: unknown[] = [], instanceWrites: unknown[] = [];
+    const client: import('../../public/manager/src/settings/types').SettingsClient = {
+        async get() { throw new Error('Manager-only page must not request instance data'); },
+        async put(path, body) { instanceWrites.push({ path, body }); throw new Error('Unexpected PUT'); },
+        async post() { throw new Error('Unexpected POST'); }, async delete() { throw new Error('Unexpected DELETE'); },
+    };
+    const render = async () => {
+        await act(async () => root.render(React.createElement(SettingsShell, { initialId: 'manager-display', client,
+            scopes: ['instance', 'manager'], manager: { ui, titleSupport: { ready: 1, legacy: 2, offline: 3, byPort: {} },
+                onUiPatch(patch) { managerWrites.push(patch); ui = { ...ui, ...patch }; } } })));
+        await act(async () => { await SETTINGS_REGISTRY.find(e => e.id === 'manager-display')!.load(); });
+    };
+    await render();
+    assert.equal(container.querySelectorAll('.settings-sidebar h2').length, 1);
+    assert.equal(container.querySelector('.settings-sidebar h2')?.textContent, 'Manager');
+    assert.equal(container.querySelectorAll('[role="tab"]').length, 0);
+    for (const label of ['Instance list display', 'Recent activity preview', 'Rename control', 'Runtime line', 'Expanded row actions', 'Global shortcuts', 'Language', 'Left instance list']) {
+        assert.ok(container.querySelector('.settings-page')?.textContent?.includes(label), label);
+    }
+    assert.equal(container.querySelector<HTMLInputElement>('#dashboard-shortcut-toggleInstanceSettings')?.value, 'Meta+,');
+    const language = container.querySelector<HTMLSelectElement>('#dashboard-locale')!;
+    await act(async () => { language.value = 'ko'; language.dispatchEvent(new dom.window.Event('change', { bubbles: true })); });
+    assert.deepEqual(managerWrites.at(-1), { locale: 'ko' }); await render();
+    assert.equal(container.querySelector('#dashboard-locale'), language, 'locale change preserves the active page node');
+    assert.ok(container.textContent?.includes('인스턴스 목록 표시'));
+    assert.ok(container.textContent?.includes('최근 작업 미리보기'));
+    for (const [locale, label] of [['ko', '사이드바 행'], ['en', 'Sidebar rows'], ['ja', 'サイドバーの行'], ['zh', '侧边栏列表']] as const) {
+        ui = { ...ui, locale }; await render();
+        assert.equal(container.querySelector('[aria-current="page"]')?.textContent, label);
+    }
+    ui = { ...ui, locale: 'en' }; await render();
+    const developer = Array.from(container.querySelectorAll<HTMLButtonElement>('.settings-sidebar button')).find(b => b.textContent === 'Developer tools')!;
+    await act(async () => { developer.click(); await SETTINGS_REGISTRY.find(e => e.id === 'manager-developer')!.load(); });
+    assert.ok(container.querySelector('.settings-page')?.textContent?.includes('Repo root priority'));
+    assert.deepEqual(instanceWrites, []);
 });

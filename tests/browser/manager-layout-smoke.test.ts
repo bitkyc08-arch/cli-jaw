@@ -363,9 +363,9 @@ test('instance settings panel has bounded layout and guarded keyboard close', as
         assert.ok(Math.abs(metrics.width - expected) <= 1); assert.ok(metrics.right <= width + 1);
         assert.equal(metrics.documentWidth, width); assert.equal(metrics.position === 'fixed', width < 1024);
     }
-    await panel.getByRole('tab', { name: 'Display', exact: true }).click();
-    assert.equal(await panel.getByRole('tab', { name: 'Display', exact: true }).getAttribute('aria-selected'), 'true');
-    assert.ok(await panel.locator('.settings-sidebar [role=tab]').count() > 0);
+    await panel.getByRole('button', { name: 'Display', exact: true }).click();
+    assert.equal(await panel.getByRole('button', { name: 'Display', exact: true }).getAttribute('aria-current'), 'page');
+    assert.equal(await panel.locator('.settings-sidebar [role=tab]').count(), 0);
     const field = panel.locator('#display-pasteCollapseLines');
     const initial = Number(await field.inputValue()); await field.fill(String(initial + 1));
     await page.getByRole('button', { name: 'Close instance settings' }).focus();

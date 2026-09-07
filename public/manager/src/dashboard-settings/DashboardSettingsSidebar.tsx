@@ -8,7 +8,7 @@ type DashboardSettingsSidebarProps = {
     onSectionChange: (section: DashboardSettingsSection) => void;
 };
 
-const COPY = {
+export const DASHBOARD_SETTINGS_COPY = {
     ko: {
         navLabel: '대시보드 설정 섹션',
         eyebrow: '대시보드',
@@ -62,7 +62,7 @@ const COPY = {
 const SECTION_IDS: DashboardSettingsSection[] = ['display', 'activity', 'developer', 'embedding', 'telegramHub'];
 
 export function DashboardSettingsSidebar(props: DashboardSettingsSidebarProps) {
-    const copy = COPY[props.locale] || COPY.ko;
+    const copy = DASHBOARD_SETTINGS_COPY[props.locale] || DASHBOARD_SETTINGS_COPY.ko;
     return (
         <nav className="dashboard-settings-sidebar" aria-label={copy.navLabel}>
             <div className="dashboard-settings-sidebar-header">

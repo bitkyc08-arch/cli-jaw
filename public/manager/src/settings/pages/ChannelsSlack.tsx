@@ -13,7 +13,10 @@
 //   slack.replyInThread
 //   slack.ack.enabled         (emoji reaction receipts on inbound messages)
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SettingsRequestError } from '../settings-client';
+import { SlackSetup, slackText } from './components/SlackSetup';
+import { isSlackConfigured, hasSlackBotTokenPrefix, hasSlackAppTokenPrefix } from '../../../../js/features/channel-setup-rules.js';
 import type { SettingsPageProps, DirtyEntry } from '../types';
 import { ToggleField, SecretField, ChipListField, TextField } from '../fields';
 import {
@@ -29,6 +32,7 @@ import { TransportStatusChips } from './components/TransportStatusChips';
 import { ChannelEnablementControl } from './components/ChannelEnablementControl';
 
 type SlackBlock = {
+    attachPort?: string;
     enabled?: boolean;
     botToken?: string;
     appToken?: string;
@@ -52,6 +56,7 @@ type SlackSnapshot = {
 };
 
 const SLACK_KEYS = [
+    'slack.attachPort',
     'channel',
     'slack.enabled',
     'slack.botToken',
@@ -75,7 +80,35 @@ export function isValidSlackConversationId(chip: string): boolean {
     return /^[CGD][A-Z0-9]{6,20}$/.test(chip.trim().toUpperCase());
 }
 
-export default function ChannelsSlack({ port, client, dirty, registerSave }: SettingsPageProps) {
+const CONNECTION_KEYS = ['slack.enabled','slack.botToken','slack.appToken','slack.teamId','slack.channelIds','slack.attachPort'];
+const SETUP_KEY = 'slack.setup'; // UI-only, valid:false; never included in an API patch
+const SETUP_SAVED_KEYS = ['slack.enabled','slack.botToken','slack.appToken','slack.teamId'];
+function unwrap<T>(value: T | {data:T}): T {
+    return value && typeof value==='object' && 'data' in value ? (value as {data:T}).data : value as T;
+}
+function connectionCleared(snapshot: SlackSnapshot): boolean {
+    if (!snapshot || typeof snapshot !== 'object' || !snapshot.slack) return false;
+    const sc=snapshot.slack;
+    return !sc?.enabled && !sc?.botToken && !sc?.appToken && !sc?.teamId
+        && !sc?.channelIds?.length && !sc?.attachPort;
+}
+
+export default function ChannelsSlack({ port, client, dirty, registerSave, manager }: SettingsPageProps) {
+    const t = useMemo(() => slackText(manager?.ui.locale ?? document.documentElement.lang), [manager?.ui.locale]);
+    const [attachPort, setAttachPort] = useState('');
+    const [setupOpen, setSetupOpen] = useState(false);
+    const setupOpenRef = useRef(false), setupGeneration = useRef(0);
+    const setupTriggerRef = useRef<HTMLElement | null>(null);
+    const [resetting, setResetting] = useState(false);
+    const [actionError, setActionError] = useState<string | null>(null);
+    const [healthRevision, setHealthRevision] = useState(0);
+    const resetFlight = useRef(false), alive = useRef(false);
+    const epochRef = useRef<object>({});
+    const [botTouched, setBotTouched] = useState(false), [appTouched, setAppTouched] = useState(false);
+    useLayoutEffect(() => {
+        alive.current = true; epochRef.current = {};
+        return () => { alive.current = false; epochRef.current = {}; ++setupGeneration.current; };
+    }, [port, client]);
     const { state, refresh, setData } = usePageSnapshot<SlackSnapshot>(client, '/api/settings');
 
     const [enabledChannels, setEnabledChannels] = useState<MessengerChannel[]>([]);
@@ -92,9 +125,14 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     const [ackEnabled, setAckEnabled] = useState(false);
 
     const applySnapshot = useCallback((sc: SlackBlock) => {
+        const remaining = Object.fromEntries([...dirty.pending].filter(([key]) => key.startsWith('slack.') && key !== SETUP_KEY)
+            .map(([key, entry]) => [key, entry.value]));
+        const draft = expandPatch(remaining)['slack'] as SlackBlock | undefined;
+        sc = { ...sc, ...draft, ack: { ...sc.ack, ...draft?.ack } };
+        setAttachPort(sc.attachPort ?? '');
         setEnabled(Boolean(sc.enabled));
-        setBotToken('');
-        setAppToken('');
+        setBotToken(String(dirty.pending.get('slack.botToken')?.value ?? ''));
+        setAppToken(String(dirty.pending.get('slack.appToken')?.value ?? ''));
         setTeamId(sc.teamId ?? '');
         setChannelIds(Array.isArray(sc.channelIds) ? [...sc.channelIds] : []);
         setForwardAll(sc.forwardAll !== false);
@@ -106,7 +144,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         // ACK reactions default OFF in SLACK_ACK_DEFAULTS; a plain Boolean read
         // matches the backend default.
         setAckEnabled(Boolean(sc.ack?.enabled));
-    }, []);
+    }, [dirty]);
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
@@ -137,16 +175,28 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         ? state.data.slackEnvironmentVariables
         : [];
     const environmentManaged = environmentVariables.length > 0;
+    const savePolicyRef = useRef({ environmentManaged, environmentVariables, t });
+    useLayoutEffect(() => { savePolicyRef.current = { environmentManaged, environmentVariables, t }; },
+        [environmentManaged, environmentVariables, t]);
 
     const onSave = useCallback(async () => {
+        const policy = savePolicyRef.current;
+        if (resetFlight.current || setupOpenRef.current) throw new Error(policy.t('settings.slack.resetFailed'));
         const bundle = dirty.saveBundle();
         if (Object.keys(bundle).length === 0) return;
-        const patch = expandPatch(bundle);
+        if (policy.environmentManaged && CONNECTION_KEYS.some(key => key in bundle)) {
+            throw new Error(policy.t('settings.slack.resetManagedByEnvironment', { variables: policy.environmentVariables.join(', ') }));
+        }
+        const fields = Object.fromEntries(Object.entries(bundle).filter(([key]) =>
+            SLACK_KEYS.includes(key as typeof SLACK_KEYS[number]) || key.startsWith('messaging.')));
+        const captured = new Map([...dirty.pending].filter(([key]) => key in fields)), epoch = epochRef.current;
+        const patch = expandPatch(fields);
         const updated = await client.put<SlackSnapshot>('/api/settings', patch);
         const fresh = (updated && typeof updated === 'object' && 'data' in updated
             ? (updated as { data: SlackSnapshot }).data
             : updated) as SlackSnapshot;
-        dirty.clear();
+        if (!alive.current || epoch !== epochRef.current) return;
+        removeCaptured(captured);
         setData(fresh);
         applySnapshot(fresh.slack || {});
         await refresh();
@@ -158,6 +208,76 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
         return () => registerSave(null);
     }, [registerSave, onSave]);
 
+
+    function removeCaptured(entries: Map<string,DirtyEntry>): void {
+        for (const [key,entry] of entries) if(dirty.pending.get(key)===entry) dirty.remove(key);
+    }
+    function openSetup(): void {
+        if(savePolicyRef.current.environmentManaged || resetFlight.current || setupOpenRef.current) return;
+        setupTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        ++setupGeneration.current; setupOpenRef.current=true;
+        dirty.set(SETUP_KEY,{value:true,original:false,valid:false});
+        setSetupOpen(true);
+    }
+    function closeSetup(): void {
+        ++setupGeneration.current; setupOpenRef.current=false;
+        setSetupOpen(false); dirty.remove(SETUP_KEY);
+    }
+    useEffect(()=>()=>{++setupGeneration.current;setupOpenRef.current=false;dirty.remove(SETUP_KEY);},[dirty]);
+    // B1: called synchronously by SlackSetup immediately BEFORE its PUT, never after PUT/GET.
+    function captureSetupSave(): () => Promise<void> {
+        const generation=setupGeneration.current;
+        const captured=new Map([...dirty.pending].filter(([key])=>SETUP_SAVED_KEYS.includes(key) || key===SETUP_KEY));
+        return async () => {
+            if(!alive.current || !setupOpenRef.current || generation!==setupGeneration.current) return;
+            const snapshot=unwrap(await client.get<SlackSnapshot | {data:SlackSnapshot}>('/api/settings'));
+            if(!alive.current || !setupOpenRef.current || generation!==setupGeneration.current) return;
+            // Only acknowledge the exact entries present at PUT; never remove a replacement entry.
+            removeCaptured(captured);
+            setData(snapshot); setHealthRevision(n=>n+1);
+        };
+    }
+    async function resetConnection(): Promise<void> {
+        if(resetFlight.current) return;
+        if(environmentManaged) { setActionError(t('settings.slack.resetManagedByEnvironment',{variables:environmentVariables.join(', ')})); return; }
+        // Stored tokens are masked, but their presence still permits reset. Never submit the mask.
+        if(!botToken.trim() && !appToken.trim() && !original.botToken && !original.appToken) {
+            setActionError(t('settings.slack.resetEmpty')); return;
+        }
+        if(!window.confirm(t('settings.slack.resetConfirm'))) return;
+        const captured=new Map([...dirty.pending].filter(([key])=>CONNECTION_KEYS.includes(key)));
+        const epoch=epochRef.current;
+        resetFlight.current=true; setResetting(true); setActionError(null);
+        let managedVariables: string[] | null=null;
+        try {
+            try { await client.post('/api/settings/slack/reset',{}); }
+            catch(error) {
+                if(error instanceof SettingsRequestError && error.status===409) {
+                    try {
+                        const body: {error?:string;environmentVariables?:unknown}=JSON.parse(error.detail);
+                        if(body.error==='slack_connection_managed_by_environment') {
+                            managedVariables=Array.isArray(body.environmentVariables)
+                                ? body.environmentVariables.filter((v):v is string=>typeof v==='string') : ['SLACK_*'];
+                        }
+                    } catch { /* GET below still determines state; no raw detail is displayed */ }
+                }
+                // Lost response is ambiguous: still perform the authoritative GET; never retry POST.
+            }
+            const snapshot=unwrap(await client.get<SlackSnapshot | {data:SlackSnapshot}>('/api/settings'));
+            if(!alive.current || epoch!==epochRef.current) return;
+            const vars=managedVariables ?? snapshot.slackEnvironmentVariables ?? [];
+            if(vars.length) {
+                for(const key of CONNECTION_KEYS)dirty.remove(key);
+                setData({...snapshot,slackEnvironmentVariables:vars}); setActionError(t('settings.slack.resetManagedByEnvironment',{variables:vars.join(', ')})); return;
+            }
+            if(!connectionCleared(snapshot)) { setActionError(t('settings.slack.resetFailed')); return; }
+            removeCaptured(captured);
+            setBotToken(''); setAppToken(''); setBotTouched(false); setAppTouched(false);
+            setData(snapshot); // disabled=false, token/team/channel/attachPort empty from GET
+        } catch { if(alive.current && epoch===epochRef.current) setActionError(t('settings.slack.resetFailed')); }
+        finally { resetFlight.current=false; if(alive.current && epoch===epochRef.current) {setResetting(false);setHealthRevision(n=>n+1);} }
+    }
+
     if (state.kind === 'loading') return <PageLoading />;
     if (state.kind === 'offline') return <PageOffline port={port} />;
     if (state.kind === 'error') return <PageError message={state.message} />;
@@ -168,11 +288,11 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     const channelIdsError = invalidChannelIds.length > 0
         ? `Slack conversation IDs only (C…/G…/D…) — invalid: ${invalidChannelIds.join(', ')}`
         : null;
-    const botTokenError = botToken && !botToken.startsWith('xoxb-')
-        ? 'Bot tokens start with xoxb-.'
+    const botTokenError = botTouched && botToken.trim() && !hasSlackBotTokenPrefix(botToken)
+        ? t('settings.slack.guide.botTokenError')
         : null;
-    const appTokenError = appToken && !appToken.startsWith('xapp-')
-        ? 'App-level tokens start with xapp-.'
+    const appTokenError = appTouched && appToken.trim() && !hasSlackAppTokenPrefix(appToken)
+        ? t('settings.slack.guide.appTokenError')
         : null;
     // Surface the outbound-only state on THIS page rather than changing the
     // shared status chips, which are frozen for cross-channel changes.
@@ -186,11 +306,13 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
     return (
         <form
             className="settings-page-form"
+            onBlurCapture={event => { const id = event.target.id; if (id === 'sl-botToken') setBotTouched(true); if (id === 'sl-appToken') setAppTouched(true); }}
             onSubmit={(event) => {
                 event.preventDefault();
-                void onSave();
+                void onSave().catch(() => setActionError(t('settings.slack.resetFailed')));
             }}
         >
+            <fieldset disabled={resetting || setupOpen} className="settings-slack-fields">
             <SettingsSection
                 title="Channels"
                 hint="Choose which channels receive inbound chat. Outbound send can still work on any configured channel."
@@ -205,7 +327,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     dirty={dirty}
                     idPrefix="sl-channel"
                 />
-                <TransportStatusChips client={client} channel="slack" />
+                <TransportStatusChips key={healthRevision} client={client} channel="slack" />
             </SettingsSection>
 
             <SettingsSection
@@ -224,6 +346,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                             original: Boolean(original.enabled),
                             valid: true,
                         });
+                        if (next && !environmentManaged && !isSlackConfigured(botToken || original.botToken || '')) openSetup();
                     }}
                 />
                 <SecretField
@@ -235,14 +358,14 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     disabled={environmentManaged}
                     onChange={(next) => {
                         setBotToken(next);
-                        if (next.length === 0) {
+                        if (next.trim().length === 0) {
                             dirty.remove('slack.botToken');
                             return;
                         }
                         setEntry('slack.botToken', {
-                            value: next,
+                            value: next.trim(),
                             original: original.botToken ?? '',
-                            valid: next.startsWith('xoxb-'),
+                            valid: hasSlackBotTokenPrefix(next),
                         });
                     }}
                 />
@@ -255,14 +378,14 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     disabled={environmentManaged}
                     onChange={(next) => {
                         setAppToken(next);
-                        if (next.length === 0) {
+                        if (next.trim().length === 0) {
                             dirty.remove('slack.appToken');
                             return;
                         }
                         setEntry('slack.appToken', {
-                            value: next,
+                            value: next.trim(),
                             original: original.appToken ?? '',
-                            valid: next.startsWith('xapp-'),
+                            valid: hasSlackAppTokenPrefix(next),
                         });
                     }}
                 />
@@ -297,6 +420,16 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                         });
                     }}
                 />
+                <TextField id="sl-attachPort" label={t('settings.slack.attachPort')}
+                    value={attachPort} disabled={environmentManaged || resetting || setupOpen}
+                    onChange={next => { setAttachPort(next); setEntry('slack.attachPort', {
+                        value: next.trim(), original: original.attachPort ?? '', valid: true,
+                    }); }} />
+                <button type="button" disabled={environmentManaged || resetting || setupOpen}
+                    data-onboard-channel="slack" onClick={openSetup}>{t('onboarding.open')}</button>
+                <button type="button" disabled={environmentManaged || resetting || setupOpen}
+                    onClick={() => void resetConnection()}>{t('settings.slack.resetConnection')}</button>
+                {actionError && <p role="alert">{actionError}</p>}
                 <ToggleField
                     id="sl-mentionOnly"
                     label="Mention only"
@@ -363,6 +496,9 @@ export default function ChannelsSlack({ port, client, dirty, registerSave }: Set
                     }}
                 />
             </SettingsSection>
+            </fieldset>
+            {setupOpen && <SlackSetup key={port} client={client} t={t}
+                initialDraft={{ botToken, appToken }} returnFocus={setupTriggerRef.current} onBeforeSave={captureSetupSave} onClose={closeSetup} />}
         </form>
     );
 }

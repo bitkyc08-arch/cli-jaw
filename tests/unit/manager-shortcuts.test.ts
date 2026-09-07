@@ -127,7 +127,9 @@ test('settings toggle has its own localized label in all Manager locales', async
     const React = await import('react');
     const { renderToStaticMarkup } = await import('react-dom/server');
     const { JSDOM } = await import('jsdom');
-    const { DashboardSettingsWorkspace } = await import('../../public/manager/src/dashboard-settings/DashboardSettingsWorkspace');
+    // The workspace now lazy-loads pages through SettingsShell; render the Manager Display page directly.
+    const { default: ManagerDisplayPage } = await import('../../public/manager/src/settings/pages/manager/Display');
+    const { createDirtyStore } = await import('../../public/manager/src/settings/dirty-store');
     const { defaultDashboardRegistry } = await import('../../src/manager/registry');
     const globals = globalThis as unknown as Record<string, unknown>, previous = globals['React'];
     globals['React'] = React;
@@ -139,10 +141,10 @@ test('settings toggle has its own localized label in all Manager locales', async
             const savedUi = defaultDashboardRegistry().ui;
             const ui = { ...savedUi, locale,
                 dashboardShortcutKeymap: normalizeManagerShortcutKeymap(savedUi.dashboardShortcutKeymap) };
-            const dom = new JSDOM(renderToStaticMarkup(React.createElement(DashboardSettingsWorkspace, {
-                activeSection: 'display', ui, titleSupport: { ready: 0, legacy: 0, offline: 0, byPort: {} },
-                onUiPatch() {}, onOpenHelpTopic() {},
-            })));
+            const dom = new JSDOM(renderToStaticMarkup(React.createElement(ManagerDisplayPage, {
+                port: 0, instanceUrl: '', client: null as never, dirty: createDirtyStore(), registerSave() {},
+                manager: { ui, titleSupport: { ready: 0, legacy: 0, offline: 0, byPort: {} }, onUiPatch() {} },
+            } as never)));
             const doc = dom.window.document;
             assert.equal(doc.querySelector('label[for="dashboard-shortcut-toggleInstanceSettings"] > span')?.textContent, expected);
             assert.equal(doc.querySelector<HTMLInputElement>('#dashboard-shortcut-toggleInstanceSettings')?.value, 'Meta+,');

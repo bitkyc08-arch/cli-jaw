@@ -47,17 +47,13 @@ import {
 } from './features/slash-commands.js';
 import { toggleSkill, filterSkills, searchSkills } from './features/skills.js';
 import {
-    loadSettings, setPerm, handleModelSelect, applyCustomModel, onCliChange,
-    onPerCliProviderChange, saveActiveCliSettings, savePerCli, openPromptModal,
+    loadSettings, setPerm, onCliChange,
+    saveActiveCliSettings, openPromptModal, initSettingsFrame,
     onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
     openMcpModal, initMcpModal,
     loadCliStatus, scheduleCliStatusRefresh, setCliStatusInterval,
     initCliStatusToggle, initCliStatusPreviewHooks, isCliStatusExpanded, expandCliStatus, isEmbeddedPreviewFrame,
-    setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
-    setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings, setActiveChannel,
-    setSlack, setSlackForwardAll, setSlackAllowBots, setSlackMentionOnly, setSlackReplyInThread, saveSlackSettings, initSlackSetupGuide,
-    saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
 } from './features/settings.js';
 import { initChannelOnboarding } from './features/channel-onboarding.js';
@@ -77,7 +73,7 @@ import {
     bindAdvancedProviderUi, triggerFlushNow, refreshMemorySidebar
 } from './features/memory.js';
 import { state } from './state.js';
-import { loadCliRegistry, getCliKeys } from './constants.js';
+import { loadCliRegistry } from './constants.js';
 import { initAppName } from './features/appname.js';
 import { initAvatar } from './features/avatar.js';
 import { initSidebar, toggleLeft, toggleRight } from './features/sidebar.js';
@@ -187,21 +183,8 @@ document.querySelector('.tab-bar')?.addEventListener('click', (e) => {
 document.querySelector('.sidebar-save-bar .btn-save')?.addEventListener('click', handleSave);
 
 // ── Agents Tab ──
-function syncAiEProviderSelectsFromActiveProvider(eventTarget: EventTarget | null): void {
-    const activeProvider = eventTarget instanceof HTMLSelectElement
-        ? eventTarget
-        : document.getElementById('selCliProvider') as HTMLSelectElement | null;
-    const provider = activeProvider?.value || '';
-    const perCliProvider = document.getElementById('providerAiE') as HTMLSelectElement | null;
-    if (!provider || !perCliProvider) return;
-    if (Array.from(perCliProvider.options).some(option => option.value === provider)) {
-        perCliProvider.value = provider;
-    }
-}
-
 document.getElementById('selCli')?.addEventListener('change', () => onCliChange());
-document.getElementById('selCliProvider')?.addEventListener('change', (event) => {
-    syncAiEProviderSelectsFromActiveProvider(event.target);
+document.getElementById('selCliProvider')?.addEventListener('change', () => {
     onCliChange();
     saveActiveCliSettings();
 });
@@ -267,137 +250,9 @@ document.getElementById('skillSearchInput')?.addEventListener('input', (e) => {
 
 // ── Settings Tab ──
 document.querySelector('[data-action="openPrompt"]')?.addEventListener('click', openPromptModal);
-document.getElementById('tgOff')?.addEventListener('click', () => setTelegram(false));
-document.getElementById('tgOn')?.addEventListener('click', () => setTelegram(true));
-document.getElementById('tgForwardOff')?.addEventListener('click', () => setForwardAll(false));
-document.getElementById('tgForwardOn')?.addEventListener('click', () => setForwardAll(true));
-document.getElementById('tgMentionOff')?.addEventListener('click', () => setTelegramMentionOnly(false));
-document.getElementById('tgMentionOn')?.addEventListener('click', () => setTelegramMentionOnly(true));
-document.getElementById('tgToken')?.addEventListener('change', saveTelegramSettings);
-document.getElementById('tgChatIds')?.addEventListener('change', saveTelegramSettings);
-// Discord
-document.getElementById('chTelegram')?.addEventListener('click', () => setActiveChannel('telegram'));
-document.getElementById('chDiscord')?.addEventListener('click', () => setActiveChannel('discord'));
-document.getElementById('dcOff')?.addEventListener('click', () => setDiscord(false));
-document.getElementById('dcOn')?.addEventListener('click', () => setDiscord(true));
-document.getElementById('dcForwardOff')?.addEventListener('click', () => setDiscordForwardAll(false));
-document.getElementById('dcForwardOn')?.addEventListener('click', () => setDiscordForwardAll(true));
-document.getElementById('dcAllowBotsOff')?.addEventListener('click', () => setDiscordAllowBots(false));
-document.getElementById('dcAllowBotsOn')?.addEventListener('click', () => setDiscordAllowBots(true));
-document.getElementById('dcMentionOff')?.addEventListener('click', () => setDiscordMentionOnly(false));
-document.getElementById('dcMentionOn')?.addEventListener('click', () => setDiscordMentionOnly(true));
-document.getElementById('dcToken')?.addEventListener('change', saveDiscordSettings);
-document.getElementById('dcGuildId')?.addEventListener('change', saveDiscordSettings);
-document.getElementById('dcChannelIds')?.addEventListener('change', saveDiscordSettings);
-
-// Slack
-document.getElementById('chSlack')?.addEventListener('click', () => setActiveChannel('slack'));
-document.getElementById('slOff')?.addEventListener('click', () => setSlack(false));
-document.getElementById('slOn')?.addEventListener('click', () => setSlack(true));
-document.getElementById('slForwardOff')?.addEventListener('click', () => setSlackForwardAll(false));
-document.getElementById('slForwardOn')?.addEventListener('click', () => setSlackForwardAll(true));
-document.getElementById('slAllowBotsOff')?.addEventListener('click', () => setSlackAllowBots(false));
-document.getElementById('slAllowBotsOn')?.addEventListener('click', () => setSlackAllowBots(true));
-document.getElementById('slMentionOff')?.addEventListener('click', () => setSlackMentionOnly(false));
-document.getElementById('slMentionOn')?.addEventListener('click', () => setSlackMentionOnly(true));
-document.getElementById('slThreadOff')?.addEventListener('click', () => setSlackReplyInThread(false));
-document.getElementById('slThreadOn')?.addEventListener('click', () => setSlackReplyInThread(true));
-document.getElementById('slBotToken')?.addEventListener('change', saveSlackSettings);
-document.getElementById('slAppToken')?.addEventListener('change', saveSlackSettings);
-document.getElementById('slTeamId')?.addEventListener('change', saveSlackSettings);
-document.getElementById('slChannelIds')?.addEventListener('change', saveSlackSettings);
-document.getElementById('slAttachPort')?.addEventListener('change', saveSlackSettings);
 initChannelOnboarding();
-initSlackSetupGuide();
-
-document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);
-
-// Codex fast mode toggle
-function setCodexFast(on: boolean) {
-    const onBtn = document.getElementById('codexFastOn');
-    const offBtn = document.getElementById('codexFastOff');
-    if (onBtn && offBtn) {
-        onBtn.classList.toggle('active', on);
-        offBtn.classList.toggle('active', !on);
-    }
-    savePerCli();
-}
-document.getElementById('codexFastOn')?.addEventListener('click', () => setCodexFast(true));
-document.getElementById('codexFastOff')?.addEventListener('click', () => setCodexFast(false));
-
-// Codex 1M context window toggle
-function setCodexCtx(on: boolean) {
-    const onBtn = document.getElementById('codexCtxOn');
-    const offBtn = document.getElementById('codexCtxOff');
-    const valDiv = document.getElementById('codexCtxValues');
-    if (onBtn && offBtn) {
-        onBtn.classList.toggle('active', on);
-        offBtn.classList.toggle('active', !on);
-    }
-    if (valDiv) valDiv.style.display = on ? '' : 'none';
-    savePerCli();
-}
-document.getElementById('codexCtxOn')?.addEventListener('click', () => setCodexCtx(true));
-document.getElementById('codexCtxOff')?.addEventListener('click', () => setCodexCtx(false));
-document.getElementById('codexCtxWindow')?.addEventListener('change', savePerCli);
-document.getElementById('codexCtxCompact')?.addEventListener('change', savePerCli);
-
-// Claude 1M context toggle — switches model between base and [1m] variant
-function setClaude1m(on: boolean) {
-    const onBtn = document.getElementById('claude1mOn');
-    const offBtn = document.getElementById('claude1mOff');
-    const modelSel = document.getElementById('modelClaude') as HTMLSelectElement | null;
-
-    let effective = on;
-    if (modelSel) {
-        let current = modelSel.value || '';
-        if (on && !current.endsWith('[1m]')) {
-            const target = current + '[1m]';
-            if (Array.from(modelSel.options).some(o => o.value === target)) {
-                modelSel.value = target;
-            } else {
-                effective = false; // no [1m] variant available
-            }
-        } else if (!on && current.endsWith('[1m]')) {
-            const base = current.replace(/\[1m\]$/, '');
-            if (Array.from(modelSel.options).some(o => o.value === base)) {
-                modelSel.value = base;
-            } else {
-                effective = true; // can't remove [1m], stay on
-            }
-        } else {
-            effective = current.endsWith('[1m]');
-        }
-    }
-    if (onBtn && offBtn) {
-        onBtn.classList.toggle('active', effective);
-        offBtn.classList.toggle('active', !effective);
-    }
-    savePerCli();
-}
-document.getElementById('claude1mOn')?.addEventListener('click', () => setClaude1m(true));
-document.getElementById('claude1mOff')?.addEventListener('click', () => setClaude1m(false));
-// Per-CLI model selects
-function toDomSuffix(cli: string): string {
-    return cli
-        .split(/[^a-zA-Z0-9]+/)
-        .filter(Boolean)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
-        .join('');
-}
-
-function bindPerCliControlEvents(): void {
-    for (const cli of getCliKeys()) {
-        const cap = toDomSuffix(cli);
-        const sel = document.getElementById('model' + cap) as HTMLSelectElement | null;
-        if (sel) sel.addEventListener('change', function (this: HTMLSelectElement) { handleModelSelect(cli, this); });
-        const custom = document.getElementById('customModel' + cap) as HTMLInputElement | null;
-        if (custom) custom.addEventListener('change', function (this: HTMLInputElement) { applyCustomModel(cli, this); });
-        const effort = document.getElementById('effort' + cap);
-        if (effort) effort.addEventListener('change', savePerCli);
-    }
-    document.getElementById('providerAiE')?.addEventListener('change', onPerCliProviderChange);
-}
+const disposeSettingsFrame = initSettingsFrame();
+if (import.meta.hot) import.meta.hot.dispose(disposeSettingsFrame);
 
 // MCP
 document.querySelector('[data-action="openMcpModal"]')?.addEventListener('click', openMcpModal);
@@ -430,22 +285,13 @@ document.getElementById('templateBack')?.addEventListener('click', templateGoBac
 document.getElementById('templateDevToggle')?.addEventListener('click', toggleDevMode);
 
 // ── Pi Settings Modal ──
-const { openPiSettingsModal, closePiSettingsModal, registerPiProfile, onPiModeChange, syncPiModelDropdown, getCachedPi } = await import('./features/pi-settings.js');
+const { openPiSettingsModal, closePiSettingsModal, registerPiProfile, onPiModeChange } = await import('./features/pi-settings.js');
 document.getElementById('btnPiSettings')?.addEventListener('click', openPiSettingsModal);
 document.getElementById('piSettingsModal')?.addEventListener('click', (e) => { if (e.target === e.currentTarget) closePiSettingsModal(); });
 document.querySelector('#piSettingsModal .modal-box')?.addEventListener('click', (e) => e.stopPropagation());
 document.querySelector('[data-action="closePiSettings"]')?.addEventListener('click', closePiSettingsModal);
 document.getElementById('btnPiRegister')?.addEventListener('click', () => void registerPiProfile());
 document.getElementById('piMode')?.addEventListener('change', onPiModeChange);
-document.getElementById('providerPi')?.addEventListener('change', async () => {
-    const sel = document.getElementById('providerPi') as HTMLSelectElement | null;
-    if (sel?.value) {
-        syncPiModelDropdown(sel.value, getCachedPi());
-        const { savePerCli } = await import('./features/settings-core.js');
-        await savePerCli();
-    }
-});
-
 // ── Heartbeat Modal ──
 document.getElementById('heartbeatModal')?.addEventListener('click', (e) => closeHeartbeatModal(e));
 document.querySelector('#heartbeatModal .modal-box')?.addEventListener('click', (e) => e.stopPropagation());
@@ -590,7 +436,6 @@ async function bootstrap(): Promise<void> {
     // the CLI-registry fetch below used to serially delay first history paint.
     connect();
     await loadCliRegistry();
-    bindPerCliControlEvents();
     initDragDrop();
     initAutoResize();
     await loadCommands();

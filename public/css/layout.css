@@ -525,3 +525,10 @@ body.right-collapsed .sidebar-right {
     align-items: center;
     line-height: 1;
 }
+
+body:has(#tabSettings.active):not(.right-collapsed) { --sidebar-right-w: min(56vw, 760px); }
+.sidebar-right:has(#tabSettings.active) { overflow: hidden; }
+.sidebar-right:has(#tabSettings.active) .sidebar-save-bar { display: none; }
+@media (max-width: 768px) {
+    .sidebar-right:has(#tabSettings.active) { width: min(92vw, 760px); }
+}

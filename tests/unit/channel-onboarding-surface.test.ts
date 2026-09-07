@@ -10,10 +10,16 @@ const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
 
 test('every channel section exposes a wizard trigger', () => {
-    const html = read('public/index.html');
-    for (const ch of ['telegram', 'discord', 'slack']) {
-        assert.ok(html.includes(`data-onboard-channel="${ch}"`), `no wizard trigger for ${ch}`);
+    for (const channel of ['telegram', 'discord']) {
+        const page = read(`public/manager/src/settings/pages/Channels${channel[0]!.toUpperCase()}${channel.slice(1)}.tsx`);
+        assert.match(page, new RegExp(`<ChannelSetupEntry channel="${channel}"`));
     }
+    const entry = read('public/manager/src/settings/pages/components/ChannelSetupEntry.tsx');
+    assert.match(entry, /data-onboard-channel=\{channel\}/);
+    assert.match(entry, /<ChannelSetupDialog/);
+    const slack = read('public/manager/src/settings/pages/ChannelsSlack.tsx');
+    assert.match(slack, /data-onboard-channel="slack" onClick=\{openSetup\}/);
+    assert.match(slack, /<SlackSetup/);
 });
 
 test('the wizard is initialized once from main.ts', () => {
@@ -247,5 +253,108 @@ test('every validate-route error code has a user-facing message', () => {
     assert.ok(codes.length >= 6, `expected the error vocabulary, found ${codes.length}`);
     for (const code of new Set(codes)) {
         assert.ok(ko[`onboarding.error.${code}`], `no message for error code ${code}`);
+    }
+});
+
+test('shared Telegram and Discord setup validate before saving and protect page drafts', async t => {
+    const { JSDOM } = await import('jsdom');
+    const React = await import('react');
+    const dom = new JSDOM('<html lang="en"><body><div id="root"></div></body></html>', { url: 'http://localhost:3457' });
+    const globals = globalThis as unknown as Record<string, unknown>;
+    const values = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
+        HTMLInputElement: dom.window.HTMLInputElement, React, IS_REACT_ACT_ENVIRONMENT: true };
+    const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    Object.assign(globals, values);
+    dom.window.HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+    dom.window.HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
+    dom.window.confirm = () => true;
+    const { createRoot } = await import('react-dom/client');
+    const { createDirtyStore } = await import('../../public/manager/src/settings/dirty-store');
+    const { default: Telegram } = await import('../../public/manager/src/settings/pages/ChannelsTelegram');
+    const { default: Discord } = await import('../../public/manager/src/settings/pages/ChannelsDiscord');
+    const container = dom.window.document.getElementById('root')!;
+    const root = createRoot(container);
+    const { act } = React;
+    t.after(async () => {
+        await act(async () => root.unmount());
+        dom.window.close();
+        for (const [key, descriptor] of previous) {
+            if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globals[key];
+        }
+    });
+    for (const channel of ['telegram', 'discord'] as const) {
+        await t.test(channel, async () => {
+            const dirty = createDirtyStore();
+            let settingsReads = 0, valid = false;
+            let finishSave: () => void = () => {};
+            let pageSave: import('../../public/manager/src/settings/types').SaveHandler | null = null;
+            const writes: Array<{ path: string; body: unknown }> = [];
+            const client: import('../../public/manager/src/settings/types').SettingsClient = {
+                async get<T>(path: string) {
+                    if (path === '/api/settings') settingsReads++;
+                    return (path === '/api/settings' ? { [channel]: {} } : {}) as T;
+                },
+                async post<T>(path: string, body: unknown) {
+                    writes.push({ path, body });
+                    return (valid ? { ok: true, identity: 'test-bot' } : { ok: false, error: 'network' }) as T;
+                },
+                async put<T>(path: string, body: unknown) {
+                    writes.push({ path, body });
+                    await new Promise<void>(resolve => { finishSave = resolve; });
+                    return {} as T;
+                },
+                async delete() { throw new Error('Unexpected delete'); },
+            };
+            const render = () => root.render(React.createElement(channel === 'telegram' ? Telegram : Discord, {
+                port: 3457, instanceUrl: 'http://localhost:3457', client, dirty,
+                registerSave: handler => { pageSave = handler; },
+            }));
+            await act(async () => render());
+            const trigger = () => container.querySelector<HTMLButtonElement>(`[data-onboard-channel="${channel}"]`)!;
+            const button = (name: string) => [...container.querySelectorAll<HTMLButtonElement>('dialog button')]
+                .find(el => el.textContent === name)!;
+            const click = async (name: string) => { assert.ok(button(name), name); await act(async () => button(name).click()); };
+            await act(async () => trigger().click());
+            assert.ok(container.querySelector('dialog[open]'));
+            assert.ok(dirty.isDirty());
+            await assert.rejects(pageSave!, /Finish channel setup/);
+            await click('Next');
+            assert.equal(button('Next').disabled, true);
+            const inputs = [...container.querySelectorAll<HTMLInputElement>('dialog input')];
+            const token = channel === 'telegram' ? '123456:TEST_TOKEN' : 'discord-test-token';
+            const setValue = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value')!.set!;
+            for (const [index, input] of inputs.entries()) {
+                await act(async () => {
+                    setValue.call(input, index === 0 ? token : '123456789012345678');
+                    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+                });
+            }
+            await click('Next');
+            assert.equal(button('Next').disabled, true);
+            await click('Validate');
+            assert.ok(container.querySelector('dialog [role="alert"]'));
+            assert.equal(button('Next').disabled, true);
+            assert.equal(writes.some(write => write.path === '/api/settings'), false);
+            valid = true;
+            await click('Validate');
+            await click('Next');
+            await click('Save');
+            assert.equal(button('Close').disabled, true);
+            await act(async () => { container.querySelector('dialog')!.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
+            assert.ok(container.querySelector('dialog[open]'), 'closing during save must not expose editable stale fields');
+            await act(async () => finishSave());
+            assert.deepEqual(writes.at(-1), { path: '/api/settings', body: {
+                [channel]: { enabled: true, token, ...(channel === 'discord' ? { guildId: '123456789012345678' } : {}) },
+            } });
+            await click('Close');
+            assert.equal(container.querySelector('dialog'), null);
+            assert.equal(dirty.isDirty(), false);
+            assert.equal(settingsReads, 2);
+            dirty.set(`${channel}.token`, { value: 'pending-token', original: '', valid: true });
+            await act(async () => render());
+            assert.equal(trigger().disabled, true);
+            assert.equal(dirty.pending.get(`${channel}.token`)?.value, 'pending-token');
+            await act(async () => root.render(null));
+        });
     }
 });

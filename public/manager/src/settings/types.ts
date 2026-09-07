@@ -1,6 +1,16 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 
+import type { DashboardRegistryUi } from '../types';
+import type { DashboardActivityTitleSupport } from '../dashboard-settings/activity-title-support';
+export type SettingsScope = 'instance' | 'manager';
+export type ManagerSettingsContext = {
+    ui: DashboardRegistryUi;
+    titleSupport: DashboardActivityTitleSupport;
+    onUiPatch: (patch: Partial<DashboardRegistryUi>) => void;
+};
+
 export type SettingsCategoryId =
+    | 'manager-display' | 'manager-activity' | 'manager-developer' | 'manager-embedding'
     | 'agent'
     | 'profile'
     | 'display'
@@ -41,6 +51,7 @@ export type SettingsCategory = {
 export type SaveHandler = () => Promise<void>;
 
 export type SettingsPageProps = {
+    manager?: ManagerSettingsContext;
     port: number;
     instanceUrl: string;
     client: SettingsClient;

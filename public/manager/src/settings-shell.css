@@ -1,10 +1,20 @@
-.settings-shell {
-    display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
-    gap: 12px;
-    height: 100%;
-    min-height: 0;
+.settings-shell-host { container-type: inline-size; height:100%; min-height:0; min-width:0; }
+.settings-shell { display:grid; grid-template-columns:240px minmax(0,1fr); gap:0; height:100%; min-height:0; }
+.settings-page { overflow:auto; padding:20px; min-width:0; position:relative; scrollbar-gutter:stable; scroll-padding-bottom:80px; }
+.settings-page-form { width:100%; max-width:896px; margin-inline:auto; display:flex; flex-direction:column; gap:48px; }
+.settings-section, .settings-shell .dashboard-settings-section { border:0; box-shadow:none; border-radius:0; padding:0; margin:0; background:transparent; }
+.settings-section-header h2 { font-size:14px; font-weight:600; margin:0; }
+.settings-section-hint { font-size:13px; line-height:1.45; color:var(--text-secondary); margin:4px 0 12px; }
+@media (min-width:1440px) { .settings-shell { grid-template-columns:264px minmax(0,1fr); } }
+@container (min-width:720px) { .settings-page { padding:24px; } }
+@container (max-width:719px) {
+    .settings-shell { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+    .settings-sidebar { max-height:200px; border-right:0; border-bottom:1px solid var(--border-subtle); }
+    .settings-sidebar-group-items { display:flex; flex-flow:row wrap; }
 }
+.settings-standalone, .settings-standalone body, #settings-root { height:100%; margin:0; min-width:0; }
+.settings-standalone body { display:block; overflow:hidden; background:var(--surface-base); color:var(--text-primary); font-family:var(--font-sans); }
+
 
 .settings-sidebar {
     display: flex;
@@ -91,11 +101,6 @@
     font-weight: 600;
 }
 
-.settings-page {
-    overflow: auto;
-    padding: 12px;
-    position: relative;
-}
 
 .settings-loading,
 .settings-placeholder {
@@ -113,17 +118,7 @@
     font-size: 12px;
 }
 
-.settings-section-header h2 {
-    margin: 0 0 4px 0;
-    font-size: 14px;
-    color: var(--text-primary);
-}
 
-.settings-section-hint {
-    margin: 0 0 12px 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
 
 .settings-readonly-grid {
     display: grid;
@@ -283,48 +278,10 @@
     line-height: 1;
 }
 
-@media (max-width: 720px) {
-    .settings-shell {
-        grid-template-columns: minmax(0, 1fr);
-    }
-    .settings-sidebar {
-        flex-direction: column;
-        border-right: 0;
-        border-bottom: 1px solid var(--border-subtle);
-        max-height: 200px;
-    }
-    .settings-sidebar-group-items {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-    .settings-sidebar-item {
-        padding: 6px 10px;
-    }
-}
-
 /* Phase 2+ — page sections, avatar card, per-CLI rows, overrides */
 
-.settings-section {
-    border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-    background: var(--surface-card, transparent);
-}
 
-.settings-section-header h2 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
-}
 
-.settings-section-hint {
-    margin: 2px 0 8px;
-    font-size: 11px;
-    color: var(--text-secondary);
-}
 
 .settings-section-body {
     display: flex;
@@ -332,10 +289,6 @@
     gap: 10px;
 }
 
-.settings-page-form {
-    display: flex;
-    flex-direction: column;
-}
 
 .settings-action-error,
 .settings-savebar-error {
@@ -473,7 +426,7 @@
     font-size: 11px;
 }
 
-@media (max-width: 720px) {
+@container (max-width:719px) {
     .settings-percli-grid,
     .settings-percli-grid--pi {
         grid-template-columns: minmax(0, 1fr);
@@ -482,3 +435,12 @@
         grid-template-columns: 56px minmax(0, 1fr);
     }
 }
+
+.settings-shell .dashboard-settings-section { width:100%; max-width:896px; margin-inline:auto; }
+.settings-sidebar h2 { margin:12px 10px 4px; font-size:12px; color:var(--text-primary); }
+.settings-sidebar details > summary { display:list-item; margin-left:16px; }
+.settings-sidebar-group { min-width:0; }
+.settings-page :is(.settings-section, .settings-section-body, .settings-field-row) { min-width:0; }
+.settings-page .settings-percli-grid { grid-template-columns:minmax(0,1fr); }
+.settings-page .settings-overrides-table { display:block; overflow:auto; }
+.settings-save-bar { flex-wrap:wrap; }

@@ -79,6 +79,45 @@ function checkAppEntry(appPath: string, source: string, errors: string[]): void 
     }
 }
 
+type ManifestEntry = { src?: string; file?: string; isEntry?: boolean };
+
+function checkHtmlEntries(distDir: string, errors: string[]): void {
+    let manifest: Record<string, ManifestEntry> = {};
+    try {
+        const parsed: unknown = JSON.parse(readText(join(distDir, '.vite/manifest.json')));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid manifest');
+        manifest = parsed as Record<string, ManifestEntry>;
+    } catch {
+        errors.push('Missing or invalid build manifest');
+    }
+    for (const entry of ['index.html', 'manager/index.html', 'settings/index.html']) {
+        const htmlPath = join(distDir, entry);
+        if (!existsSync(htmlPath)) { errors.push(`Missing ${htmlPath}`); continue; }
+        const html = readText(htmlPath);
+        checkIndexHtml(html, errors);
+        const identity = manifest[entry];
+        if (identity?.isEntry !== true || identity.src !== entry || typeof identity.file !== 'string' || !identity.file) {
+            errors.push(`Missing entry identity: ${entry}`);
+            continue;
+        }
+        const modules = [...html.matchAll(/<script\b(?=[^>]*type=["']module["'])[^>]*src=["']([^"']+)["'][^>]*>/gi)];
+        if (modules.length !== 1) errors.push(`Expected one module entry in ${htmlPath}`);
+        for (const match of modules) {
+            try {
+                const url = new URL(match[1]!, `http://build.invalid/dist/${entry}`);
+                const relative = url.pathname.replace(/^\/dist\//, '');
+                if (url.origin !== 'http://build.invalid' || !url.pathname.startsWith('/dist/assets/')
+                    || relative !== identity.file || url.search || url.hash
+                    || !existsSync(join(distDir, relative)) || !statSync(join(distDir, relative)).isFile()) {
+                    errors.push(`Entry bundle identity mismatch: ${entry}: ${match[1]}`);
+                }
+            } catch {
+                errors.push(`Invalid module URL: ${entry}`);
+            }
+        }
+    }
+}
+
 export function checkWebUiBuildOutput(options: BuildOutputCheckOptions = {}): BuildOutputCheckResult {
     const distDir = options.distDir || DEFAULT_DIST_DIR;
     const entryBudgetBytes = options.entryBudgetBytes ?? DEFAULT_ENTRY_BUDGET_BYTES;
@@ -96,7 +135,7 @@ export function checkWebUiBuildOutput(options: BuildOutputCheckOptions = {}): Bu
     if (!existsSync(assetsDir)) errors.push(`Missing ${assetsDir}`);
     if (errors.length > 0) return { ok: false, errors, appFiles: [], eagerBytes: 0 };
 
-    checkIndexHtml(readText(indexPath), errors);
+    checkHtmlEntries(distDir, errors);
     const appFiles = listAppFiles(assetsDir);
     if (appFiles.length === 0) errors.push(`No app-*.js files found in ${assetsDir}`);
 
