@@ -7,7 +7,8 @@ import type { RuntimeEventBody } from '../../src/shared/runtime-contract.ts';
 // Serial memoryIDB helper reused from184d9826:web-activity-cache-settlement.test.ts.
 // Geometry seam adapted from184d9826:web-print-activity-settlement.test.ts.
 // This suite drives actual ws/ui/live/VS/cache; only transport, geometry and IDB
-// browser ports are fakes. No fixed home, server, provider or history discovery.
+// browser ports are fakes. No fixed home, server or provider. Bootstrap's empty
+// discovery is explicit; raw Trace and per-run history are outside this suite.
 type Row = Record<string, unknown>;
 type Task = () => void;
 
@@ -158,6 +159,11 @@ let serial = 0;
 let snapshotReads = 0;
 let messageReads = 0;
 let now = Date.now();
+const bootstrapLoad = Promise.withResolvers<void>();
+const bootstrapRelease = Promise.withResolvers<void>();
+const bootstrapDone = Promise.withResolvers<void>();
+const sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
+const unexpectedRequests: string[] = [];
 
 test.before(async () => {
     setupWebUiDom();
@@ -166,24 +172,66 @@ test.before(async () => {
     mock.method(console, 'warn', (...args: unknown[]) => { warnings.push(args); });
     Object.defineProperty(globalThis, 'indexedDB', { configurable: true, value: port.indexedDB });
     Object.defineProperty(globalThis, 'IDBKeyRange', { configurable: true, value: { only: (value: unknown) => value } });
-    mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
-        const path = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, window.location.origin).pathname;
-        assert.ok(path.startsWith('/api/'), 'only local API fixtures are permitted');
-        assert.ok(!path.startsWith('/api/traces/'), 'no wp24 history discovery in this live suite');
-        if (path === '/api/orchestrate/snapshot') {
-            snapshotReads++;
-            // This endpoint is RAW top-level JSON, not the donor ok/data envelope.
-            return Response.json({ activityIdentity: identity,
-                orc: { state: 'IDLE', scope: identity.scope, ctx: null },
-                heartbeat: { pending: 0, deferredPending: 0 }, workers: [],
-                runtime: { queuePending: 0, busy: false }, queued: [], activeRun: null });
-        }
-        if (path === '/api/messages') { messageReads++; return Response.json({ ok: true, data: [] }); }
-        if (path === '/api/runtime/requests') return Response.json({ ok: true, data: { requests: [] } });
-        if (path === '/api/auth/token') return Response.json({ token: 'fixture-token' });
-        return Response.json({ ok: true, data: { count: 0 } });
+    mock.method(globalThis, 'fetch', async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, window.location.origin);
+        const path = url.pathname;
+        const key = `${init?.method ?? (input instanceof Request ? input.method : 'GET')} ${path}${url.search}`;
+        try {
+            assert.equal(url.origin, window.location.origin);
+            assert.ok(key.startsWith('GET '));
+            assert.ok(path.startsWith('/api/'), 'only local API fixtures are permitted');
+            if (path === '/api/traces/activity-runs') {
+                assert.deepEqual([...url.searchParams], [['session', identity.sessionId], ['after', '']]);
+                return Response.json({ ok: true, data: { runs: [], pageSize: 40 } });
+            }
+            assert.ok(!path.startsWith('/api/traces/'), 'no raw Trace or per-run replay in this live suite');
+            if (path === '/api/orchestrate/snapshot') {
+                assert.equal(url.search, '');
+                assert.ok(messageReads > 0, 'reconnect loads history before snapshot');
+                snapshotReads++;
+                // This endpoint is RAW top-level JSON, not the donor ok/data envelope.
+                return Response.json({ activityIdentity: identity,
+                    orc: { state: 'IDLE', scope: identity.scope, ctx: null },
+                    heartbeat: { pending: 0, deferredPending: 0 }, workers: [],
+                    runtime: { queuePending: 0, busy: false }, queued: [], activeRun: null });
+            }
+            if (path === '/api/messages') {
+                assert.deepEqual([...url.searchParams], [['limit', '3000'], ['withSession', '1']]);
+                messageReads++;
+                return Response.json({ ok: true, data: { sessionId: identity.sessionId, messages: [] } });
+            }
+            if (path === '/api/runtime/requests') {
+                assert.deepEqual([...url.searchParams], [['sessionId', identity.sessionId]]);
+                return Response.json({ ok: true, data: { requests: [] } });
+            }
+            if (path === '/api/bgtask' && url.search === '?status=running') return Response.json({ tasks: [] });
+            if (!url.search) {
+                if (path === '/api/auth/token') return Response.json({ token: 'fixture-token' });
+                if (path === '/api/settings') return Response.json({ workingDir: process.env.CLI_JAW_HOME });
+                if (path === '/api/goal') return Response.json({ ok: true, goal: null });
+                if (path === '/api/messages/count') return Response.json({ ok: true, data: { count: 0 } });
+                if (path === '/api/memory-files' || path === '/api/memory/status')
+                    return Response.json({ error: 'fixture_sidebar_unavailable' }, { status: 503 });
+            }
+            throw new Error('Unexpected HTTP route');
+        } catch (error) { unexpectedRequests.push(`${key}: ${String(error)}`); throw error; }
     });
     ui = await import('../../public/js/ui.ts');
+    mock.module('../../public/js/ui.js', { namedExports: { ...ui,
+        async loadMessages() { bootstrapLoad.resolve(); await bootstrapRelease.promise; return ui.loadMessages(); },
+        reconcileChatBottomAfterRestore: (...args: Parameters<typeof ui.reconcileChatBottomAfterRestore>) => {
+            ui.reconcileChatBottomAfterRestore(...args);
+            if (args[0] === 'reconnect') bootstrapDone.resolve();
+        },
+    } });
+    const memory = await import('../../public/js/features/memory.ts');
+    const background = await import('../../public/js/features/bgtask-badge.ts');
+    mock.module('../../public/js/features/memory.js', { namedExports: { ...memory,
+        async refreshMemorySidebar() { await memory.refreshMemorySidebar(); sidebarDone[0]!.resolve(); },
+    } });
+    mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { ...background,
+        async refreshBgtaskBadge() { await background.refreshBgtaskBadge(); sidebarDone[1]!.resolve(); },
+    } });
     live = await import('../../public/js/features/activity-live.ts');
     cache = await import('../../public/js/features/idb-cache.ts');
     virtual = await import('../../public/js/virtual-scroll.ts');
@@ -191,9 +239,15 @@ test.before(async () => {
     ws = await import('../../public/js/ws.ts');
     ws.connect();
     assert.equal(typeof opened, 'function'); opened();
-    for (let i = 0; i < 100 && !state.activityIdentity; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    await bootstrapLoad.promise;
+    assert.equal(state.activityIdentity, null, 'held history cannot admit a snapshot');
+    assert.equal(snapshotReads, 0);
+    bootstrapRelease.resolve();
+    await bootstrapDone.promise;
+    await Promise.all(sidebarDone.map(done => done.promise));
     assert.deepEqual(state.activityIdentity, identity, 'actual channel-open history/snapshot chain must settle');
     assert.ok(snapshotReads > 0); assert.ok(messageReads > 0);
+    assert.deepEqual(unexpectedRequests, []);
     await port.drain();
 });
 test.beforeEach(async () => {
@@ -211,6 +265,7 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
     port.release(); await port.drain();
     assert.equal(warnings.some(args => String(args[0]).startsWith('[idb-cache]')), false, 'cache errors must not be swallowed into a pass');
+    assert.deepEqual(unexpectedRequests, []);
 });
 test.after(async () => {
     port.release(); await port.drain();
