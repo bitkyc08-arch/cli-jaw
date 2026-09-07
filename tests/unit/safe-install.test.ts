@@ -538,7 +538,8 @@ test('SAF-004j2: fresh-machine evidence collector documents supported release ev
     assert.equal(packageJson.scripts?.['verify:release-evidence'], 'node scripts/verify-release-evidence.mjs');
     // Evidence gates still run via promote-to-main.sh/release-preview.sh (asserted in SAF-004j3);
     // prepublishOnly only adds the frontend build-output integrity check.
-    assert.equal(packageJson.scripts?.prepublishOnly, 'npm run build && npm run build:frontend && npm run check:frontend-build-output');
+    // The executable lifecycle ordering and fail-closed private-path gate are
+    // covered by private-boundary.test.ts, including rejection before build.
     assert.ok(freshInstallEvidenceSrc.includes('--target macos|wsl|linux|auto'), 'collector should require explicit supported target wording');
     assert.ok(freshInstallEvidenceSrc.includes('--install-script FILE'), 'collector should allow branch/local installer verification before release');
     assert.ok(freshInstallEvidenceSrc.includes('--verifier-script FILE'), 'collector should allow local verifier validation before release');

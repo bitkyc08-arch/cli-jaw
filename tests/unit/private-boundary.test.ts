@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -94,6 +94,36 @@ test('a private remote-tracking ref cannot hide outgoing history from a new publ
     const input = 'refs/heads/new ' + head + ' refs/heads/new ' + '0'.repeat(40);
     assert.throws(() => checkPush(root, input), /destination is required/);
     assert.throws(() => checkPush(root, input, remote), /devlog\/private/);
+});
+
+test('prepublish lifecycle rejects private input before build and preserves build/check ordering', t => {
+    const root = fixture(t);
+    const lifecycle = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')).scripts.prepublishOnly;
+    copyFileSync(join(project, 'scripts/check-private-boundary.mjs'), join(root, 'boundary.mjs'));
+    put(root, 'mark.cjs', "require('fs').appendFileSync('steps.txt', process.argv[2] + '\\n');");
+    put(root, 'package.json', JSON.stringify({
+        name: 'lifecycle-fixture', version: '1.0.0',
+        scripts: {
+            prepublishOnly: lifecycle,
+            'check:private-boundary': 'node boundary.mjs',
+            build: 'node mark.cjs build',
+            'build:frontend': 'node mark.cjs frontend',
+            'check:frontend-build-output': 'node mark.cjs verify',
+        },
+    }));
+    git(root, 'add', '.');
+    const invoke = () => spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        ['run', 'prepublishOnly'], { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' });
+    const good = invoke();
+    assert.equal(good.status, 0, good.stderr);
+    assert.equal(readFileSync(join(root, 'steps.txt'), 'utf8'), 'build\nfrontend\nverify\n');
+    rmSync(join(root, 'steps.txt'));
+    put(root, 'devlog/private.md');
+    git(root, 'add', '-f', 'devlog/private.md');
+    const bad = invoke();
+    assert.notEqual(bad.status, 0);
+    assert.match(bad.stderr, /private paths must live outside/);
+    assert.equal(existsSync(join(root, 'steps.txt')), false, 'no build step runs after private input is rejected');
 });
 
 test('npm pack excludes nested private records even with a scripts directory allowlist', t => {
