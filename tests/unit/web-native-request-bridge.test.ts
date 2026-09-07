@@ -6,6 +6,9 @@ import { setupWebUiDom, resetWebUiDom } from './web-ui-test-dom.ts';
 // Only the unrelated legacy renderer is replaced. ws, event-channel, session
 // selection, bridge, panel, parsers, auth and bounded REST all execute for real.
 const effects: Array<{ name: string; args: unknown[] }> = [];
+let reconnectDone = Promise.withResolvers<void>();
+let historyGate: ReturnType<typeof Promise.withResolvers<void>> | null = null;
+let historyStarted = Promise.withResolvers<void>();
 const ui: Record<string, (...args: unknown[]) => unknown> = {};
 for (const name of ['setStatus', 'updateQueueBadge', 'addSystemMsg', 'appendAgentText', 'finalizeAgent', 'replaceAgentAnswer',
     'addMessage', 'showProcessStep', 'cleanupToolActivity', 'applyQueuedOverlay', 'hydrateActiveRun',
@@ -13,6 +16,15 @@ for (const name of ['setStatus', 'updateQueueBadge', 'addSystemMsg', 'appendAgen
     ui[name] = (...args) => { effects.push({ name, args }); };
 }
 ui['isRecentSteer'] = () => false;
+ui['loadMessages'] = async () => {
+    effects.push({ name: 'loadMessages', args: [] });
+    historyStarted.resolve();
+    await historyGate?.promise;
+};
+ui['reconcileChatBottomAfterRestore'] = (...args) => {
+    effects.push({ name: 'reconcileChatBottomAfterRestore', args });
+    if (args[0] === 'reconnect') reconnectDone.resolve();
+};
 ui['addMessage'] = (...args) => {
     effects.push({ name: 'addMessage', args });
     const message = document.createElement('div'); message.className = 'msg msg-agent';
@@ -29,6 +41,10 @@ mock.module('../../public/js/features/attention-badge.js', { namedExports: { not
 mock.module('../../public/js/features/employees.js', { namedExports: { renderEmployees() {}, loadEmployees() {} } });
 mock.module('../../public/js/features/memory.js', { namedExports: { refreshMemorySidebar() {} } });
 mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { refreshBgtaskBadge() {} } });
+// A canonical fallback notice also starts Activity recovery; no raw drawer UI.
+mock.module('../../public/js/features/trace-drawer.js', { namedExports: {
+    closeTraceDrawer() {}, openTraceDrawer() { assert.fail('unexpected Trace action'); },
+} });
 
 class FakeEventSource {
     static instances: FakeEventSource[] = [];
@@ -38,7 +54,7 @@ class FakeEventSource {
     closed = false;
     constructor(readonly url: string) { FakeEventSource.instances.push(this); }
     close() { this.closed = true; }
-    open() { this.onopen?.(); }
+    open() { reconnectDone = Promise.withResolvers<void>(); this.onopen?.(); return reconnectDone.promise; }
     fail() { this.onerror?.(); }
     emit(event: string, data: Record<string, unknown>) {
         this.onmessage?.({ data: JSON.stringify({ ...data, topic: 'agent', event }), lastEventId: '1' });
@@ -51,10 +67,11 @@ class FakeWebSocket {
     onmessage: ((event: { data: string }) => void) | null = null;
     constructor(readonly url: string) { FakeWebSocket.instances.push(this); }
     close() { this.onclose?.(); }
-    open() { this.onopen?.(); }
+    open() { reconnectDone = Promise.withResolvers<void>(); this.onopen?.(); return reconnectDone.promise; }
 }
 const A = { sessionId: 'chat-A', scope: 'local:chat-A' };
 const B = { sessionId: 'chat-B', scope: 'slack:T:C:thread' };
+let selectedIdentity = A;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
     status, headers: { 'Content-Type': 'application/json' },
 });
@@ -69,6 +86,8 @@ function pending(scope = 'default', identity = A) {
             multiSelect: false, allowFreeform: true, options: [] }] } };
 }
 const calls: Array<{ url: URL; init: RequestInit }> = [];
+const unexpectedRequests: string[] = [];
+const requestObservers = new Set<() => void>();
 let serve: (url: URL, init: RequestInit) => Promise<Response>;
 const requests = () => calls.filter(c => c.url.pathname === '/api/runtime/requests');
 const posts = () => calls.filter(c => c.init.method === 'POST');
@@ -79,10 +98,24 @@ function button(label: string): HTMLButtonElement {
     assert.ok(result, label); return result;
 }
 async function until(check: () => boolean) {
-    for (let i = 0; i < 1000; i++) { if (check()) return; await nextTick(); }
-    assert.fail('actual ws/bridge/panel did not reach expected state');
+    // Observe the actual DOM/HTTP transition, including cold dynamic imports.
+    // The file runner owns the deadline; a check-phase iteration is not a clock.
+    if (check()) return;
+    await new Promise<void>((resolve, reject) => {
+        const observer = new MutationObserver(inspect);
+        function cleanup() { observer.disconnect(); requestObservers.delete(inspect); }
+        function inspect() {
+            try { if (check()) { cleanup(); resolve(); } }
+            catch (error) { cleanup(); reject(error); }
+        }
+        observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        requestObservers.add(inspect);
+        inspect();
+    });
 }
-async function drained() { for (let i = 0; i < 10; i++) await nextTick(); }
+// Only for already-dispatched local microtasks/negative assertions, never for
+// reconnect readiness (which must await the callback promise above).
+async function drained() { await nextTick(); }
 
 test('actual ws/event-channel native request lifecycle and legacy compatibility', async t => {
     setupWebUiDom();
@@ -95,8 +128,30 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
     Object.defineProperty(globalThis, 'location', { configurable: true, value: window.location });
     t.mock.method(globalThis, 'fetch', async (input: unknown, init: RequestInit = {}) => {
         const url = new URL(String(input), 'http://fixture');
-        if (url.pathname === '/api/auth/token') return json({ token: 'worker-auth' });
-        calls.push({ url, init }); return serve(url, init);
+        const key = `${init.method ?? 'GET'} ${url.pathname}${url.search}`;
+        try {
+            assert.equal(url.origin, 'http://fixture');
+            if (url.pathname === '/api/auth/token' && !url.search && !init.method) return json({ token: 'worker-auth' });
+            if (url.pathname === '/api/goal' && !url.search && !init.method) return json({ ok: true, goal: null });
+            if (url.pathname === '/api/traces/run/activity') {
+                assert.ok(!init.method || init.method === 'GET');
+                assert.deepEqual([...url.searchParams], [['session', A.sessionId], ['after', '0'], ['limit', '40']]);
+                return json({ ok: false, error: 'activity_unavailable' }, 503);
+            }
+            if (url.pathname === '/api/orchestrate/snapshot') {
+                assert.ok(!init.method || init.method === 'GET');
+                assert.deepEqual([...url.searchParams], [['session', selectedIdentity.sessionId]]);
+            } else if (url.pathname === '/api/runtime/requests') {
+                assert.ok(!init.method || init.method === 'GET');
+                assert.deepEqual([...url.searchParams], [['sessionId', selectedIdentity.sessionId]]);
+            } else {
+                assert.equal(url.pathname, '/api/runtime/requests/opaque-request');
+                assert.equal(url.search, ''); assert.equal(init.method, 'POST');
+            }
+            calls.push({ url, init });
+            for (const observe of requestObservers) observe();
+            return await serve(url, init);
+        } catch (error) { unexpectedRequests.push(`${key}: ${String(error)}`); throw error; }
     });
     serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot() : listed([]);
     const sessions = await import('../../public/js/features/session-hub.ts');
@@ -104,6 +159,7 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
     const ws = await import('../../public/js/ws.ts');
     const { state } = await import('../../public/js/state.ts');
     function select(which: 'A' | 'B') {
+        selectedIdentity = which === 'A' ? A : B;
         sessions.configureSessionView({ active: 'chat-A', sessions: [
             { id: 'chat-A', seq: 1, label: null, message_count: 0, source: 'local', remoteKey: null },
             { id: 'chat-B', seq: 2, label: null, message_count: 0, source: 'slack', remoteKey: B.scope },
@@ -111,7 +167,11 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
     }
     select('A'); channel.setEventChannelScopeProvider(sessions.currentEventScope);
     const latest = () => FakeEventSource.instances.at(-1)!;
-    t.after(() => { channel.closeEventChannel(); t.mock.timers.reset(); resetWebUiDom(); mock.restoreAll(); });
+    t.after(() => {
+        channel.closeEventChannel(); t.mock.timers.reset(); resetWebUiDom(); mock.restoreAll();
+        assert.deepEqual(unexpectedRequests, []);
+        assert.equal(requestObservers.size, 0, 'all observable readiness waiters settled');
+    });
 
     await t.test('initial failure + never-open WS exposes manual retry and rejects pending snapshot from old epoch', async () => {
         ws.connect();
@@ -163,14 +223,31 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
         assert.match(root().querySelector('.native-request-context')!.textContent!, /custom:job.*worker-run/);
         assert.equal(button('Submit answers').disabled, false);
         const count = requests().length;
-        FakeWebSocket.instances[0]!.open(); await drained();
+        // The old panel is already usable. Hold reconnect history to prove that
+        // visible controls alone cannot certify the newly opened channel.
+        historyStarted = Promise.withResolvers<void>(); historyGate = Promise.withResolvers<void>();
+        const reconnected = FakeWebSocket.instances[0]!.open();
+        await historyStarted.promise;
+        assert.equal(requests().length, count); assert.match(status(), /updates remain unavailable/);
+        historyGate.resolve(); await reconnected; historyGate = null;
         assert.equal(requests().length, count); assert.match(status(), /updates remain unavailable/);
         assert.ok(root().nextElementSibling === input); assert.equal(composer.disabled, false);
     });
 
     await t.test('only SSE-open clears outage, empty hides, notice wakes same-chat execution scope and coalesces', async () => {
-        serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot() : listed([]);
-        ws.connect(); latest().open(); await until(() => root().hidden);
+        const snapshotStarted = Promise.withResolvers<void>(), snapshotRelease = Promise.withResolvers<void>();
+        serve = async url => {
+            if (url.pathname !== '/api/orchestrate/snapshot') return listed([]);
+            snapshotStarted.resolve(); await snapshotRelease.promise; return snapshot();
+        };
+        ws.connect();
+        let restored = false;
+        const reconnected = latest().open().then(() => { restored = true; });
+        await snapshotStarted.promise;
+        assert.equal(restored, false, 'receiving a request is not snapshot application');
+        assert.equal(button('Submit answers').disabled, true, 'old controls stay fenced until current list');
+        snapshotRelease.resolve(); await reconnected;
+        await until(() => root().hidden);
         assert.equal(document.querySelectorAll('.native-requests').length, 1);
         serve = async () => listed([pending('default'), { ...pending('another-chat', B), requestId: 'foreign-request' }]);
         const count = requests().length;
@@ -222,7 +299,7 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
         assert.match(status(), /Manually refreshed/); assert.doesNotMatch(status(), /Request cancelled/);
         assert.equal(posts().length, before + 1);
         serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot() : listed([]);
-        const reads = requests().length; latest().open(); await until(() => root().hidden);
+        const reads = requests().length; await latest().open(); await until(() => root().hidden);
         assert.equal(requests().length, reads + 1);
     });
 
@@ -232,7 +309,7 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
         const reads = requests().length; button('Refresh requests').click();
         await until(() => requests().length === reads + 1);
         serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot(A) : listed([pending('fresh:epoch')]);
-        ws.connect(); latest().open();
+        ws.connect(); await latest().open();
         await until(() => !!root().querySelector('form') && !button('Submit answers').disabled);
         deferred.resolve(listed([])); await drained();
         assert.match(root().textContent!, /fresh:epoch/); assert.doesNotMatch(status(), /unavailable/);
@@ -241,8 +318,10 @@ test('actual ws/event-channel native request lifecycle and legacy compatibility'
 
     await t.test('A to B during pending snapshot/list and POST never changes B or sends detached A controls', async () => {
         const stale = Promise.withResolvers<Response>();
-        serve = async () => stale.promise;
+        const staleStarted = Promise.withResolvers<void>();
+        serve = async () => { staleStarted.resolve(); return stale.promise; };
         const older = ws.syncOrchestrateSnapshot('A', { hydrateRun: true });
+        await staleStarted.promise; // A must really be pending before swapping the fixture to B.
         select('B'); serve = async url => url.pathname === '/api/orchestrate/snapshot' ? snapshot(B) : listed([pending('custom:B', B)]);
         await ws.syncOrchestrateSnapshot('B', { hydrateRun: true }); await until(() => !!root().querySelector('form'));
         stale.resolve(snapshot(A, 'C')); await older; assert.deepEqual(state.activityIdentity, B); assert.equal(state.orcState, 'IDLE');
