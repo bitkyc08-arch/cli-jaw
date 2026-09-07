@@ -22,6 +22,7 @@ export type DashboardSidebarMode =
     | 'reminders'
     | 'settings';
 export type DashboardShortcutAction =
+    | 'toggleInstanceSettings'
     | 'focusInstances'
     | 'focusActiveSession'
     | 'focusNotes'
@@ -221,6 +222,7 @@ export type DashboardRegistryScan = {
 export type DashboardRegistryUi = {
     selectedPort: number | null;
     selectedTab: DashboardDetailTab;
+    instanceSettingsOpen: boolean;
     sidebarCollapsed: boolean;
     activityDockCollapsed: boolean;
     activityDockHeight: number;

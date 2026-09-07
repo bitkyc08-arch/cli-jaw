@@ -72,7 +72,7 @@ async function selectFirstOnlineInstance(page: Page): Promise<void> {
         await fetch('/api/dashboard/registry', {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ui: { sidebarMode: 'instances', selectedPort: selected.port, selectedTab: 'preview' } }),
+            body: JSON.stringify({ ui: { sidebarMode: 'instances', selectedPort: selected.port, selectedTab: 'preview', instanceSettingsOpen: false } }),
         });
         return selected.port;
     });
@@ -193,7 +193,7 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
     assert.equal(before.hostHidden, false, 'preview host should be visible on Preview tab');
     assert.equal(before.hasFrame, true, 'preview iframe should render for an online selected instance');
 
-    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.getByRole('button', { name: 'Instance settings', exact: true }).click();
 
     const during = await page.evaluate(() => {
         const host = document.querySelector('[data-preview-host="persistent"]');
@@ -205,10 +205,10 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
         };
     });
 
-    assert.equal(during.hostHidden, true, 'preview host should be hidden off Preview tab');
-    assert.equal(during.sameFrame, true, 'preview iframe must stay mounted while hidden');
+    assert.equal(during.hostHidden, false, 'opening settings must leave Preview visible');
+    assert.equal(during.sameFrame, true, 'preview iframe must stay mounted beside settings');
 
-    await page.getByRole('tab', { name: 'Preview' }).click();
+    await page.getByRole('button', { name: 'Close instance settings' }).click();
 
     const after = await page.evaluate(() => {
         const host = document.querySelector('[data-preview-host="persistent"]');
@@ -223,6 +223,14 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
     assert.equal(after.hostHidden, false, 'preview host should show again on Preview tab');
     assert.equal(after.sameFrame, true, 'preview iframe must remain the same DOM node after returning');
     assert.equal(after.src, before.src, 'preview source should not change across tab-only navigation');
+    for (const mode of ['Overview', 'Logs', 'Preview']) {
+        await page.getByRole('tab', { name: mode, exact: true }).click();
+        const state = await page.evaluate(() => ({
+            hidden: document.querySelector('[data-preview-host]')?.hasAttribute('hidden'),
+            same: document.querySelector('iframe.preview-frame') === (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame,
+        }));
+        assert.equal(state.hidden, mode !== 'Preview'); assert.equal(state.same, true);
+    }
 }));
 
 test('manager preview header toggles and refreshes the iframe', async (t) => await withManagerBrowserLock(async () => {
@@ -328,3 +336,45 @@ test('manager sidebar shell resizes, persists, resets, and collapses', async (t)
     await page.keyboard.press('Meta+Shift+B');
 }));
 
+
+test('instance settings panel has bounded layout and guarded keyboard close', async (t) => await withManagerBrowserLock(async () => {
+    const page = await pageForManager(t); if (!page) return;
+    let snapshot: import('../../public/manager/src/types').DashboardRegistryLoadResult | undefined;
+    await page.route('**/api/dashboard/registry', async route => {
+        if (!snapshot) {
+            snapshot = await (await route.fetch({ method: 'GET' })).json();
+            snapshot!.registry.ui.instanceSettingsOpen = false;
+        }
+        if (route.request().method() === 'PATCH') Object.assign(snapshot!.registry.ui, route.request().postDataJSON().ui);
+        snapshot!.status.ui = snapshot!.registry.ui;
+        await route.fulfill({ json: snapshot });
+    });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' }); await selectFirstOnlineInstance(page);
+    const toggle = page.getByRole('button', { name: 'Instance settings', exact: true });
+    await toggle.click();
+    const panel = page.locator('aside.workbench-settings-panel');
+    assert.equal(await page.getByRole('tab', { name: 'Settings', exact: true }).count(), 0);
+    for (const width of [1440, 1280, 1024, 1023, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        const metrics = await panel.evaluate(el => ({ width: el.getBoundingClientRect().width,
+            right: el.getBoundingClientRect().right, position: getComputedStyle(el).position,
+            documentWidth: document.documentElement.scrollWidth }));
+        const expected = width >= 1440 ? 480 : width >= 1024 ? 420 : Math.min(width * .92, 420);
+        assert.ok(Math.abs(metrics.width - expected) <= 1); assert.ok(metrics.right <= width + 1);
+        assert.equal(metrics.documentWidth, width); assert.equal(metrics.position === 'fixed', width < 1024);
+    }
+    await panel.getByRole('tab', { name: 'Display', exact: true }).click();
+    assert.equal(await panel.getByRole('tab', { name: 'Display', exact: true }).getAttribute('aria-selected'), 'true');
+    assert.ok(await panel.locator('.settings-sidebar [role=tab]').count() > 0);
+    const field = panel.locator('#display-pasteCollapseLines');
+    const initial = Number(await field.inputValue()); await field.fill(String(initial + 1));
+    await page.getByRole('button', { name: 'Close instance settings' }).focus();
+    page.once('dialog', dialog => dialog.dismiss()); await page.keyboard.press('Escape');
+    assert.equal(await panel.count(), 1); assert.equal(await field.inputValue(), String(initial + 1));
+    page.once('dialog', dialog => dialog.accept()); await page.keyboard.press('Escape');
+    await panel.waitFor({ state: 'detached' });
+    assert.equal(await toggle.evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('Meta+,'); await panel.waitFor({ state: 'visible' });
+    assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+    await page.keyboard.press('Meta+,'); await panel.waitFor({ state: 'detached' });
+}));

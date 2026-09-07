@@ -1,6 +1,7 @@
 import type { DashboardShortcutAction, DashboardShortcutKeymap } from './types';
 
 export const MANAGER_SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
+    'toggleInstanceSettings',
     'focusInstances',
     'focusActiveSession',
     'focusNotes',
@@ -40,6 +41,7 @@ export const MANAGER_SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
 ];
 
 export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
+    toggleInstanceSettings: 'Meta+,',
     focusInstances: 'Alt+I',
     focusActiveSession: 'Alt+P',
     focusNotes: 'Alt+N',

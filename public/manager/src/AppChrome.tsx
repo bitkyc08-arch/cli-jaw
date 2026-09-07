@@ -1,5 +1,6 @@
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { CommandBar } from './components/CommandBar';
+import { WorkbenchHeader } from './components/WorkbenchHeader';
 import { CommandPalette } from './components/CommandPalette';
 import { ManagerShell } from './components/ManagerShell';
 import { HelpDrawer } from './help/HelpDrawer';
@@ -50,7 +51,11 @@ type AppChromeProps = {
     lifecycleMessage: string | null;
     error: string | null;
     registryMessage: string | null;
-    workbenchHeader: ReactNode;
+    onPickProject: (port: number) => void;
+    projectPickBusy: boolean;
+    onRefreshPreview: () => void;
+    onInstanceSettingsOpenChange: (open: boolean) => void;
+    onSettingsDirtyChange: (entry: 'panel' | 'dashboard', dirty: boolean) => void;
     detailContent: (tab: DashboardDetailTab) => ReactNode;
     instanceListContent: ReactNode;
     drawerProfileFilters: ReactNode;
@@ -143,7 +148,7 @@ export function AppChrome(props: AppChromeProps) {
                         boardView={props.boardView} onBoardViewChange={props.setBoardView} scheduleGroup={props.scheduleGroup} onScheduleGroupChange={props.setScheduleGroup}
                         instances={props.instances} selectedInstance={props.selectedInstance} data={props.data} titlesByPort={props.titlesByPort}
                         busyPorts={props.busyPorts} activeDetailTab={props.view.activeDetailTab} onDetailTabChange={props.handleTabChange}
-                        workbenchHeader={props.workbenchHeader} detailContent={props.detailContent} previewEnabled={props.previewEnabled}
+                        workbenchHeader={<WorkbenchHeader instance={props.selectedInstance} previewEnabled={props.previewEnabled} onPreviewEnabledChange={props.setPreviewEnabled} onPreviewRefresh={props.onRefreshPreview} onOpenHelpTopic={props.onOpenHelpTopic} onPickProject={props.onPickProject} projectPickBusy={props.projectPickBusy} />} instanceSettingsOpen={props.view.instanceSettingsOpen} onInstanceSettingsOpenChange={props.onInstanceSettingsOpenChange} onSettingsDirtyChange={props.onSettingsDirtyChange} detailContent={props.detailContent} previewEnabled={props.previewEnabled}
                         previewRefreshKey={props.previewRefreshKey} previewTheme={props.theme.resolved} onOpenNotesFromPreview={props.openNotesFromPreview} lifecycleMessage={props.lifecycleMessage}
                         onDismissLifecycleMessage={props.onDismissLifecycleMessage} instanceListContent={props.instanceListContent} loading={props.loading}
                         jawCeoWorkbenchButton={props.jawCeoWorkbenchButton} jawCeoVoiceOverlay={props.jawCeoVoiceOverlay}

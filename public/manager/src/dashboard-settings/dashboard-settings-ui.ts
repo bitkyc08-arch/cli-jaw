@@ -11,6 +11,7 @@ export function dashboardSettingsUiFromView(
     return {
         selectedPort: view.selectedPort,
         selectedTab: view.activeDetailTab,
+        instanceSettingsOpen: view.instanceSettingsOpen,
         sidebarCollapsed: view.sidebarCollapsed,
         activityDockCollapsed: view.activityDockCollapsed,
         activityDockHeight: view.activityDockHeight,
