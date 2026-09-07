@@ -286,6 +286,7 @@ test('shared Telegram and Discord setup validate before saving and protect page 
         await t.test(channel, async () => {
             const dirty = createDirtyStore();
             let settingsReads = 0, valid = false;
+            let finishSave: () => void = () => {};
             let pageSave: import('../../public/manager/src/settings/types').SaveHandler | null = null;
             const writes: Array<{ path: string; body: unknown }> = [];
             const client: import('../../public/manager/src/settings/types').SettingsClient = {
@@ -297,7 +298,11 @@ test('shared Telegram and Discord setup validate before saving and protect page 
                     writes.push({ path, body });
                     return (valid ? { ok: true, identity: 'test-bot' } : { ok: false, error: 'network' }) as T;
                 },
-                async put<T>(path: string, body: unknown) { writes.push({ path, body }); return {} as T; },
+                async put<T>(path: string, body: unknown) {
+                    writes.push({ path, body });
+                    await new Promise<void>(resolve => { finishSave = resolve; });
+                    return {} as T;
+                },
                 async delete() { throw new Error('Unexpected delete'); },
             };
             const render = () => root.render(React.createElement(channel === 'telegram' ? Telegram : Discord, {
@@ -334,6 +339,10 @@ test('shared Telegram and Discord setup validate before saving and protect page 
             await click('Validate');
             await click('Next');
             await click('Save');
+            assert.equal(button('Close').disabled, true);
+            await act(async () => { container.querySelector('dialog')!.dispatchEvent(new dom.window.Event('cancel', { cancelable: true })); });
+            assert.ok(container.querySelector('dialog[open]'), 'closing during save must not expose editable stale fields');
+            await act(async () => finishSave());
             assert.deepEqual(writes.at(-1), { path: '/api/settings', body: {
                 [channel]: { enabled: true, token, ...(channel === 'discord' ? { guildId: '123456789012345678' } : {}) },
             } });

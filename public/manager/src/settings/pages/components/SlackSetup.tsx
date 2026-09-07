@@ -36,7 +36,7 @@ export function ChannelSetupDialog({channel,client,t,initialDraft,returnFocus,on
             queueMicrotask(()=>{if(returnFocus?.isConnected)returnFocus.focus();});
         };
     },[returnFocus]);
-    function close() { if(!flow.saved && !window.confirm('Discard unsaved changes?'))return; onClose(); }
+    function close() { if(channel!=='slack' && flight.current)return; if(!flow.saved && !window.confirm('Discard unsaved changes?'))return; onClose(); }
     async function run(action:()=>Promise<void>, failureKey='onboarding.error.network') {
         if(flight.current)return;flight.current=true;setBusy(true);setError(null);
         try { await action(); } catch {if(active.current)setError(t(failureKey));}
@@ -121,6 +121,6 @@ export function ChannelSetupDialog({channel,client,t,initialDraft,returnFocus,on
         {(error || flow.error || (flow.step===2 && blockerForStep(flow))) && <p role="alert">{error ?? t(`onboarding.error.${flow.error ?? blockerForStep(flow)}`)}</p>}
         {!!flow.missingScopes.length && <p role="alert">{flow.missingScopes.join(', ')}</p>}
         {!!flow.missingCapabilities.length && <p role="status">{t('onboarding.warning.missingCapabilities',{capabilities:flow.missingCapabilities.join(', ')})}</p>}
-        <button type="button" onClick={close}>{t('onboarding.close')}</button>
+        <button type="button" disabled={channel!=='slack' && busy} onClick={close}>{t('onboarding.close')}</button>
     </dialog>;
 }
