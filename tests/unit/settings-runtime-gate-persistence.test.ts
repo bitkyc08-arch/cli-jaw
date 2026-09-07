@@ -52,8 +52,14 @@ function document(
     };
 }
 
-function withoutAbsentGate(value: Record<string, any>): Record<string, any> {
+function expectedPersisted(value: Record<string, any>): Record<string, any> {
     const expected = structuredClone(value);
+    delete expected.runtimeSelectionDiagnostic;
+    return expected;
+}
+
+function withoutAbsentGate(value: Record<string, any>): Record<string, any> {
+    const expected = expectedPersisted(value);
     if (expected.runtime?.codexApp?.multiplex === false) {
         delete expected.runtime.codexApp.multiplex;
         if (Object.keys(expected.runtime.codexApp).length === 0) delete expected.runtime.codexApp;
@@ -120,6 +126,21 @@ async function runChildScenario(name: string): Promise<void> {
         return;
     }
 
+    if (name === 'retired-diagnostic-save') {
+        write(document('jwc'));
+        config.loadSettings();
+        assert.equal(config.settings.cli, 'jwc');
+        assert.equal(config.settings.runtimeSelectionDiagnostic, 'retired_runtime:jwc');
+        config.settings.port = '4567';
+        config.saveSettings(config.settings);
+        assert.equal(config.getSettingsPersistenceShape(), 'absent');
+        assert.equal(disk(), expectedAbsentRaw(config.settings));
+        assert.equal(Object.hasOwn(JSON.parse(disk()), 'runtimeSelectionDiagnostic'), false);
+        assert.equal(config.settings.cli, 'jwc');
+        assert.equal(config.settings.runtimeSelectionDiagnostic, 'retired_runtime:jwc');
+        return;
+    }
+
     if (name === 'side-effect-rollback') {
         write(document());
         config.loadSettings();
@@ -144,7 +165,8 @@ async function runChildScenario(name: string): Promise<void> {
         });
         assert.equal(config.getSettingsPersistenceShape(), 'present');
         assert.equal(applied.runtime.codexApp.multiplex, multiplex);
-        assert.equal(disk(), JSON.stringify(applied, null, 2));
+        assert.equal(disk(), JSON.stringify(expectedPersisted(applied), null, 2));
+        assert.equal(Object.hasOwn(JSON.parse(disk()), 'runtimeSelectionDiagnostic'), false);
         return;
     }
 
@@ -222,7 +244,8 @@ async function runChildScenario(name: string): Promise<void> {
         assert.equal(config.settings.runtime.codexApp.multiplex, true);
         assert.equal(config.settings.runtimeDefaultMigration.state, 'accepted');
         assert.equal(config.getSettingsPersistenceShape(), 'present');
-        assert.equal(disk(), JSON.stringify(config.settings, null, 2));
+        assert.equal(disk(), JSON.stringify(expectedPersisted(config.settings), null, 2));
+        assert.equal(Object.hasOwn(JSON.parse(disk()), 'runtimeSelectionDiagnostic'), false);
         return;
     }
 
@@ -239,6 +262,7 @@ if (scenario) {
         'rollback',
         'side-effect-rollback',
         'port-save',
+        'retired-diagnostic-save',
         'explicit-false',
         'explicit-true',
         'sequential-malformed',
