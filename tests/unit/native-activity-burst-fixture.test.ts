@@ -1,12 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { median, classifyMemory, parseBurstArgs, browserFailures,
+import { median, classifyMemory, parseBurstArgs, browserFailures, probeRequestTracker,
     type MemorySeriesInput, type BrowserOracleSample } from '../smoke/native-activity-burst.mts';
 import { burstBodies, isBurstCycle, nextBurstCycle, BURST_PROTOCOL } from '../fixtures/native-activity-burst-server.mts';
 
 const series = (measured = Array(20).fill(10_000_000)): MemorySeriesInput => ({ initial: Array(5).fill(10_000_000),
     measured, final: Array(5).fill(measured.at(-1)), pageBytes: 16384, identityStable: true });
+
+test('probe abort retirement is request-identity scoped and only applies at disposal', () => {
+    const origin = 'http://127.0.0.1:12345';
+    const request = (route = '/__probe/metrics', method = 'GET') => ({ url: () => origin + route, method: () => method });
+    const tracker = probeRequestTracker<ReturnType<typeof request>>(origin);
+    const live = request(); tracker.started(live);
+    assert.equal(tracker.failed(live, 'net::ERR_ABORTED').expected, false);
+    const pending = request(), done = request(); tracker.started(pending); tracker.started(done); tracker.finished(done);
+    tracker.beginDisposal();
+    const during = request('/api/traces/tr_owned/events/2'); tracker.started(during);
+    const foreign = request('/api/unrelated'); tracker.started(foreign);
+    const post = request('/__probe/metrics', 'POST'); tracker.started(post);
+    assert.equal(tracker.failed(pending, 'net::ERR_CONNECTION_RESET').expected, false);
+    tracker.endDisposal();
+    assert.equal(tracker.failed(during, 'net::ERR_ABORTED').expected, true, 'late disposal notification retains exact identity');
+    for (const value of [done, foreign, post, request()]) assert.equal(tracker.failed(value, 'net::ERR_ABORTED').expected, false);
+    const next = request(); tracker.started(next);
+    assert.equal(tracker.failed(next, 'net::ERR_ABORTED').expected, false, 'next cycle is not retired');
+});
 
 test('median is independent of input order and does not mutate observations', () => {
     const values = [8, 2, 6, 4]; assert.equal(median(values), 5); assert.deepEqual(values, [8, 2, 6, 4]);

@@ -52,6 +52,7 @@ declare global {
             prepare(binding: BurstBinding): Promise<void>;
             snapshot(): BurstBrowserSnapshot;
             disposeCycle(): Promise<BurstDisposal>;
+            takeBulkCapture(): { receivedCount: number; html: string };
         };
     }
 }
@@ -123,6 +124,7 @@ let pageDisposed = false;
 let lastSnapshot: BurstBrowserSnapshot | null = null;
 let disposing: Promise<BurstDisposal> | null = null;
 let localeReady: Promise<void> | null = null;
+let bulkCapture: { receivedCount: number; html: string } | null = null;
 const pageErrors: string[] = [];
 function errorText(error: unknown): string {
     return (error instanceof Error ? error.message : String(error)).replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 180);
@@ -330,6 +332,11 @@ function receive(token: number, wire: Record<string, unknown>): void {
         if ([65, 257, 449].includes(cycle.received)) queueControl(cycle);
         if (cycle.received === 513) {
             cycle.bulk = preview(cycle); checkPreview(cycle.bulk, true);
+            if (cycle.binding.cycle.phase === 'preflight' && cycle.binding.cycle.index === 1) {
+                const html = turn.view.element.outerHTML;
+                requireFact(new TextEncoder().encode(html).byteLength <= 131072, 'bulk_capture_bound');
+                bulkCapture = { receivedCount: cycle.received, html };
+            }
         }
         if (cycle.received === 642) {
             cycle.final = preview(cycle); checkPreview(cycle.final, false);
@@ -506,6 +513,7 @@ async function dispose(): Promise<BurstDisposal> {
         retiredPending: !!retiredUnsubscribe, errors: activeEventSources ? ['disposal_source_still_active'] : [] };
     const disposalErrors: string[] = [];
     cycle.retired = true; cycle.ready = false;
+    bulkCapture = null;
     if (cycle.binding.cycle.phase === 'preflight' && cycle.binding.cycle.index === 2 && cycle.unsubscribe) {
         requireFact(!retiredUnsubscribe, 'retired_already_pending');
         retiredUnsubscribe = cycle.unsubscribe; // One scalar-only retired callback for preflight3.
@@ -568,7 +576,10 @@ configureLiveActivityHost({
             .finally(() => { cycle.rawPending = null; });
     },
 });
-window.__wp29Probe = Object.freeze({ prepare, snapshot, disposeCycle });
+window.__wp29Probe = Object.freeze({ prepare, snapshot, disposeCycle, takeBulkCapture() {
+    requireFact(bulkCapture, 'bulk_capture_unavailable');
+    const capture = bulkCapture; bulkCapture = null; return capture;
+} });
 window.addEventListener('pagehide', () => {
     pageDisposed = true;
     void disposeCycle().finally(() => {

@@ -79,6 +79,28 @@ export function parseBurstArgs(args: string[]): { label: string; executable: str
 export type BrowserOracleSample = Pick<BurstBrowserSnapshot, 'receivedCount' | 'ingestedCount' | 'retiredCallbackHits'
     | 'suppressedIngestions' | 'terminal' | 'activeEventSources' | 'maxEventSources' | 'errors' | 'bulk' | 'final'
     | 'binding' | 'finalText' | 'finalDomRaw' | 'finalDomText' | 'answerCount' | 'controls'>;
+// Exact request identities cross disposal; URL similarity alone never retires a failure.
+export function probeRequestTracker<T extends { url(): string; method(): string }>(origin: string) {
+    const active = new Set<T>(), retired = new WeakSet<T>();
+    let disposing = false;
+    const owned = (request: T) => {
+        const url = new URL(request.url());
+        return request.method() === 'GET' && url.origin === origin
+            && (/^\/(?:__probe\/metrics|api\/events|api\/auth\/token|api\/i18n\/(?:en|ko))$/.test(url.pathname)
+                || /^\/api\/traces\/tr_[A-Za-z0-9_-]+\/events\/[1-9]\d*$/.test(url.pathname));
+    };
+    return {
+        started(request: T) { if (owned(request)) { active.add(request); if (disposing) retired.add(request); } },
+        finished(request: T) { active.delete(request); },
+        beginDisposal() { disposing = true; for (const request of active) retired.add(request); },
+        endDisposal() { disposing = false; },
+        failed(request: T, error: string | undefined) {
+            active.delete(request);
+            return { retired: retired.has(request), duringDisposal: disposing,
+                expected: retired.has(request) && error === 'net::ERR_ABORTED' };
+        },
+    };
+}
 export function browserFailures(value: BrowserOracleSample): string[] {
     const failures: string[] = [];
     const check = (condition: boolean, name: string) => { if (!condition) failures.push(name); };
@@ -224,7 +246,8 @@ export async function runBurst(args: string[]): Promise<number> {
     const unexpected: string[] = [], cycles: unknown[] = [], preflight: unknown[] = [];
     const initial: Sample[][] = [], measured: Sample[][] = [], final: Sample[][] = [];
     const sockets = new Set<import('node:net').Socket>(), upstream = new Set<http.ClientRequest>();
-    const activeSseRequests = new Set<BrowserRequest>(), retiredSseRequests = new WeakSet<BrowserRequest>();
+    let requests: ReturnType<typeof probeRequestTracker<BrowserRequest>> | undefined;
+    const requestFailures: unknown[] = [];
     const fail = (message: string) => { if (unexpected.length < 64) unexpected.push(message.slice(0, 500)); };
     const ensureLive = () => {
         abort.signal.throwIfAborted();
@@ -398,12 +421,14 @@ export async function runBurst(args: string[]): Promise<number> {
         page.on('pageerror', error => fail('page:' + error.message));
         page.on('crash', () => { fail('renderer crashed'); abort.abort(Error('renderer crashed')); });
         page.on('console', message => { if (message.type() === 'error') fail('console:' + message.text()); });
-        page.on('request', request => { if (request.url().startsWith(uiOrigin + '/api/events?')) activeSseRequests.add(request); });
-        page.on('requestfinished', request => activeSseRequests.delete(request));
+        requests = probeRequestTracker<BrowserRequest>(uiOrigin);
+        page.on('request', request => requests!.started(request));
+        page.on('requestfinished', request => requests!.finished(request));
         page.on('requestfailed', request => {
-            activeSseRequests.delete(request);
-            if (retiredSseRequests.has(request) && request.url().startsWith(uiOrigin + '/api/events?')) return;
-            if (!closing) fail('request:' + request.url().slice(0, 200) + ':' + request.failure()?.errorText);
+            const error = request.failure()?.errorText;
+            const classification = requests!.failed(request, error);
+            if (requestFailures.length < 64) requestFailures.push({ url: request.url().slice(0, 200), error, ...classification });
+            if (!classification.expected) fail('request:' + request.url().slice(0, 200) + ':' + error);
         });
         await page.goto(uiOrigin + '/burst-fixture', { waitUntil: 'domcontentloaded', timeout: 15000 });
         await page.waitForFunction(() => typeof window.__wp29Probe?.prepare === 'function', undefined, { timeout: 15000 });
@@ -423,16 +448,6 @@ export async function runBurst(args: string[]): Promise<number> {
             await bounded(page!.evaluate(binding => window.__wp29Probe.prepare(binding), binding), 15000, 'browser prepare');
             await waitFor(async () => (await control<BurstMetrics>('/__probe/metrics')).sse.activeConnections === 1, 'SSE open');
             await control('/__probe/start', { cycle });
-            if (cycle.phase === 'preflight' && cycle.index === 1) {
-                await page!.waitForFunction(() => window.__wp29Probe.snapshot().receivedCount >= 64, undefined, { timeout: CYCLE_MS });
-                const beforeCapture = await snapshot();
-                write('preflight-capture-start.json', { browser: beforeCapture, producer: await control<BurstMetrics>('/__probe/metrics') });
-                if (beforeCapture.terminal) throw Error('preflight bulk visual window missed');
-                const summary = page!.locator('.activity-disclosure > summary'); await summary.focus();
-                if (!await page!.locator('.activity-disclosure').evaluate(element => (element as HTMLDetailsElement).open)) await page!.keyboard.press('Enter');
-                await page!.screenshot({ path: path.join(output, 'preflight-bulk.png') });
-                write('preflight-capture-window.json', { before: beforeCapture.receivedCount, after: (await snapshot()).receivedCount });
-            }
             await page!.waitForFunction(() => window.__wp29Probe.snapshot().terminal, undefined, { timeout: CYCLE_MS });
             const value = await snapshot(), problems = browserFailures(value);
             if (cycle.phase === 'preflight' && cycle.index === 3) {
@@ -454,6 +469,20 @@ export async function runBurst(args: string[]): Promise<number> {
             assert.equal(early?.prefix, `C${String(cycle.index).padStart(2, '0')}B0000|`); assert.equal(early?.suffix, '|END0000');
             assert.equal(late?.runId, binding.runId); assert.equal(late?.outputBytes, 2);
             if (cycle.phase === 'preflight' && cycle.index === 1) {
+                // Frozen actual checkpoint DOM, not a screenshot racing live delivery.
+                const capture = await page!.evaluate(() => window.__wp29Probe.takeBulkCapture());
+                assert.equal(capture.receivedCount, 513);
+                assert.ok(capture.html.length > 0 && Buffer.byteLength(capture.html) <= 131072);
+                const capturePage = await context!.newPage();
+                try {
+                    await capturePage.setContent(`<base href="${uiOrigin}/">${styles.map(href => `<link rel="stylesheet" href="${href}">`).join('')}<main>${capture.html}</main>`);
+                    await capturePage.locator('.activity-disclosure > summary').focus();
+                    if (!await capturePage.locator('.activity-disclosure').evaluate(element => (element as HTMLDetailsElement).open)) await capturePage.keyboard.press('Enter');
+                    await capturePage.locator('.activity-item > summary').first().click();
+                    assert.equal(await capturePage.locator('.activity-item').count(), 16);
+                    await capturePage.screenshot({ path: path.join(output, 'preflight-bulk.png') });
+                } finally { await capturePage.close(); }
+                write('preflight-capture-window.json', { receivedCount: capture.receivedCount, mode: 'frozen bulk checkpoint DOM; not live presentation timing' });
                 const summary = page!.locator('.activity-disclosure > summary'); await summary.focus();
                 if (!await page!.locator('.activity-disclosure').evaluate(element => (element as HTMLDetailsElement).open)) await page!.keyboard.press('Enter');
                 await page!.getByRole('button', { name: 'Earlier activity', exact: true }).click();
@@ -466,8 +495,9 @@ export async function runBurst(args: string[]): Promise<number> {
                 await page!.screenshot({ path: path.join(output, 'preflight-latest.png') });
                 await assert.rejects(control(`/api/traces/${binding.runId}/events/${metrics.firstBulkTraceSeq}?session=wrong-session`), /HTTP404/);
             }
-            for (const request of activeSseRequests) retiredSseRequests.add(request);
-            const disposal = await bounded(page!.evaluate(() => window.__wp29Probe.disposeCycle()), 5000, 'browser disposal');
+            requests!.beginDisposal();
+            const disposal = await bounded(page!.evaluate(() => window.__wp29Probe.disposeCycle()), 5000, 'browser disposal')
+                .finally(() => requests!.endDisposal());
             assert.equal(disposal.activeEventSources, 0); assert.equal(disposal.rootConnected, false); assert.equal(disposal.handlerCount, 0);
             assert.deepEqual(disposal.errors, []);
             assert.equal(disposal.retiredPending, cycle.phase === 'preflight' && cycle.index === 2);
@@ -493,7 +523,7 @@ export async function runBurst(args: string[]): Promise<number> {
     } catch (error) { fatal = error instanceof Error ? error.message : String(error); }
     finally {
         clearTimeout(watchdog); closing = true;
-        for (const request of activeSseRequests) retiredSseRequests.add(request);
+        requests?.beginDisposal();
         const cleanupErrors: string[] = [];
         const clean = async (name: string, action: () => Promise<unknown>) => { try { await bounded(action(), 5000, name); } catch (error) { cleanupErrors.push(`${name}:${String(error)}`.slice(0, 500)); } };
         if (page && !page.isClosed()) await clean('page disposal', async () => { await page!.evaluate(() => window.__wp29Probe?.disposeCycle()); });
@@ -541,6 +571,7 @@ export async function runBurst(args: string[]): Promise<number> {
             dbClosed, uiListening: server?.listening ?? false, sockets: sockets.size, upstream: upstream.size, sourcesStable, at: new Date().toISOString() });
         write('samples.json', { initial, measured, final, rendererIdentity, rendererStable });
         write('preflight.json', preflight); write('cycles.json', cycles);
+        write('request-failures.json', requestFailures);
         const summary = { functional: fatal || unexpected.length ? 'FAIL' : 'PASS', fatal, unexpected,
             nodeRss: nodeMemory, rendererRss: rendererMemory, rendererScope: 'dedicated browser renderer RSS sum, not inferred page RSS',
             cleanup: certified ? 'CERTIFIED' : 'UNCERTIFIED', sourcesStable, output,
@@ -556,7 +587,8 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
         const { test } = await import('node:test');
         const args = ['--label', process.env.CLI_JAW_BURST_LABEL ?? '',
             '--browser-executable', process.env.CLI_JAW_BURST_BROWSER ?? ''];
-        test('canonical Activity burst, concurrency, cleanup and RSS conformance', async () => {
+        test('canonical Activity burst, concurrency, cleanup and RSS conformance',
+            { skip: !process.env.CLI_JAW_BURST_BROWSER && !process.env.CLI_JAW_BURST_LABEL ? 'opt-in diagnostic: set CLI_JAW_BURST_BROWSER and CLI_JAW_BURST_LABEL' : false }, async () => {
             assert.equal(await runBurst(args), 0, 'inspect retained summary.json for separate functional, cleanup and RSS verdicts');
         });
     } else if (process.argv.slice(2).includes('--help')) console.log('node --import tsx tests/smoke/native-activity-burst.mts --label NAME --browser-executable ABSOLUTE_PATH [--evidence-root REPO_EVIDENCE_ROOT]\nUnder node --test, set CLI_JAW_BURST_LABEL and CLI_JAW_BURST_BROWSER.');
