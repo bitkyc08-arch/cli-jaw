@@ -508,7 +508,7 @@ cli-jaw/
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
-│   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2519L)
+│   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2527L)
 │   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
 │   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (261L)
 │   ├── manager/src/settings/ ← unified instance and Manager settings

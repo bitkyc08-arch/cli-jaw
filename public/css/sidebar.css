@@ -5,6 +5,8 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    min-height: 28px;
+    border-radius: var(--radius-ctl);
 }
 .cli-status-header::after {
     content: '▸';
@@ -12,6 +14,8 @@
     color: var(--text-dim);
     margin-left: 8px;
 }
+.sidebar-left .cli-status-header:hover { background: var(--surface-2); }
+.sidebar-left .cli-status-header.expanded { background: var(--surface-3); }
 .cli-status-header.expanded::after {
     content: '▾';
 }
@@ -107,6 +111,7 @@
     align-items: center;
     gap: 8px;
     padding: 4px 0;
+    min-height: 28px;
     font-size: 12px;
 }
 
@@ -657,3 +662,21 @@ textarea.prompt-editor {
 /* Shared instance settings entry. */
 #tabSettings { flex: 1; min-height: 0; padding: 0; gap: 0; }
 .settings-frame { display: block; width: 100%; height: 100%; flex: 1; min-height: 0; border: 0; }
+
+/* Classic shell rows; preserve language select inline padding. */
+.sidebar-left .section-title { color: var(--text-muted-60); font-family: var(--font-ui); }
+.sidebar-left .sidebar-hb-btn {
+    min-height: 28px;
+    padding-block: 4px;
+    border-color: transparent;
+    border-radius: var(--radius-ctl);
+    background-color: var(--surface-1);
+    font-family: var(--font-ui);
+}
+.sidebar-left .sidebar-hb-btn:hover {
+    background-color: var(--surface-2);
+    border-color: transparent;
+    box-shadow: none;
+}
+.sidebar-left .sidebar-hb-btn:active { background-color: var(--surface-3); }
+.sidebar-left .sidebar-hb-btn:focus-visible { box-shadow: var(--focus-ring-shadow); }

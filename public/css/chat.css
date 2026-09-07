@@ -2,8 +2,8 @@
 .chat-area {
     display: flex;
     flex-direction: column;
-    border-left: 1px solid var(--border);
-    border-right: 1px solid var(--border);
+    border-left: 1px solid var(--border-alpha);
+    border-right: 1px solid var(--border-alpha);
     overflow: hidden;
     min-height: 0;
     background: var(--bg);
@@ -12,7 +12,7 @@
 
 /* CRT noise grain texture — dark mode only, disabled in light mode to prevent gray cast */
 .chat-area::after {
-    content: '';
+    content: none;
     position: absolute;
     inset: 0;
     pointer-events: none;
@@ -32,8 +32,8 @@
     width: 44px;
     height: 24px;
     border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--surface);
+    border: 1px solid var(--border-alpha);
+    background: var(--surface-1);
     cursor: pointer;
     padding: 0;
     flex-shrink: 0;
@@ -41,7 +41,7 @@
 }
 
 .theme-switch:hover {
-    border-color: var(--accent);
+    border-color: var(--border-strong);
 }
 
 .theme-switch-knob {
@@ -85,13 +85,14 @@
 }
 
 .chat-header {
-    padding: var(--space-3) var(--space-5);
-    border-bottom: 1px solid var(--border);
-    font-size: var(--text-md);
+    padding: 6px var(--space-5);
+    border-bottom: 1px solid var(--border-alpha);
+    background: var(--surface-1);
+    font-size: 14px;
     font-weight: 600;
-    font-family: var(--font-display);
-    letter-spacing: 0.5px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    font-family: var(--font-ui);
+    letter-spacing: 0;
+    box-shadow: none;
     position: relative;
     z-index: 2;
     display: flex;
@@ -136,10 +137,15 @@
     max-width: 100%;
 }
 
+@media (min-width: 901px) {
+    .chat-header, .chat-header-actions, .chat-header > span:first-child { flex-wrap: nowrap; }
+    .chat-header > span:first-child { overflow: hidden; }
+}
+
 .header-project {
     margin-left: 4px;
-    color: var(--text-muted, #888);
-    font-size: 0.8em;
+    color: var(--text-muted-60);
+    font-size: 12px;
     font-weight: 400;
     letter-spacing: 0.2px;
     max-width: 280px;
@@ -148,20 +154,20 @@
     white-space: nowrap;
     flex-shrink: 1;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--radius-ctl);
     padding: 2px 8px;
     border: 1px solid transparent;
     transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .header-project:hover {
-    color: var(--text, #ddd);
-    border-color: var(--border, #444);
-    background: rgba(128, 128, 128, 0.08);
+    color: var(--text);
+    border-color: var(--border-alpha);
+    background: var(--surface-2);
 }
 
 .header-project.is-empty {
-    border: 1px dashed var(--border, #555);
+    border: 1px dashed var(--border-strong);
     opacity: 0.8;
 }
 
@@ -179,15 +185,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex-shrink: 0;
-    color: var(--text-muted, #888);
-    font-family: var(--font-mono);
-    font-size: 0.78em;
+    color: var(--text-muted-60);
+    font-family: var(--font-mono-system);
+    font-size: 12px;
     font-weight: 500;
     letter-spacing: 0;
-    border-radius: 6px;
+    border-radius: var(--radius-ctl);
     padding: 2px 7px;
-    border: 1px solid var(--border, #444);
-    background: rgba(128, 128, 128, 0.06);
+    border: 1px solid var(--border-alpha);
+    background: var(--surface-3);
 }
 
 .header-git-status[hidden] {
@@ -2097,13 +2103,15 @@ div.math-placeholder {
 }
 
 .cmd-dropdown::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
 }
 
 .cmd-dropdown::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 2px;
+    background: var(--border-alpha);
+    border-radius: 3px;
 }
+
+.cmd-dropdown::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
 .cmd-recovery {
     margin-top: 8px;
