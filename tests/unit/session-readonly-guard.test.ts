@@ -245,11 +245,11 @@ test('render dispatchers call the synchronous shared predicate before mutation o
 // wrote to the GLOBAL active session — the exact cross-session write this
 // guard exists to prevent.
 test('an uninitialized numeric route fails closed, and non-numeric routes stay open', async () => {
-    const { canSendFromCurrentView, configureSessionView } = await import('../../public/js/features/session-hub.ts');
+    const { canSendFromCurrentView, resetSessionViewForTest } = await import('../../public/js/features/session-hub.ts');
     setupWebUiDom();
     // Earlier tests in this file leave viewState enabled; reset to the
-    // pre-initialization shape this test is about by feeding an OFF-mode list.
-    configureSessionView({ active: 'default', sessions: [{ id: 'default', seq: 0, label: null, message_count: 0 }] } as never, '/');
+    // pre-initialization shape without configuring a successful response.
+    resetSessionViewForTest();
     // setupWebUiDom pins the URL, so drive the path directly — the guard reads
     // window.location.pathname to decide whether a numeric route is in play.
     const setPath = (pathname: string) => {
@@ -279,4 +279,23 @@ test('the send button preserves the allow-list and only drops text for stop clic
         'stop detection must be explicit rather than assuming every button click is a stop');
     assert.match(guardCall, /canSendFromCurrentView\(isStopClick \? '' : text\)/,
         'ordinary button sends must pass the typed text so allow-listed commands survive');
+});
+
+test('initialized navigation-off permits /0 sends while inactive navigation-on stays read-only', async () => {
+    setupWebUiDom();
+    const { canSendFromCurrentView, configureSessionView, resetSessionViewForTest } = await import('../../public/js/features/session-hub.ts');
+    resetSessionViewForTest();
+    window.history.replaceState({}, '', '/0');
+    assert.equal(canSendFromCurrentView('hello'), false, 'numeric zero also fails closed before initialization');
+    const offResponse = { active: 'default', sessions: [{ id: 'default', seq: 0, label: null, message_count: 0 }] };
+    assert.equal(configureSessionView(offResponse, '/0'), 'off');
+    assert.equal(canSendFromCurrentView('hello'), true);
+    assert.equal(canSendFromCurrentView(), true);
+    window.history.replaceState({}, '', '/7');
+    configureSessionView({ ...onResponse, sessions: [
+        ...onResponse.sessions,
+        { id: 'local-7', seq: 7, label: null, message_count: 0, source: 'local', remoteKey: null },
+    ] }, '/7');
+    assert.equal(canSendFromCurrentView('hello'), false);
+    resetSessionViewForTest();
 });

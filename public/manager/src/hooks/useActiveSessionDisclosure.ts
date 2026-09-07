@@ -13,13 +13,13 @@ const EMPTY_SESSIONS_SNAPSHOT: SessionsSnapshot = {
     count: 0,
 };
 
-// Session disclosure state for the Active navigator row:
-// count fetched once per selected instance to decide chevron visibility; the
-// list itself is fetched lazily by InstanceSessionList only while open.
+// Active disclosure defaults open on each selected online port.
+// The hook and list share the same cached/in-flight load; the list also
+// exposes initial loading and failure before any sessions are known.
 // Extracted from App.tsx to honor the 500-line dashboard budget; the WP4
 // hardening cycle replaces the fetch here with the shared session store.
 export function useActiveSessionDisclosure(activeSessionPort: number | null) {
-    const [sessionsOpen, setSessionsOpen] = useState(false);
+    const [sessionsOpen, setSessionsOpen] = useState(true);
     const subscribe = useCallback(
         (callback: () => void) => activeSessionPort == null
             ? () => {}
@@ -35,7 +35,7 @@ export function useActiveSessionDisclosure(activeSessionPort: number | null) {
     const snapshot = useSyncExternalStore(subscribe, getSnapshot);
 
     useEffect(() => {
-        setSessionsOpen(false);
+        setSessionsOpen(true);
         if (activeSessionPort == null) return;
         void loadSessions(activeSessionPort)
             .catch(() => { /* offline or pre-session build: chevron simply stays hidden */ });

@@ -25,7 +25,7 @@ test('normalizeKiroUsageLimits maps credit breakdown to quota windows', () => {
     assert.equal(normalized['displayTier'], 'Kiro KIRO POWER');
     assert.deepEqual(normalized['windows'], [{
         label: 'Credit',
-        percent: 0,
+        percent: 0.0041,
         resetsAt: '2026-06-01T00:00:00.000Z',
     }]);
     assert.equal(normalized['currentUsage'], 0.41);
