@@ -25,6 +25,7 @@ import { expandPatch } from './path-utils';
 import { HealthBadge, interpretDiscordHealth } from './components/HealthBadge';
 import type { MessengerChannel } from './components/ChannelEnablementControl';
 import { TransportStatusChips } from './components/TransportStatusChips';
+import { ChannelSetupEntry } from './components/ChannelSetupEntry';
 import { ChannelEnablementControl } from './components/ChannelEnablementControl';
 
 type MessagingBlock = {
@@ -70,6 +71,7 @@ export function isValidSnowflake(chip: string): boolean {
 export default function ChannelsDiscord({ port, client, dirty, registerSave }: SettingsPageProps) {
     const { state, refresh, setData } = usePageSnapshot<DiscordSnapshot>(client, '/api/settings');
 
+    const [setupOpen, setSetupOpen] = useState(false);
     const [enabledChannels, setEnabledChannels] = useState<MessengerChannel[]>([]);
     const [homeChannel, setHomeChannel] = useState<MessengerChannel>('telegram');
     const [enabled, setEnabled] = useState(false);
@@ -113,6 +115,7 @@ export default function ChannelsDiscord({ port, client, dirty, registerSave }: S
     }, [state]);
 
     const onSave = useCallback(async () => {
+        if (setupOpen) throw new Error('Finish channel setup before saving settings.');
         const bundle = dirty.saveBundle();
         if (Object.keys(bundle).length === 0) return;
         const patch = expandPatch(bundle);
@@ -138,7 +141,7 @@ export default function ChannelsDiscord({ port, client, dirty, registerSave }: S
         setAllowBots(Boolean(dc.allowBots));
         setMentionOnly(Boolean(dc.mentionOnly));
         await refresh();
-    }, [client, dirty, refresh, setData]);
+    }, [client, dirty, refresh, setData, setupOpen]);
 
     useEffect(() => {
         if (!registerSave) return;
@@ -168,6 +171,7 @@ export default function ChannelsDiscord({ port, client, dirty, registerSave }: S
                 void onSave();
             }}
         >
+            <fieldset disabled={setupOpen} className="settings-slack-fields">
             <SettingsSection
                 title="Channels"
                 hint="Choose which channels receive inbound chat. Outbound send can still work on any configured channel."
@@ -302,6 +306,9 @@ export default function ChannelsDiscord({ port, client, dirty, registerSave }: S
                     interpret={interpretDiscordHealth}
                 />
             </SettingsSection>
+            </fieldset>
+            <ChannelSetupEntry channel="discord" client={client} dirty={dirty}
+                open={setupOpen} onOpenChange={setSetupOpen} onSaved={async () => setData(await client.get<DiscordSnapshot>('/api/settings'))} />
         </form>
     );
 }

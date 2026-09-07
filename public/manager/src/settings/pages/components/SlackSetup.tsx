@@ -2,7 +2,7 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {SettingsClient} from '../../types';
 import {advance,applyValidation,blockerForStep,canAdvance,createFlow,fieldsFor,goBack,ISSUER_URLS,
     markSaved,markSlackIssuerOpened,markSlackManifestGenerated,resetSlackSetup,setField,
-    settingsPatch,validationPayload} from '../../../../../js/features/channel-onboarding-flow.js';
+    settingsPatch,validationPayload,type OnboardChannel} from '../../../../../js/features/channel-onboarding-flow.js';
 import {copyText} from '../../../../../js/features/copy-text.js';
 import koJson from '../../../../../locales/ko.json';
 import enJson from '../../../../../locales/en.json';
@@ -18,8 +18,11 @@ export function slackText(locale:string): Text {
     return (key,params={})=>Object.entries(params).reduce((text,[k,v])=>text.replaceAll(`{${k}}`,String(v)),dict[key] ?? ko[key] ?? key);
 }
 type Props={client:SettingsClient;t:Text;initialDraft:Record<string,string>;returnFocus:HTMLElement|null;onBeforeSave:()=>()=>Promise<void>;onClose:()=>void};
-export function SlackSetup({client,t,initialDraft,returnFocus,onBeforeSave,onClose}:Props) {
-    const [flow,setFlow]=useState(()=>createFlow('slack',initialDraft));
+export function SlackSetup(props: Props) {
+    return <ChannelSetupDialog {...props} channel="slack" />;
+}
+export function ChannelSetupDialog({channel,client,t,initialDraft,returnFocus,onBeforeSave,onClose}:Props & {channel:OnboardChannel}) {
+    const [flow,setFlow]=useState(()=>createFlow(channel,initialDraft));
     const [name,setName]=useState('cli-jaw'), [busy,setBusy]=useState(false);
     const [error,setError]=useState<string|null>(null), [manifestStatus,setManifestStatus]=useState('');
     const dialog=useRef<HTMLDialogElement>(null), active=useRef(false), flight=useRef(false);
@@ -71,7 +74,7 @@ export function SlackSetup({client,t,initialDraft,returnFocus,onBeforeSave,onClo
     }
     function primaryAction() {
         if(busy || flight.current || flow.saved)return;
-        if(flow.step===1){void manifest();return;}
+        if(flow.step===1 && channel==='slack'){void manifest();return;}
         if(flow.step===3){void validate();return;}
         if(flow.step===4){void save();return;}
         setFlow(advance);
@@ -83,10 +86,10 @@ export function SlackSetup({client,t,initialDraft,returnFocus,onBeforeSave,onClo
             if(event.key==='Enter' && !event.shiftKey && !event.nativeEvent.isComposing
                 && event.target instanceof HTMLInputElement){event.preventDefault();primaryAction();}
         }}>
-        <h2 id="sl-setup-title">{t('onboarding.title.slack')}</h2>
+        <h2 id="sl-setup-title">{t(`onboarding.title.${channel}`)}</h2>
         <p role="status">{t('onboarding.progressLabel',{step:flow.step,total:4})}</p>
         <fieldset disabled={busy || flow.saved}>
-            {flow.step===1 && <>
+            {flow.step===1 && channel==='slack' && <>
                 <label htmlFor="sl-setup-name">{t('onboarding.slackAppName')}</label>
                 <input id="sl-setup-name" value={name} onChange={event=>{setName(event.target.value);setFlow(resetSlackSetup);setManifestStatus('');}}/>
                 <p>{t('onboarding.guide.slack')}</p>
@@ -96,17 +99,21 @@ export function SlackSetup({client,t,initialDraft,returnFocus,onBeforeSave,onClo
                     window.open(ISSUER_URLS.slack,'_blank','noopener');setFlow(markSlackIssuerOpened);
                 }}>{t('onboarding.openIssuer')}</button>
             </>}
-            {flow.step===2 && fieldsFor('slack').map(field=><label key={field.key}>
+            {flow.step===1 && channel!=='slack' && <>
+                <p>{t(`onboarding.guide.${channel}`)}</p>
+                <button type="button" onClick={()=>window.open(ISSUER_URLS[channel],'_blank','noopener')}>{t('onboarding.openIssuer')}</button>
+            </>}
+            {flow.step===2 && fieldsFor(channel).map(field=><label key={field.key}>
                 {t(`onboarding.token.${field.key}`)}{field.optional ? ` (${t('onboarding.optional')})` : ''}
-                <input type={field.secret?'password':'text'} autoComplete="off" value={flow.draft[field.key] ?? ''}
+                <input type={field.secret?'password':'text'} autoComplete="off" placeholder={field.example} value={flow.draft[field.key] ?? ''}
                     onChange={event=>setFlow(current=>setField(current,field.key,event.target.value))}/>
-                <span>{t(`onboarding.hint.slack.${field.key}`)}</span>
+                <span>{t(`onboarding.hint.${channel}.${field.key}`)}</span>
             </label>)}
             {flow.step===3 && <>
                 <button type="button" onClick={()=>void validate()}>{t('onboarding.validate')}</button>
                 {flow.validatedIdentity && <p>{t('onboarding.valid',{identity:flow.validatedIdentity})}</p>}
             </>}
-            {flow.step===4 && <p>{t(flow.saved?'onboarding.next.slack':'onboarding.saveHint')}</p>}
+            {flow.step===4 && <p>{t(flow.saved?`onboarding.next.${channel}`:'onboarding.saveHint')}</p>}
             {flow.step>1 && <button type="button" onClick={()=>setFlow(goBack)}>{t('onboarding.back')}</button>}
             {flow.step<4 ? <button type="button" disabled={!canAdvance(flow)} onClick={()=>setFlow(advance)}>{t('onboarding.next')}</button>
                 : <button type="button" disabled={!flow.validatedIdentity} onClick={()=>void save()}>{t('onboarding.save')}</button>}

@@ -426,7 +426,7 @@ export default function ChannelsSlack({ port, client, dirty, registerSave, manag
                         value: next.trim(), original: original.attachPort ?? '', valid: true,
                     }); }} />
                 <button type="button" disabled={environmentManaged || resetting || setupOpen}
-                    onClick={openSetup}>{t('onboarding.open')}</button>
+                    data-onboard-channel="slack" onClick={openSetup}>{t('onboarding.open')}</button>
                 <button type="button" disabled={environmentManaged || resetting || setupOpen}
                     onClick={() => void resetConnection()}>{t('settings.slack.resetConnection')}</button>
                 {actionError && <p role="alert">{actionError}</p>}
