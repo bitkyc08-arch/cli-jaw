@@ -1,9 +1,10 @@
+import '../setup/isolated-home.ts';
 import { readSource } from './source-normalize.js';
 // CLI Switch Session Refresh — Issue #126
 // Mostly source-pattern assertions following existing test style (phase31-runtime, employee-session-reuse).
-// One real-DB behavioral test exercises setPendingBootstrapPromptStrict end-to-end.
+// Real-DB probes cover session ownership and pending bootstrap persistence.
 
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +19,23 @@ const compactSrc = readSource(COMPACT, 'utf8');
 const cliCompactSrc = readSource(CLI_COMPACT, 'utf8');
 const runtimeSrc = readSource(RUNTIME, 'utf8');
 const mainSessionSrc = readSource(MAIN_SESSION, 'utf8');
+const ownedHome = process.env.CLI_JAW_HOME!;
+test.after(async () => {
+    const { db } = await import('../../src/core/db.ts');
+    db.close();
+    fs.rmSync(ownedHome, { recursive: true, force: true });
+});
+
+async function preserveSingleton(t: TestContext) {
+    const { db, getSession, updateSession } = await import('../../src/core/db.ts');
+    const old = getSession() as Record<string, unknown>;
+    assert.ok(old);
+    t.after(() => db.prepare(`UPDATE session SET active_cli=?, session_id=?, model=?,
+        permissions=?, working_dir=?, effort=?, updated_at=?, active_chat_session=? WHERE id='default'`)
+        .run(old['active_cli'], old['session_id'], old['model'], old['permissions'], old['working_dir'],
+            old['effort'], old['updated_at'], old['active_chat_session']));
+    return { getSession, updateSession };
+}
 
 test('CSR-001: cliSwitchRefresh always resets target session even when slots are empty', () => {
     assert.match(compactSrc, /const\s+hasAnyContent\s*=\s*Boolean\([\s\S]*?slots\.recent_turns[\s\S]*?slots\.memory_hits[\s\S]*?slots\.grep_hits[\s\S]*?slots\.task_snapshot[\s\S]*?\)/);
@@ -65,8 +83,29 @@ test('CSR-005b: ai-e provider change triggers clean session refresh', () => {
     assert.match(runtimeSrc, /toProvider:\s*toCli\s*===\s*'ai-e'\s*\?\s*nextAiEProvider\s*:\s*undefined/);
 });
 
-test('CSR-006: cli unchanged branch keeps original syncMainSessionToSettings(prevCli)', () => {
-    assert.match(runtimeSrc, /\}\s*else\s*\{\s*syncMainSessionToSettings\(prevCli\)/);
+test('CSR-006: execution edits synchronize while presentation and transport preserve distinct session sentinels', async t => {
+    const config = await import('../../src/core/config.ts');
+    const { applyRuntimeSettingsPatch } = await import('../../src/core/runtime-settings.ts');
+    const { getSession, updateSession } = await preserveSingleton(t);
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+    const baseline = structuredClone(config.settings);
+    baseline.cli = 'claude'; baseline.activeOverrides = {};
+    baseline.perCli.claude = { model: 'configured-model', effort: 'high', transport: 'print' };
+    config.commitCandidate({ value: baseline, shape: original.shape });
+    const options = { writeSettings: () => {}, restartMessaging: async () => {} };
+    updateSession.run('claude', 'captured-session', 'old-model', 'auto', baseline.workingDir, 'low');
+    await applyRuntimeSettingsPatch({ perCli: { claude: { model: 'new-model' } } }, options);
+    assert.equal(getSession()?.model, 'new-model');
+    assert.equal(getSession()?.session_id, 'captured-session');
+    for (const patch of [{ presentation: { mode: 'legacy' } }, { perCli: { claude: { transport: 'native' } } }]) {
+        // Reseed before each write: an accidental sync must change these values,
+        // even if its timestamp lands in the same database clock tick.
+        updateSession.run('claude', 'preserved-session', 'singleton-sentinel', 'safe', '/sentinel-only', 'low');
+        const selected = getSession();
+        await applyRuntimeSettingsPatch(patch, options);
+        assert.deepEqual(getSession(), selected);
+    }
 });
 
 test('CSR-007: codex-spark bucket targeted via toModel (not null)', () => {
@@ -203,14 +242,22 @@ test('CSR-013: no-content switch preserves existing pending bootstrap', () => {
     assert.doesNotMatch(body, /setPendingBootstrapPromptStrict\(null\)/);
 });
 
-test('CSR-012: cli-changed branch does NOT call syncMainSessionToSettings', () => {
-    // Capture the if(cliChanged){...} block and verify no syncMainSessionToSettings inside
-    const ifBlock = runtimeSrc.match(/if\s*\(\s*cliChanged\s*\|\|\s*aiEProviderChanged\s*\)\s*\{([\s\S]*?)\}\s*else\s*\{/);
-    assert.ok(ifBlock, 'cli/provider changed branch must exist');
-    assert.ok(
-        !/syncMainSessionToSettings/.test(ifBlock![1]),
-        'cli-changed branch must delegate main-session clearing to cliSwitchRefresh',
-    );
+test('CSR-012: CLI change leaves singleton ownership to the explicit refresh boundary', async t => {
+    const config = await import('../../src/core/config.ts');
+    const { applyRuntimeSettingsPatch } = await import('../../src/core/runtime-settings.ts');
+    const { getSession, updateSession } = await preserveSingleton(t);
+    const original = config.snapshotSettingsState();
+    t.after(() => config.commitCandidate(original));
+    const baseline = structuredClone(config.settings); baseline.cli = 'claude';
+    config.commitCandidate({ value: baseline, shape: original.shape });
+    updateSession.run('claude', 'must-survive-harvest', 'original-model', 'auto', baseline.workingDir, 'high');
+    const selected = getSession(); let refreshes = 0;
+    await applyRuntimeSettingsPatch({ cli: 'codex-app' }, {
+        writeSettings: () => {}, restartMessaging: async () => {},
+        cliSwitchRefresh: async () => { refreshes++; assert.deepEqual(getSession(), selected); },
+    });
+    assert.equal(refreshes, 1);
+    assert.deepEqual(getSession(), selected, 'no singleton write outside the refresh owner');
 });
 
 // ─── Behavioral test: real DB round-trip for the strict setter ───
