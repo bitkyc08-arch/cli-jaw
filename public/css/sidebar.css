@@ -208,10 +208,8 @@
 }
 
 .perm-btn {
-    position: relative;
-    display: block;
     flex: 1;
-    padding: 0;
+    padding: 6px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: none;
@@ -222,7 +220,13 @@
     text-align: center;
 }
 
-.perm-btn select {
+.perm-selector {
+    position: relative;
+    display: block;
+    padding: 0;
+}
+
+.perm-selector select {
     width: 100%;
     margin: 0;
     padding: 6px 18px 6px 22px;
@@ -233,7 +237,7 @@
     cursor: pointer;
 }
 
-.perm-btn > :first-child {
+.perm-selector > :first-child {
     position: absolute;
     left: 6px;
     top: 50%;
@@ -241,7 +245,7 @@
     pointer-events: none;
 }
 
-.perm-btn:focus-within {
+.perm-selector:focus-within {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
@@ -258,7 +262,8 @@
     background: color-mix(in oklch, var(--accent) 10%, var(--bg));
 }
 
-.perm-btn:has(select:disabled) {
+.perm-btn:disabled,
+.perm-selector:has(select:disabled) {
     border-color: var(--border);
     background: none;
     color: var(--text-dim);
@@ -266,7 +271,7 @@
     opacity: 0.55;
 }
 
-.perm-btn select:disabled {
+.perm-selector select:disabled {
     cursor: not-allowed;
 }
 
