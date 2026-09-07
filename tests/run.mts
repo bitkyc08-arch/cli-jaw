@@ -26,6 +26,13 @@
 // changes. The old CI invocation (--import test-home.ts --test) had per-file homes
 // for the same reason; this keeps that behavior inside the driver.
 //
+// forceExit mirrors the --test-force-exit the CI invocation always carried: a
+// file whose test left a handle open (a spawned child, a server) would otherwise
+// keep its process alive after the last test and stall the whole shard — shard 3/4
+// of run 34138235928 went silent for 4.5 minutes after ~half its files finished
+// and was killed by the step timeout. Node rejects forceExit together with watch,
+// so watch mode keeps the old behavior.
+//
 // Coverage: node:test only collects coverage when run() receives { coverage: true }
 // (v22.10+); the --experimental-test-coverage flag alone is filtered out of the
 // programmatic path, so it is bridged from execArgv here.
@@ -78,5 +85,5 @@ console.log(`[tests/run] ${files.length} files (scope=${scopeLabel}, shard=${opt
 const coverage = process.execArgv.includes('--experimental-test-coverage');
 const execArgv = ['--import', pathToFileURL(join(TESTS_DIR, 'setup', 'test-home.ts')).href];
 let failures = 0;
-run({ files, concurrency: true, watch, isolation: 'process', coverage, execArgv }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
+run({ files, concurrency: true, watch, isolation: 'process', coverage, execArgv, forceExit: !watch }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
 if (!watch) process.on('beforeExit', () => { if (failures > 0 && !process.exitCode) process.exitCode = 1; });
