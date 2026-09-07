@@ -8,7 +8,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '../..');
 const badgePath = join(root, 'public/js/features/attention-badge.ts');
 const mainPath = join(root, 'public/js/main.ts');
-const wsPath = join(root, 'public/js/ws.ts');
 const chatPath = join(root, 'public/js/features/chat.ts');
 const planPath = join(root, 'devlog/_fin/260425_browser_unread_badge/plan.md');
 const packagePath = join(root, 'package.json');
@@ -40,19 +39,10 @@ test('AB-003: app initializes attention badge before opening the websocket', () 
     assert.ok(initIdx < connectIdx, 'initAttentionBadge() should run before connect()');
 });
 
-test('AB-004: websocket completion events notify unread badge but new_message does not', () => {
-    const src = readFileSync(wsPath, 'utf8');
-    assert.ok(src.includes("import { notifyUnreadResponse } from './features/attention-badge.js'"), 'ws.ts should import notifyUnreadResponse');
-
-    const agentBlock = src.slice(src.indexOf("msg.type === 'agent_done'"), src.indexOf("msg.type === 'orchestrate_done'"));
-    assert.ok(agentBlock.includes('notifyUnreadResponse();'), 'agent_done should notify unread badge');
-
-    const orcBlock = src.slice(src.indexOf("msg.type === 'orchestrate_done'"), src.indexOf("msg.type === 'clear'"));
-    assert.ok(orcBlock.includes('notifyUnreadResponse();'), 'orchestrate_done should notify unread badge');
-
-    const newMessageBlock = src.slice(src.indexOf("msg.type === 'new_message'"));
-    assert.ok(!newMessageBlock.includes('notifyUnreadResponse();'), 'new_message should not notify in the first pass');
-});
+// AB-004 is exercised by web-activity-live.test.ts's two "AB-004: ..." cases:
+// each completion kind notifies once, its paired completion does not, and an
+// awaited real new_message row-store write does not notify. The dispatcher now
+// delegates to settleCompatibilityMessage; source slices cannot prove this.
 
 test('AB-005: chat clears unread only after a real send is validated and after clearChat cleanup', () => {
     const src = readFileSync(chatPath, 'utf8');
