@@ -283,3 +283,38 @@ Wire limits are explicit: terminal-plus-late-content in one chunk and content in
 - 2026-08-02 실probe 판정: **multi-prompt SUPPORTED + abortEffective=true** (progrok/grok-composer-2.5-fast, pi 0.83.0). 판정 근거는 프로토콜 사실(두 번째 prompt의 id 상관 success 응답 + user echo 상관) — 모델이 두 번째 턴 답변을 reasoning 채널로만 내는 비결정성과 무관.
 - 판정 결과는 `~/.cli-jaw/pi/rpc-capabilities.json`에 기록(schemaVersion/commandId/probedAt). `spawnPersistentPiRpc`는 부재/파손/schema·profile·commandId 불일치/30일 초과 시 보수적 false (cancel은 kill 경로).
 - persistent 세션은 풀 어댑터로 편입 (`acquirePiRuntime`); boss는 멀티턴 재사용, employee는 기존 one-shot.
+
+### Capability preparation and execution ownership
+
+Each RPC instance now obtains one bounded asynchronous version observation,
+using captured command arguments, cwd and environment. Both full launch plans
+are validated before either execution handle is started. The actual RPC child
+still returns synchronously, but bootstrap/prompt writes wait for version close.
+The same observation selects typed settled finality and matches the existing
+abort receipt; both pool wrappers forward the live capability getter. Preparing
+prompts reserve overlap immediately, and pre-dispatch abort cancels only that
+reservation without sending an RPC abort. Incomplete version evidence poisons
+preparation; completed unknown/nonzero versions keep the existing legacy policy.
+The older command-availability resolver can still block for up to3s; this is
+not a claim that every creation operation is asynchronous.
+
+An instance-owned cleanup controller tracks RPC and version handles. Direct
+execution returns a separate immutable cleanup receipt, and publishes its
+selected result only after that receipt. Stop uses the direct child's owned
+cancellation port (also used by worker/duplicate/aggregate cancellation), not a
+second tree timer. RPC exit starts cleanup even after version readiness. One
+2s drain and1s escalation serve both handles; signals target retained handles
+and stop after terminal observations. Held pipes or uncertain closure retain
+resources, never become a successful close by detaching streams. Persistent
+failure/close claims its pending result before awaiting cleanup, so late output
+cannot replace failure with success. A previously selected typed answer remains
+separate from an uncertain cleanup result.
+
+Pi workers allocate fresh temporary directories and capture canonical path and
+device/inode ownership. The existing release path removes only its still-owned
+directory with a removable physical receipt; absent allocation, missing/rejected
+receipt, changed directory or symlink means no deletion. Live settings do not
+grant deletion authority, and late close never upgrades a retained decision.
+These controls are not an arbitrary-process sandbox or aggregate pool/server
+shutdown certificate. Opaque wrappers and escaped descendants remain explicit
+limits; version output never enters Activity, MESSAGE or channel delivery.
