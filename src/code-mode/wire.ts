@@ -130,3 +130,20 @@ export interface CodePermissionAnswer {
     epoch: number;
     optionId: string;
 }
+
+export interface CodeProviderCatalog {
+    id: CodeProviderId;
+    label: string;
+    available: boolean;
+    reason: string | null;
+    models: string[];
+    defaultModel: string;
+    defaultEffort: string | null;
+    capabilities: CodeCapabilities;
+    modelSource: 'registry' | 'cache' | 'native';
+}
+
+export interface CodeModelCatalog {
+    providers: CodeProviderCatalog[];
+    defaultProvider: CodeProviderId;
+}
