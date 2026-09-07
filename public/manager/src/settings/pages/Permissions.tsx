@@ -231,7 +231,7 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
         <form className="settings-page-form" onSubmit={(event) => event.preventDefault()}>
             <SettingsSection
                 title="Permissions"
-                hint="Selecting a value changes the draft. Save applies it. Auto (YOLO) uses automatic approval or approval bypass, depending on the runtime."
+                hint="Selecting a value changes the draft. Save applies it. Auto (YOLO) requests automatic approval or permission bypass. Behavior varies by runtime."
             >
                 <SelectField
                     id="permissions-mode"
@@ -262,7 +262,7 @@ export default function Permissions({ port, client, dirty, registerSave }: Setti
                         </p>
                         {isEmpty && (
                             <InlineWarn role="alert">
-                                Saving with an empty Custom allowlist would deny every action.
+                                An empty Custom allowlist cannot be saved.
                                 Add at least one token or switch back to Auto (YOLO).
                             </InlineWarn>
                         )}
