@@ -18,6 +18,10 @@ async function checkServer() {
 test('API Smoke Tests', async (t) => {
     const alive = await checkServer();
     if (!alive) {
+        // A missing server is a skip on a developer box, but in CI the integration
+        // job owns the server on TEST_PORT — silently skipping there would turn a
+        // broken startup into a green run.
+        if (process.env.CI) assert.fail(`Server not running on port ${PORT} under CI — the integration job must start it`);
         t.skip(`Server not running on port ${PORT}`);
         return;
     }
