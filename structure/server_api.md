@@ -322,7 +322,7 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 - `agy`는 `src/routes/quota-agy-reverse.ts`의 `fetchAgyUsage()`를 통해 Antigravity quota snapshot을 읽는다.
 - `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
 - `cursor`는 `src/routes/quota-cursor-dashboard.ts`의 `fetchCursorUsage()`를 통해 dashboard session/usage를 읽는다.
-- `grok`은 `~/.grok/auth.json`의 OIDC `key`를 우선 읽고 `https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig` gRPC-web 응답으로 SuperGrok weekly usage pool window를 만든다. 실패하면 legacy `cli-chat-proxy.grok.com/v1/billing` monthly credits window로 fallback한다.
+- `grok` reads native OIDC key/user identity, then requests JSON `/v1/billing?format=credits` weekly usage. It preserves fractional and omitted-zero readings, with bounded gRPC weekly compatibility and validated monthly fallback. Each failed request is isolated; session usage remains separate.
 - `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
 
 ### Wiki lifecycle ownership
