@@ -49,6 +49,10 @@ let holdReceipt = false, serial = 0;
 let unsubscribe = () => {};
 const unexpectedRequests: string[] = [], dispatchFailures: unknown[] = [];
 const requests: string[] = [];
+const bootstrapLoad = Promise.withResolvers<void>();
+const bootstrapRelease = Promise.withResolvers<void>();
+const bootstrapDone = Promise.withResolvers<void>();
+const sidebarDone = [Promise.withResolvers<void>(), Promise.withResolvers<void>()];
 const frames = new Map<number, FrameRequestCallback>();
 const timers = new Map<ReturnType<typeof setTimeout>, number>();
 const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
@@ -160,6 +164,21 @@ test.before(async () => {
         }
     });
     ui = await import('../../public/js/ui.ts');
+    mock.module('../../public/js/ui.js', { namedExports: { ...ui,
+        async loadMessages() { bootstrapLoad.resolve(); await bootstrapRelease.promise; return ui.loadMessages(); },
+        reconcileChatBottomAfterRestore: (...args: Parameters<typeof ui.reconcileChatBottomAfterRestore>) => {
+            ui.reconcileChatBottomAfterRestore(...args);
+            if (args[0] === 'reconnect') bootstrapDone.resolve();
+        },
+    } });
+    const memory = await import('../../public/js/features/memory.ts');
+    const background = await import('../../public/js/features/bgtask-badge.ts');
+    mock.module('../../public/js/features/memory.js', { namedExports: { ...memory,
+        async refreshMemorySidebar() { await memory.refreshMemorySidebar(); sidebarDone[0]!.resolve(); },
+    } });
+    mock.module('../../public/js/features/bgtask-badge.js', { namedExports: { ...background,
+        async refreshBgtaskBadge() { await background.refreshBgtaskBadge(); sidebarDone[1]!.resolve(); },
+    } });
     ws = await import('../../public/js/ws.ts');
     activity = await import('../../public/js/features/activity-live.ts');
     history = await import('../../public/js/features/activity-history.ts');
@@ -167,9 +186,14 @@ test.before(async () => {
     rendering = await import('../../public/js/render.ts');
     ({ state } = await import('../../public/js/state.ts'));
     ws.connect(); assert.equal(typeof dispatch, 'function'); opened();
-    // Wait for the actual reconnect chain's final peripheral request, then drain
-    // its microtasks. Bounded readiness, not a sleep or production-state override.
-    for (let pass = 0; pass < 100 && !requests.includes('GET /api/bgtask?status=running'); pass++) await drain();
+    // Hold the real loader, then observe reconnect's post-snapshot callback and
+    // the real sidebar promises. Event-loop turns are not import completion.
+    await bootstrapLoad.promise;
+    assert.equal(state.activityIdentity, null);
+    assert.equal(requests.some(key => key.includes('/api/orchestrate/snapshot')), false);
+    bootstrapRelease.resolve();
+    await bootstrapDone.promise;
+    await Promise.all(sidebarDone.map(done => done.promise));
     assert.ok(requests.includes('GET /api/bgtask?status=running'), 'reconnect bootstrap completed');
     await drain();
     assert.deepEqual(state.activityIdentity, binding);
