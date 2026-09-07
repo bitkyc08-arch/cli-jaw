@@ -208,8 +208,10 @@
 }
 
 .perm-btn {
+    position: relative;
+    display: block;
     flex: 1;
-    padding: 6px;
+    padding: 0;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: none;
@@ -220,18 +222,52 @@
     text-align: center;
 }
 
+.perm-btn select {
+    width: 100%;
+    margin: 0;
+    padding: 6px 18px 6px 22px;
+    border: 0;
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.perm-btn > :first-child {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.perm-btn:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.perm-save-error {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
 .perm-btn.active {
     border-color: var(--accent);
     color: var(--accent);
     background: color-mix(in oklch, var(--accent) 10%, var(--bg));
 }
 
-.perm-btn:disabled {
+.perm-btn:has(select:disabled) {
     border-color: var(--border);
     background: none;
     color: var(--text-dim);
     cursor: not-allowed;
     opacity: 0.55;
+}
+
+.perm-btn select:disabled {
+    cursor: not-allowed;
 }
 
 .channel-transport-status .transport-status-block + .transport-status-block {

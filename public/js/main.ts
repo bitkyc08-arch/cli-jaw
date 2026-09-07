@@ -47,7 +47,7 @@ import {
 } from './features/slash-commands.js';
 import { toggleSkill, filterSkills, searchSkills } from './features/skills.js';
 import {
-    loadSettings, handleModelSelect, applyCustomModel, onCliChange,
+    loadSettings, setPerm, handleModelSelect, applyCustomModel, onCliChange,
     onPerCliProviderChange, saveActiveCliSettings, savePerCli, openPromptModal,
     onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
@@ -207,6 +207,9 @@ document.getElementById('selCliProvider')?.addEventListener('change', (event) =>
 });
 document.getElementById('selModel')?.addEventListener('change', () => saveActiveCliSettings());
 document.getElementById('selEffort')?.addEventListener('change', () => saveActiveCliSettings());
+document.getElementById('selPerm')?.addEventListener('change', (event) => {
+    void setPerm((event.target as HTMLSelectElement).value);
+});
 document.getElementById('flushCli')?.addEventListener('change', () => onFlushCliChange());
 document.getElementById('flushModel')?.addEventListener('change', () => onFlushCliChange());
 document.querySelector('[data-action="addEmployee"]')?.addEventListener('click', addEmployee);

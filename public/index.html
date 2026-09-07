@@ -341,13 +341,22 @@
 
             <div>
                 <label class="label-with-help">
-                    <span data-i18n="label.permissions">권한</span>
+                    <span id="permissionsLabel" data-i18n="label.permissions">권한</span>
                     <button class="help-trigger" type="button" data-help-topic="permissions"
                         data-i18n-aria="help.permissions.aria" aria-label="권한 도움말">?</button>
                 </label>
                 <div class="perm-toggle">
-                    <span class="perm-btn" id="configuredPerm"><span data-icon="exec"></span> <span id="configuredPermText">Configured policy: Not provided</span></span>
+                    <span class="perm-btn" id="configuredPerm">
+                        <span data-icon="exec" aria-hidden="true"></span>
+                        <span id="configuredPermText" hidden>Configured policy: Not provided</span>
+                        <select id="selPerm" aria-labelledby="permissionsLabel" aria-describedby="configuredPermText permSaveError" disabled>
+                            <option value="" disabled hidden>Configured policy: Not provided</option>
+                            <option value="auto">Configured policy: Auto</option>
+                            <option value="safe">Configured policy: Safe</option>
+                        </select>
+                    </span>
                 </div>
+                <div id="permSaveError" role="alert" class="perm-save-error" hidden></div>
             </div>
 
             <div>

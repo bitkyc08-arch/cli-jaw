@@ -20,6 +20,9 @@ import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from '.
 import { applyPresentationSettings, beginPresentationRead } from './presentation-preference.js';
 
 let activeSettingsSave: Promise<void> | null = null;
+let configuredPermission: unknown;
+let permissionSavePending = false;
+let permissionRevision = 0;
 
 type MigrationResponse = SettingsData | { ok?: boolean; data?: SettingsData; settings?: SettingsData };
 
@@ -426,6 +429,7 @@ function syncCliProviderControl(settings: SettingsData | null, cli: string): str
 }
 
 export async function loadSettings(): Promise<void> {
+    const permissionRead = permissionRevision;
     await loadCliRegistry();
     const presentationRead = beginPresentationRead();
     let s = await api<SettingsData>('/api/settings');
@@ -459,7 +463,7 @@ export async function loadSettings(): Promise<void> {
     }
     setHeaderProject(s.projectDirs);
     await loadHeaderGitStatus();
-    setPerm(s.permissions, false);
+    if (permissionRead === permissionRevision && !permissionSavePending) setPerm(s.permissions, false);
 
     if (s.perCli) {
         for (const [cli, cfg] of Object.entries(s.perCli) as [string, PerCliConfig][]) {
@@ -549,15 +553,52 @@ function configuredPermLabel(value: unknown): string {
     return 'Unrecognized';
 }
 
-export function setPerm(p: unknown, save = true): void {
-    if (!save) {
-        const label = document.getElementById('configuredPermText');
-        if (label) label.textContent = `Configured policy: ${configuredPermLabel(p)}`;
-        const badge = document.getElementById('configuredPerm');
-        badge?.classList.toggle('active', p === 'auto');
-        badge?.classList.toggle('perm-auto', p === 'auto');
+function renderConfiguredPermission(): void {
+    const p = configuredPermission;
+    const label = configuredPermLabel(p);
+    const text = document.getElementById('configuredPermText');
+    if (text) text.textContent = `Configured policy: ${label}`;
+    const badge = document.getElementById('configuredPerm');
+    badge?.classList.toggle('active', p === 'auto');
+    badge?.classList.toggle('perm-auto', p === 'auto');
+    const select = document.getElementById('selPerm') as HTMLSelectElement | null;
+    if (select) {
+        select.options[0].textContent = `Configured policy: ${label}`;
+        select.value = p === 'auto' || p === 'safe' ? p : '';
+        select.disabled = permissionSavePending;
+        select.setAttribute('aria-busy', String(permissionSavePending));
     }
-    if (save) apiFire('/api/settings', 'PUT', { permissions: 'auto' });
+}
+
+export async function setPerm(p: unknown, save = true): Promise<void> {
+    if (!save) {
+        configuredPermission = p;
+        renderConfiguredPermission();
+        return;
+    }
+    if ((p !== 'auto' && p !== 'safe') || p === configuredPermission || permissionSavePending) return;
+    permissionSavePending = true;
+    permissionRevision++;
+    renderConfiguredPermission();
+    const error = document.getElementById('permSaveError');
+    if (error) { error.hidden = true; error.textContent = ''; }
+    return trackSettingsSave((async () => {
+        try {
+            const result = await apiJson<SettingsData>('/api/settings', 'PUT', { permissions: p });
+            if (!result) throw new Error('Permission settings save failed');
+            configuredPermission = result.permissions;
+        } catch {
+            if (error) {
+                error.textContent = 'Could not save permissions. Please try again.';
+                error.hidden = false;
+            }
+        } finally {
+            permissionSavePending = false;
+            // Also invalidate reads started during the write, before it committed.
+            permissionRevision++;
+            renderConfiguredPermission();
+        }
+    })());
 }
 
 export function getModelValue(cli: string): string {
