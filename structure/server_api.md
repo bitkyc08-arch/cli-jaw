@@ -325,7 +325,7 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 - `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
 - `cursor` reads its selected native OAuth store (or direct auth token), probes period usage → summary → legacy usage, then retains explicitly configured dashboard-cookie fallback. An API-key override suppresses unrelated stored OAuth reads. Keychain/memory/file selection follows the native CLI; credentials are never returned in quota rows.
 - `grok` reads native OIDC key/user identity, then requests JSON `/v1/billing?format=credits` weekly usage. It preserves fractional and omitted-zero readings, with bounded gRPC weekly compatibility and validated monthly fallback. Each failed request is isolated; session usage remains separate.
-- `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
+- `kiro-code` reads a selected native social/OIDC token in a read-only SQLite snapshot and calls `management.<validated-region>.kiro.dev` GetUsageLimits. Profile is optional; malformed optional profile data does not discard a valid token. Allowance selection prefers AGENTIC_REQUEST then CREDIT and keeps free-trial pools separate.
 
 ### Wiki lifecycle ownership
 

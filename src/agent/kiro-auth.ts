@@ -63,6 +63,67 @@ export function readKiroAuthFromStore(dataPath = resolveKiroDataPath()): {
     }
 }
 
+export interface KiroQuotaToken extends KiroSocialToken {
+    apiRegion?: string;
+    ssoRegion?: string;
+}
+
+/** Read-only quota selection adapted from OpenCodex oauth/kiro-credentials.ts
+ * b94051fe91e745806102988f6dff2fec8de078ef (MIT; see LICENSE).
+ * The runtime social-token reader above intentionally retains its original contract.
+ */
+export function readKiroQuotaAuthFromStore(dataPath = resolveKiroDataPath()): {
+    token: KiroQuotaToken | null; profile: KiroProfile | null; reason?: string;
+} {
+    const missing = (reason: string) => ({ token: null, profile: null, reason });
+    let db: Database.Database | undefined;
+    try {
+        db = new Database(dataPath, { readonly: true, fileMustExist: true });
+        const store = db;
+        return store.transaction(() => {
+            const rows = store.prepare("SELECT key, value FROM auth_kv WHERE key LIKE ? ORDER BY key ASC")
+                .all('%:token') as Array<{ key: string; value: string | Buffer }>;
+            const selected = process.env['KIROCLI_TOKEN_KEY']?.trim();
+            const priorities = ['kirocli:odic:token', 'kirocli:oidc:token', 'kirocli:social:token', 'codewhisperer:odic:token'];
+            const row = selected ? rows.find(entry => entry.key === selected)
+                : priorities.map(key => rows.find(entry => entry.key === key)).find(Boolean)
+                    ?? (rows.length === 1 ? rows[0] : undefined);
+            if (!row) return missing(selected ? 'kiro_token_key_missing'
+                : rows.length > 1 ? 'kiro_token_ambiguous' : 'kiro_token_missing');
+            const raw = typeof row.value === 'string' ? row.value : row.value.toString('utf8');
+            const data: unknown = JSON.parse(raw);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) return missing('kiro_token_invalid');
+            const record = data as Record<string, unknown>;
+            const field = (...keys: string[]): string | undefined => keys.map(key => record[key])
+                .find((value): value is string => typeof value === 'string' && !!value.trim())?.trim();
+            const accessToken = field('accessToken', 'access_token');
+            if (!accessToken) return missing('kiro_token_invalid');
+            const token: KiroQuotaToken = { accessToken };
+            const profileArn = field('profileArn', 'profile_arn');
+            const apiRegion = field('apiRegion', 'api_region');
+            const ssoRegion = field('region');
+            if (profileArn) token.profileArn = profileArn;
+            if (apiRegion) token.apiRegion = apiRegion;
+            if (ssoRegion) token.ssoRegion = ssoRegion;
+            const profileRaw = readKv(store, 'state', 'api.codewhisperer.profile');
+            let profile: KiroProfile | null = null;
+            if (profileRaw) {
+                let state: unknown;
+                try { state = JSON.parse(profileRaw); }
+                catch { /* Optional profile corruption must not discard the selected access token. */ }
+                if (state && typeof state === 'object' && !Array.isArray(state)) {
+                    const rec = state as Record<string, unknown>;
+                    const arn = [rec['arn'], rec['profileArn'], rec['profile_arn']]
+                        .find((value): value is string => typeof value === 'string' && !!value.trim());
+                    if (arn) profile = { arn: arn.trim(), ...(typeof rec['name'] === 'string' ? { name: rec['name'] } : {}) };
+                }
+            }
+            return { token, profile };
+        })();
+    } catch { return missing('kiro_auth_store_unavailable'); }
+    finally { db?.close(); }
+}
+
 function parseKiroSocialToken(raw: string | null): KiroSocialToken | null {
     if (!raw?.trim()) return null;
     try {
