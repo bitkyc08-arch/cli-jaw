@@ -2,5 +2,7 @@ node_modules/
 out/
 dist/
 sidecar/server/
+# Retained build snapshots, dependency trees, reports and invocation locks.
+sidecar/.server-build.*/
 *.log
 .env
