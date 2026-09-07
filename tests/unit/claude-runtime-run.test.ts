@@ -35,7 +35,10 @@ let slot: object | undefined;
 let acquire: (input: { binding: Pick<ClaudeSessionOptions, 'getTurnContext' | 'record'> }) => Promise<unknown>;
 let exit: (params: ExitHandlerParams) => Promise<void>;
 mock.module('../../src/agent/runtime-pool.js', { namedExports: { acquireClaudeRuntime: (input: Parameters<typeof acquire>[0]) => acquire(input) } });
-mock.module('../../src/agent/claude-runtime-pool.js', { namedExports: { ClaudeAcquireFailure: class extends Error {} } });
+class ClaudeAcquireFailure extends Error {
+    constructor(readonly cleanup: Promise<void>) { super('fixture acquisition failed'); }
+}
+mock.module('../../src/agent/claude-runtime-pool.js', { namedExports: { ClaudeAcquireFailure } });
 mock.module('../../src/agent/lifecycle-handler.js', { namedExports: { handleAgentExit: (params: ExitHandlerParams) => exit(params) } });
 mock.module('../../src/trace/store.js', { namedExports: {
     startTraceRun: () => `trace-${++serial}`, createTraceId: () => `trace-${++serial}`,
@@ -126,6 +129,121 @@ test.afterEach(() => {
         for (const handle of reserved) handle.finish();
         assert.equal(hasClaudeRuns(), false); clearLiveRun('scope');
     }
+});
+
+for (const worker of [false, true]) test(`${worker ? 'worker' : 'main'} acquire failure settles logically while captured cleanup control remains pending`, async () => {
+    const f = fixture(worker), cleanup = Promise.withResolvers<void>();
+    const flags: boolean[] = [];
+    let lateCleanup = 0, doneCount = 0;
+    f.options.finished = (child, _cancel, queued, safe) => {
+        assert.equal(child, null); assert.equal(queued, false); flags.push(safe);
+    };
+    f.options.cleanupUnleased = () => { lateCleanup++; };
+    acquire = async () => { throw new ClaudeAcquireFailure(cleanup.promise); };
+    const run = f.start(), control = reserved[0]!;
+    void control.done.then(() => { doneCount++; });
+    try {
+        const result = await run.promise;
+        assert.equal(result.code, 1); assert.equal(result.runtimeOutcome?.status, 'error');
+        assert.deepEqual(flags, [false]); assert.equal(f.counts().exitCount, 0);
+        assert.equal(control.current(), true, 'logical failure must not release pending physical cleanup');
+        assert.equal(hasClaudeRuns('scope'), true); assert.equal(doneCount, 0);
+        assert.equal(lateCleanup, 0);
+        const terminal = structuredClone({ ordered, traceEnds, broadcasts });
+        assert.deepEqual(ordered, ['start', 'compat', 'end']);
+        cleanup.resolve(); await cleanup.promise;
+        assert.equal(control.current(), false); await control.done;
+        assert.equal(doneCount, 1); assert.deepEqual(flags, [false]);
+        assert.equal(lateCleanup, worker ? 1 : 0, 'only workers own unleased directory cleanup');
+        assert.strictEqual(await run.promise, result);
+        assert.deepEqual({ ordered, traceEnds, broadcasts }, terminal, 'physical completion must not replay terminal/lifecycle work');
+    } finally { cleanup.resolve(); await cleanup.promise; await run.promise; }
+});
+
+test('main acquire cleanup fulfilled early is safe at the single ordinary finalization', async () => {
+    const f = fixture(), flags: boolean[] = [];
+    let lateCleanup = 0;
+    f.options.finished = (_child, _cancel, _queued, safe) => { flags.push(safe); };
+    f.options.cleanupUnleased = () => { lateCleanup++; };
+    acquire = async () => { throw new ClaudeAcquireFailure(Promise.resolve()); };
+    const result = await f.start().promise, control = reserved[0]!;
+    assert.equal(result.code, 1); assert.deepEqual(flags, [true]);
+    assert.equal(control.current(), false); await control.done;
+    assert.equal(lateCleanup, 0); assert.deepEqual(ordered, ['start', 'compat', 'end']);
+});
+
+test('main rejected acquire cleanup retains only its synthetic fence without rewriting logical failure', async () => {
+    const f = fixture(), cleanup = Promise.withResolvers<void>(), flags: boolean[] = [];
+    void cleanup.promise.catch(() => {});
+    let done = false, lateCleanup = 0;
+    f.options.finished = (_child, _cancel, _queued, safe) => { flags.push(safe); };
+    f.options.cleanupUnleased = () => { lateCleanup++; };
+    acquire = async () => { throw new ClaudeAcquireFailure(cleanup.promise); };
+    const run = f.start(), control = reserved[0]!;
+    void control.done.then(() => { done = true; });
+    try {
+        const result = await run.promise;
+        assert.equal(control.current(), true); assert.equal(done, false);
+        const terminal = structuredClone({ ordered, traceEnds, broadcasts });
+        cleanup.reject(new Error('synthetic physical cleanup rejection'));
+        await assert.rejects(cleanup.promise, /synthetic physical cleanup rejection/); await Promise.resolve();
+        assert.equal(control.current(), true); assert.equal(hasClaudeRuns('scope'), true); assert.equal(done, false);
+        assert.deepEqual(flags, [false]); assert.equal(lateCleanup, 0);
+        assert.strictEqual(await run.promise, result); assert.equal(result.code, 1);
+        assert.deepEqual({ ordered, traceEnds, broadcasts }, terminal);
+    } finally {
+        cleanup.reject(new Error('synthetic physical cleanup rejection')); await cleanup.promise.catch(() => {});
+        // No SDK/process resource was acquired: only this deliberately rejected
+        // synthetic handle is eligible for the existing captured-handle teardown.
+        if (control.current()) retainedForTeardown.add(control);
+    }
+});
+
+test('main cancellation before acquire needs no receipt and releases its control once', async () => {
+    const f = fixture(), flags: boolean[] = [];
+    let acquisitions = 0, lateCleanup = 0;
+    acquire = async () => { acquisitions++; throw new Error('must not acquire'); };
+    f.options.starting = cancel => { cancel('user'); };
+    f.options.finished = (child, _cancel, _queued, safe) => { assert.equal(child, null); flags.push(safe); };
+    f.options.cleanupUnleased = () => { lateCleanup++; };
+    const result = await f.start().promise;
+    assert.equal(result.code, 130); assert.equal(acquisitions, 0);
+    assert.deepEqual(flags, [true]); assert.equal(lateCleanup, 0);
+    assert.equal(reserved[0]!.current(), false); await reserved[0]!.done;
+    assert.deepEqual(f.counts(), { retireCount: 0, releaseCount: 0, exitCount: 1 });
+});
+
+test('late main acquire cleanup finishes its captured control without touching a newer same-scope owner', async () => {
+    const f = fixture(), cleanup = Promise.withResolvers<void>(), flags: boolean[] = [];
+    let lateCleanup = 0, replacementDone = false;
+    let replacement: ReturnType<typeof controls.reserveClaudeRun> | undefined;
+    f.options.finished = (_child, _cancel, _queued, safe) => { flags.push(safe); };
+    f.options.cleanupUnleased = () => { lateCleanup++; };
+    acquire = async () => { throw new ClaudeAcquireFailure(cleanup.promise); };
+    const run = f.start(), captured = reserved[0]!;
+    try {
+        const result = await run.promise;
+        assert.equal(captured.current(), true);
+        replacement = controls.reserveClaudeRun({ runId: 'replacement-' + result.traceRunId, scope: 'scope', cancel() {} });
+        reserved.push(replacement); void replacement.done.then(() => { replacementDone = true; });
+        f.options.isCurrent = () => false; f.options.isCurrentOwner = () => false;
+        beginLiveRun('scope', 'replacement'); setLiveRunTraceId('scope', 'replacement-trace');
+        const terminal = structuredClone({ ordered, traceEnds, broadcasts });
+        cleanup.resolve(); await cleanup.promise;
+        assert.equal(captured.current(), false); await captured.done;
+        assert.equal(replacement.current(), true); assert.equal(replacementDone, false);
+        assert.equal(hasClaudeRuns('scope'), true); assert.equal(getLiveRun('scope').traceRunId, 'replacement-trace');
+        assert.equal(getLiveRun('scope').running, true); assert.equal(lateCleanup, 0); assert.deepEqual(flags, [false]);
+        assert.deepEqual({ ordered, traceEnds, broadcasts }, terminal); assert.strictEqual(await run.promise, result);
+    } finally { cleanup.resolve(); await cleanup.promise; await run.promise; replacement?.finish(); }
+});
+
+test('main plain acquire failure without a cleanup receipt preserves ordinary control release', async () => {
+    const f = fixture(), flags: boolean[] = [];
+    f.options.finished = (_child, _cancel, _queued, safe) => { flags.push(safe); };
+    acquire = async () => { throw new Error('plain failure'); };
+    assert.equal((await f.start().promise).code, 1); assert.deepEqual(flags, [false]);
+    assert.equal(reserved[0]!.current(), false); await reserved[0]!.done;
 });
 
 test('send image rejection finishes its trace and live state without invoking lifecycle', async () => {

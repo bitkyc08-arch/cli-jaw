@@ -29,25 +29,8 @@ test('STR-001: /steer registered in COMMANDS with web/telegram interfaces (not c
     assert.ok(interfaces.includes("'telegram'"), 'steer should include telegram interface');
 });
 
-// ── STR-002: steerHandler calls killActiveAgent + waitForProcessEnd ──
-
-test('STR-002: steerHandler kills agent and waits before re-orchestrate', () => {
-    const fnMatch = handlersSrc.match(/export async function steerHandler[\s\S]*?^}/m);
-    assert.ok(fnMatch, 'steerHandler should exist');
-    const body = fnMatch![0]!;
-
-    // Must call the scoped stop contract.
-    assert.ok(body.includes("killActiveAgent(scopeKey, 'steer')"), 'should call killActiveAgent with scope and steer reason');
-
-    // Must call waitForProcessEnd
-    assert.ok(body.includes('waitForProcessEnd('), 'should wait for process end');
-
-    // Kill call must come before wait call (skip destructuring import)
-    const killIdx = body.indexOf("killActiveAgent(scopeKey, 'steer')");
-    const waitIdx = body.indexOf('waitForProcessEnd(');
-    assert.ok(killIdx < waitIdx, 'kill call should precede wait call');
-    assert.ok(body.includes('waitForProcessEnd(scopeKey, steerWaitMs)'), 'wait should observe the same scope');
-});
+// STR-002 is covered behaviorally by native-steer-handler.test.ts: actual
+// fallback handlers hold main-wait/exit gates, preserve scope and submit once.
 
 // ── STR-003: steerHandler returns 'steer' type only for telegram ──
 

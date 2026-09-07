@@ -76,7 +76,7 @@ import { AcpReplacement } from './runtime/acp/replacement.js';
 import { beginSteerInput, cancelSteerInputs, cancelAllSteerInputs } from './steer-input-guard.js';
 import { runNativeRuntime, NativeRunFailure, type NativeRunLease } from './native-runtime-run.js';
 import { startClaudeNativeRun } from './claude-runtime-run.js';
-import { hasClaudeRuns, hasClaudeWorker, cancelClaudeWorker, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
+import { hasClaudeRuns, hasClaudeMainRuns, hasClaudeWorker, cancelClaudeWorker, cancelClaudeScope, cancelAllClaudeRuns } from './runtime/claude-run-controls.js';
 import type { RuntimePrompt } from './runtime/session.js';
 import type { PreparedClaudeOptions } from './runtime/claude-sdk-options.js';
 import { syncLiveTools } from './events/helpers.js';
@@ -767,10 +767,19 @@ export function waitForProcessEnd(timeoutMs?: number): Promise<void>;
 export function waitForProcessEnd(scopeKeyOrTimeout: string | number = 'default', scopedTimeout = 3000) {
     const scopeKey = typeof scopeKeyOrTimeout === 'string' ? scopeKeyOrTimeout : 'default';
     const timeoutMs = typeof scopeKeyOrTimeout === 'number' ? scopeKeyOrTimeout : scopedTimeout;
-    if (!activeMainProcesses.has(scopeKey) && !hasClaudeRuns(scopeKey)) return Promise.resolve();
+    return waitForScopedProcessEnd(scopeKey, timeoutMs, hasClaudeRuns);
+}
+
+/** Steer waits for main accounting, including pending main cleanup, but not surviving workers. */
+export function waitForMainProcessEnd(scopeKey: string, timeoutMs = 3000): Promise<void> {
+    return waitForScopedProcessEnd(scopeKey, timeoutMs, hasClaudeMainRuns);
+}
+
+function waitForScopedProcessEnd(scopeKey: string, timeoutMs: number, hasClaude: (scope: string) => boolean): Promise<void> {
+    if (!activeMainProcesses.has(scopeKey) && !hasClaude(scopeKey)) return Promise.resolve();
     return new Promise<void>(resolve => {
         const check = setInterval(() => {
-            if (!activeMainProcesses.has(scopeKey) && !hasClaudeRuns(scopeKey)) { clearInterval(check); clearTimeout(deadline); resolve(); }
+            if (!activeMainProcesses.has(scopeKey) && !hasClaude(scopeKey)) { clearInterval(check); clearTimeout(deadline); resolve(); }
         }, 100);
         // The deadline has to be CLEARED on the fast path, not just left to fire.
         // A child normally exits in milliseconds, so the common case resolved the
@@ -914,7 +923,7 @@ export async function steerAgent(
     // created_at comparison is not safe (second-resolution UTC column).
     const maxIdBeforeKill = getMaxMessageId(chatSessionId);
     const wasRunning = killActiveAgent(scopeKey, 'steer');
-    if (wasRunning) await waitForProcessEnd(scopeKey, steerWaitMs);
+    if (wasRunning) await waitForMainProcessEnd(scopeKey, steerWaitMs);
     // The kill removes the scope's map entry synchronously, so the wait above can
     // return before the exit handler's salvage insert. Wait for the settle barrier
     // armed by the kill so the follow-up run actually sees the partial output.

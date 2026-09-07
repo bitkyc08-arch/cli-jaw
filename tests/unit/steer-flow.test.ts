@@ -30,7 +30,7 @@ test('SF-001: steerAgent flow: kill → wait → insert → orchestrate', () => 
     assert.ok(killIdx > 0, 'should call killActiveAgent("steer")');
 
     // Step 2: wait for process end
-    const waitIdx = steerBody.indexOf('waitForProcessEnd');
+    const waitIdx = steerBody.indexOf('waitForMainProcessEnd');
     assert.ok(waitIdx > killIdx, 'should wait for process end AFTER kill');
 
     // Step 3: insert message
@@ -234,7 +234,7 @@ test('SF-006: queued web steer accepts item before background old-process wait',
     const responseIdx = routeBlock.indexOf('res.json({ ok: true');
     const backgroundIdx = routeBlock.indexOf('void (async () =>');
     const killIdx = routeBlock.indexOf("killActiveAgent(scope, 'steer')", backgroundIdx);
-    const waitIdx = routeBlock.indexOf('await waitForProcessEnd(scope, steerWaitMs)', backgroundIdx);
+    const waitIdx = routeBlock.indexOf('await waitForMainProcessEnd(scope, steerWaitMs)', backgroundIdx);
     const finalClearIdx = routeBlock.indexOf('setSteerInProgress(scope, false)', backgroundIdx);
 
     assert.ok(waitConfigIdx > 0, 'route should compute provider-specific wait before holding the queue item');
@@ -248,8 +248,8 @@ test('SF-006: queued web steer accepts item before background old-process wait',
     assert.ok(waitIdx > killIdx, 'background task should wait for process end after kill');
     assert.ok(finalClearIdx > waitIdx, 'background task should clear steer busy after wait/orchestrate');
     assert.ok(
-        routeBlock.slice(0, responseIdx).indexOf('waitForProcessEnd(scope, steerWaitMs)') === -1,
-        'route must not block the button response on waitForProcessEnd',
+        routeBlock.slice(0, responseIdx).indexOf('waitForMainProcessEnd(scope, steerWaitMs)') === -1,
+        'route must not block the button response on the main-only wait',
     );
     assert.ok(routeBlock.includes('isSteerInProgress(scope)'), 'route should reject concurrent queued steer attempts per scope');
     assert.ok(spawnSrc.includes('export function isSteerInProgress(scopeKey'), 'spawn.ts should expose scoped steer-in-progress state for route gating');
