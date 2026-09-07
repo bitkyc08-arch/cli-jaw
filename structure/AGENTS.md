@@ -79,3 +79,7 @@ When refreshing docs from recent non-strict commits, check these first:
 - `src/cli/handlers-skill-invoke.ts`: dynamic `/skill:<id>` — `commands.md`, `INDEX.md`.
 - `src/browser/adaptive-fetch/scheduler.ts` / `src/browser/web-ai/session-artifacts.ts`: adaptive-fetch P0 + web-ai parity wave — `infra.md`, `str_func.md` counts (web-ai 96, adaptive-fetch 34).
 - Keep root `AGENTS.md`, `CLAUDE.md`, `README.md`, and public `docs/dev/` pages aligned with this folder when the architecture map changes.
+
+### Quota reader contract
+
+Native quota readers follow the OpenCodex source contract: Codex window duration/plan policy, Spark and reset-credit metadata; Claude model-scoped windows and credential-scoped cache. Missing measurements remain unknown, 429 alone never means 100%, and upstream bodies are bounded. See `docs/migration/quota-reader-parity.md`.
