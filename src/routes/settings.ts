@@ -681,14 +681,17 @@ export function registerSettingsRoutes(
     app.get('/api/quota', async (_, res) => {
         const claudeCreds = readClaudeCreds();
         const codexTokens = readCodexTokens();
-        const [claudeResult, codexResult, copilotResult, cursorQuota, agyQuota, kiroQuota, opencodeQuota] = await Promise.all([
-            fetchClaudeUsage(claudeCreds),
-            fetchCodexUsage(codexTokens),
-            fetchCopilotQuota(),
-            fetchCursorUsage(),
-            fetchAgyUsage(),
-            fetchKiroUsage(),
-            fetchOpenCodeUsage(),
+        const settleQuota = (read: () => Promise<unknown>) => Promise.resolve().then(read)
+            .catch(() => ({ error: true, reason: 'quota_fetch_failed' }));
+        const [claudeResult, codexResult, copilotResult, cursorQuota, agyQuota, kiroQuota, opencodeQuota, grokQuota] = await Promise.all([
+            settleQuota(() => fetchClaudeUsage(claudeCreds)),
+            settleQuota(() => fetchCodexUsage(codexTokens)),
+            settleQuota(() => fetchCopilotQuota()),
+            settleQuota(() => fetchCursorUsage()),
+            settleQuota(() => fetchAgyUsage()),
+            settleQuota(() => fetchKiroUsage()),
+            settleQuota(() => fetchOpenCodeUsage()),
+            settleQuota(() => fetchGrokStatus()),
         ]);
 
         const classify = (result: unknown, hasCreds: boolean) =>
@@ -696,7 +699,6 @@ export function registerSettingsRoutes(
 
         const claudeQuota = classify(claudeResult, !!claudeCreds);
         const codexQuota = classify(codexResult, !!codexTokens);
-        const grokQuota = await fetchGrokStatus();
         const copilotQuota = copilotResult ?? { authenticated: false };
         const opencodeQuotaResolved = opencodeQuota ?? buildStatusOnlyQuota({
             quotaSource: 'not-exposed-by-opencode-cli',

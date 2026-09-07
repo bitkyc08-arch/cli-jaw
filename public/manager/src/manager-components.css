@@ -479,13 +479,19 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 
 /* ─── Active-row session disclosure ─── */
 .instance-session-list {
+    --instance-session-row-height: 30px;
     display: grid;
+    grid-auto-rows: max-content;
+    align-content: start;
     gap: 2px;
     margin: -2px 0 8px;
     padding: 6px;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     background: var(--row-bg);
+    max-height: calc(3 * var(--instance-session-row-height) + 2 * 2px + 2 * 6px + 2 * 1px);
+    overflow: auto;
+    overscroll-behavior-y: contain;
     animation: session-list-in 0.12s ease;
 }
 @keyframes session-list-in {
@@ -506,12 +512,15 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     justify-content: space-between;
     gap: 8px;
     width: 100%;
+    min-height: var(--instance-session-row-height);
+    height: var(--instance-session-row-height);
     padding: 5px 8px;
     border: 0;
     border-radius: 6px;
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
+    line-height: 16px;
     text-align: left;
     cursor: pointer;
 }
@@ -544,6 +553,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 .instance-session-meta {
     flex-shrink: 0;
     font-size: 11px;
+    white-space: nowrap;
     color: var(--text-tertiary, var(--text-secondary));
     font-variant-numeric: tabular-nums;
 }

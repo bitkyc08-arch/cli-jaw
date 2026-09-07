@@ -164,7 +164,7 @@ export function InstanceRow(props: InstanceRowProps) {
                         {transitionLabel && <span><em className="instance-row-transition">{transitionLabel}</em></span>}
                     </div>
                     <div className="instance-row-quick" onClick={stopAction}>
-                        {props.priority === 'active' && (props.sessionCount ?? 0) >= 2 && props.onToggleSessions ? (
+                        {props.priority === 'active' && props.instance.ok && (props.sessionCount ?? 0) >= 1 && props.onToggleSessions ? (
                             // Same nested-interactive debt as the stop/open
                             // controls beside it (audit Med#2): aria-expanded +
                             // label only, no aria-controls, restructure tracked
