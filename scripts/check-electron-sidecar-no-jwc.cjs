@@ -9,13 +9,21 @@ function retiredPackage(name) {
 
 // Shared by staged/platform sidecars and the npm packed-file manifest check.
 function retiredPayloadReason(file) {
-  const normalized = file.replaceAll('\\', '/');
+  const normalized = file.replaceAll('\\', '/').replace(/^(?:\.\/)+/, '');
   const parts = normalized.split('/');
-  if (parts.some(retiredPackage)) return 'retired package or scope';
+  // Package names are meaningful only directly below node_modules. A normal
+  // package may ship a Bun adapter (for example hono/dist/adapter/bun).
+  if (parts.some((part, index) => part === 'node_modules' && retiredPackage(parts[index + 1] || ''))) {
+    return 'retired package or scope';
+  }
+  if (/(?:^|\/)electron\/sidecar\/jawcode(?:\/|$)/.test(normalized)) return 'retired vendored runtime';
+  if (/^(?:bin\/)?(?:bun|jwc)(?:\.(?:cmd|ps1|exe|js))?$/.test(normalized)
+      || /(?:^|\/)node_modules\/\.bin\/(?:bun|jwc)(?:\.(?:cmd|ps1|exe|js))?$/.test(normalized)) {
+    return 'retired runtime executable';
+  }
   if (/(?:^|\/)src\/lib\/tui(?:\/|$)/.test(normalized)) return 'retired TUI assets';
   if (parts.some(part => /^pi_natives(?:\.|$)/.test(part))) return 'retired native addon';
   if (parts.some(part => /^(?:jawcode-(?:tui|interactive)-bundle|bun-shim)(?:\.|$)/.test(part))) return 'retired TUI bundle';
-  if (/(?:^|\/)(?:\.bin|bin)\/jwc(?:\.(?:cmd|ps1|exe|js))?$/.test(normalized)) return 'jwc shim';
   if (/(?:^|\/)(?:jwc-runtime|jwc-event-mapper|jawcode-render|jawcode-bridge)\.(?:[cm]?[jt]s)(?:\.map)?$/.test(normalized)
       || /(?:^|\/)bin\/commands\/jwc\./.test(normalized)
       || /(?:^|\/)scripts\/jwc-(?:110-e2e|no-global-smoke)\.mjs$/.test(normalized)) return 'retired executable';

@@ -79,6 +79,7 @@ function usePendingCount(store: DirtyStore): number {
 
 export function SettingsShell({ port, instanceUrl, onDirtyChange, onSaved }: Props) {
     const [activeId, setActiveId] = useState<SettingsCategoryId>('agent');
+    const [discardRevision, setDiscardRevision] = useState(0);
     const dirty = useDirtyStore();
     const isDirty = useDirtyFlag(dirty);
     const pendingCount = usePendingCount(dirty);
@@ -129,6 +130,10 @@ export function SettingsShell({ port, instanceUrl, onDirtyChange, onSaved }: Pro
         if (saving) return;
         dirty.clear();
         setSaveError(null);
+        // Pages own local form state in addition to the shared dirty entries.
+        // Reload that state after an explicit discard; clearing only the map
+        // leaves an unsaved runtime displayed as if it were the active one.
+        setDiscardRevision(value => value + 1);
     }, [dirty, saving]);
 
     const onSave = useCallback(async () => {
@@ -170,6 +175,7 @@ export function SettingsShell({ port, instanceUrl, onDirtyChange, onSaved }: Pro
                 <Suspense fallback={<div className="settings-loading">Loading…</div>}>
                     {Page ? (
                         <Page
+                            key={discardRevision}
                             port={port}
                             instanceUrl={instanceUrl}
                             client={client}

@@ -100,3 +100,40 @@ test('saved retired employee and flush choices are displayed without reintroduci
     assert.ok((await open(flush, 'agent-flush-cli')).every(option => !option.textContent?.includes('JWC')));
     assert.equal(changes, 0);
 });
+
+test('discarding an explicit runtime draft reloads the saved retired value without a write', { timeout: 10_000 }, async t => {
+    await import('../../public/manager/src/settings/pages/Agent');
+    const { SettingsShell } = await import('../../public/manager/src/settings/SettingsShell');
+    let reads = 0;
+    const saved = { cli: 'jwc', workingDir: '/work', permissions: 'auto', locale: 'en',
+        runtimeDefaultMigration: null, multiSession: { enabled: false }, activeOverrides: {},
+        perCli: { jwc: { model: 'legacy-model', effort: 'high' }, claude: { model: 'sonnet', effort: 'low' } } };
+    t.mock.method(globalThis, 'fetch', async (input: string | URL | Request, options?: RequestInit) => {
+        assert.equal(options?.method ?? 'GET', 'GET', 'render, local edit and Discard must never write');
+        const url = new URL(String(input), 'http://localhost:43921');
+        assert.ok(url.pathname.startsWith('/i/43921/api/'), `expected selected-instance proxy: ${url.pathname}`);
+        const path = url.pathname.slice('/i/43921'.length);
+        const bodies: Record<string, unknown> = {
+            '/api/settings': saved,
+            '/api/cli-registry': { data: { claude: { label: 'Claude', models: ['sonnet'], efforts: ['low'] } } },
+            '/api/cli-status': { jwc: { available: false, probeState: 'fresh' }, claude: { available: true, probeState: 'fresh' } },
+            '/api/memory-files': { cli: 'jwc', model: 'legacy-model' },
+            '/api/employees': { ok: true, data: [] },
+        };
+        assert.ok(Object.hasOwn(bodies, path), `unexpected read: ${url.pathname}`);
+        if (path === '/api/settings') reads++;
+        return new Response(JSON.stringify(bodies[path]), { headers: { 'content-type': 'application/json' } });
+    });
+    const container = await surface(t, createElement(SettingsShell, { port: 43921, instanceUrl: 'http://localhost:43921' }));
+    assert.match(container.querySelector('#agent-cli')?.textContent ?? '', /JWC \(retired\)/);
+    const options = await open(container, 'agent-cli');
+    const claude = options.find(option => option.textContent?.trim() === 'Claude'); assert.ok(claude);
+    await act(async () => claude.click());
+    assert.match(container.querySelector('#agent-cli')?.textContent ?? '', /Claude/);
+    const discard = [...container.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.trim() === 'Discard');
+    assert.ok(discard);
+    await act(async () => discard.click());
+    assert.match(container.querySelector('#agent-cli')?.textContent ?? '', /JWC \(retired\)/);
+    assert.ok(reads >= 2, 'Discard must restore from the authoritative settings read');
+    assert.equal(saved.cli, 'jwc');
+});

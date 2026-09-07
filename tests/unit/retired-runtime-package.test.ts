@@ -13,6 +13,7 @@ const forbidden = [
     'node_modules/jawcode/package.json',
     'node_modules/jwc/package.json',
     'node_modules/bun/package.json',
+    'node_modules/kept/node_modules/bun/package.json',
     'node_modules/@oven/bun-linux/package.json',
     'node_modules/@jawcode-dev/natives/package.json',
     'node_modules/@jawcode-internal/runtime/package.json',
@@ -21,6 +22,9 @@ const forbidden = [
     'node_modules/kept/node_modules/@jawcode/new-package/package.json',
     'node_modules/kept/node_modules/@gajae-code/coding-agent/package.json',
     'node_modules/kept/node_modules/.bin/jwc',
+    'node_modules/kept/node_modules/.bin/bun.cmd',
+    'bun', 'bun.exe', 'bin/bun', 'bin/bun.exe', 'bin/bun.cmd', 'bin/bun.ps1',
+    'jwc', 'jwc.exe',
     'bin/jwc', 'bin/jwc.cmd', 'bin/jwc.ps1', 'bin/jwc.exe',
     'dist/src/lib/tui/bun-shim.mjs',
     'dist/src/lib/tui/components/editor.js',
@@ -75,6 +79,23 @@ test('missing staged payload, Node or Jaw cannot pass as absence proof', () => {
         rmSync(join(dir, 'node'));
         put('bin/jaw');
         assert.equal(check(dir).status, 1);
+    });
+});
+
+test('Hono Bun adapters are ordinary package content in staged and packed payloads', () => {
+    const adapters = [
+        'node_modules/hono/dist/adapter/bun/index.js',
+        'node_modules/hono/dist/cjs/adapter/bun/index.js',
+        'node_modules/hono/dist/types/adapter/bun/index.d.ts',
+        'node_modules/kept/node_modules/hono/dist/adapter/bun/index.js',
+    ];
+    fixture((dir, put) => {
+        put('node'); put('bin/jaw');
+        put('node_modules/hono/package.json', JSON.stringify({ name: 'hono' }));
+        for (const file of adapters) put(file, 'export {};');
+        const result = check(dir);
+        assert.equal(result.status, 0, result.stdout + result.stderr);
+        assert.doesNotThrow(() => checkPackedFiles(packed([...required, ...adapters]), manifest));
     });
 });
 
