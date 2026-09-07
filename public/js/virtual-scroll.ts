@@ -662,6 +662,21 @@ export class VirtualScroll {
             el.style.transform = `translateY(${vItem.start}px)`;
         }
 
+        // Absolute positioning does not determine reading or keyboard order.
+        // Put new older rows before retained rows without replacing their hosts.
+        const focused = this.innerEl.contains(document.activeElement)
+            ? document.activeElement as HTMLElement : null;
+        let cursor = this.innerEl.firstElementChild;
+        for (const vItem of virtualItems) {
+            const el = this.mounted.get(vItem.index);
+            if (!el) continue;
+            if (el !== cursor) this.innerEl.insertBefore(el, cursor);
+            cursor = el.nextElementSibling;
+        }
+        if (focused?.isConnected && document.activeElement !== focused) {
+            focused.focus({ preventScroll: true });
+        }
+
         // Lazy render before measuring; markdown/code/math change heights.
         if (this.onLazyRender) {
             const lazyTargets = this.innerEl.querySelectorAll<HTMLElement>('.lazy-pending');

@@ -70,6 +70,8 @@ Native request feedback follows the full selected form identity (including view,
 
 Canonical terminal previews and public answers can arrive in either order. A later run-bound native-present or print answer corrects only its own earlier canonical row, without another completion/unread notification. Native-absent diagnostics are notices, not Activity answers. Virtual scroll uses stable message IDs and additive live remount/recycle hooks; cache correction updates only existing assistant rows in the captured browser cache scope and run. The full answer is never read back from the bounded reducer.
 
+Virtualized rows are reconciled into geometric order in the DOM before lazy rendering and post-render hooks. Backward scrolling inserts older rows before retained newer rows, so reading and Tab order agree without replacing message or Activity hosts. Retained focus survives reordering without scrolling; evicted rows and focus outside the transcript are not restored.
+
 ### Retained Activity and saved answers
 
 `activity-history.ts` admits only owned transcript/discovery hosts. It queues at most16 reads behind one active job, retains64 host records, cancels recycled/navigation jobs and bounds each read job to30s. Targeted replay buffers only that run while unrelated live turns continue. Historical stored execution scope is preserved; it need not equal the currently selected live scope. Focused terminal previews cannot be evicted, and recycled offscreen previews are preferred for eviction. Remounts reject nested copied message keys.
