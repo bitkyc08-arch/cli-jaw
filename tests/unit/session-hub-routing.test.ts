@@ -46,7 +46,7 @@ test('digits-only route serves index after static without capturing API, media, 
 
     try {
         await withServer(app, async baseUrl => {
-            for (const path of ['/1', '/1/']) {
+            for (const path of ['/0', '/0/', '/1', '/1/']) {
                 const response = await fetch(baseUrl + path);
                 assert.equal(response.status, 200);
                 assert.match(await response.text(), /session-index-071/);
@@ -57,7 +57,7 @@ test('digits-only route serves index after static without capturing API, media, 
             assert.equal((await fetch(`${baseUrl}/not-a-session`)).status, 404);
 
             rmSync(join(root, 'public', 'dist', 'index.html'));
-            const sourceFallback = await fetch(`${baseUrl}/2`);
+            const sourceFallback = await fetch(`${baseUrl}/0`);
             assert.equal(sourceFallback.status, 200);
             assert.match(await sourceFallback.text(), /source-index-071/);
         });

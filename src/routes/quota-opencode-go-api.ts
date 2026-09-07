@@ -1,10 +1,12 @@
-// OpenCode Go subscription quota via Bearer API key (zen/go/v1/usage).
+// OpenCode Go quota, adapted from OpenCodex src/providers/quota.ts at
+// b94051fe91e745806102988f6dff2fec8de078ef (MIT; see LICENSE).
 
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { JAW_HOME, SETTINGS_PATH } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { asQuotaRecord as asRecord, quotaNumber, quotaPercent, quotaResetIso, readQuotaJson } from './quota-wire.js';
 
 const OPENCODE_GO_USAGE_URL = 'https://opencode.ai/zen/go/v1/usage';
 const OPENCODE_GO_MODELS_URL = 'https://opencode.ai/zen/go/v1/models';
@@ -12,29 +14,6 @@ const OPENCODE_AUTH_FILE = join(os.homedir(), '.local/share/opencode/auth.json')
 const OPENCODE_GO_API_KEY_FILE = join(JAW_HOME, 'quota', 'opencode-go-api-key');
 
 type QuotaRecord = Record<string, unknown>;
-
-interface UsageWindowInput {
-    usagePercent?: number;
-    usage_percent?: number;
-    percent?: number;
-    resetInSec?: number;
-    resetInSeconds?: number;
-    resets_in_seconds?: number;
-    limitDollars?: number;
-    limit_dollars?: number;
-    usedDollars?: number;
-    used_dollars?: number;
-}
-
-function asRecord(value: unknown): QuotaRecord | null {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as QuotaRecord
-        : null;
-}
-
-function numberField(value: unknown): number | undefined {
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
 
 function readTrimmedEnv(name: string): string | null {
     const value = process.env[name]?.trim();
@@ -81,23 +60,20 @@ function readApiKeyFromAuthFile(): string | null {
     }
 }
 
-function windowFromInput(input: UsageWindowInput | null | undefined): { label: string; percent: number; resetsAt?: string | null } | null {
+function windowFromInput(value: unknown, now: number, canonical: boolean) {
+    const input = asRecord(value);
     if (!input) return null;
-    const percent = numberField(input.usagePercent)
-        ?? numberField(input.usage_percent)
-        ?? numberField(input.percent);
-    if (percent == null) return null;
-    const resetSec = numberField(input.resetInSec)
-        ?? numberField(input.resetInSeconds)
-        ?? numberField(input.resets_in_seconds);
-    const resetsAt = resetSec != null
-        ? new Date(Date.now() + resetSec * 1000).toISOString()
-        : null;
-    return {
-        percent: Math.round(Math.max(0, Math.min(100, percent))),
-        resetsAt,
-        label: '',
-    };
+    const percent = quotaPercent(canonical ? input['percent']
+        : quotaNumber(input['usagePercent']) ?? quotaNumber(input['usage_percent']) ?? input['percent']);
+    if (percent === undefined) return null;
+    let resetsAt = quotaResetIso(input['resetsAt']);
+    if (!resetsAt && !canonical) {
+        const seconds = quotaNumber(input['resetInSec']) ?? quotaNumber(input['resetInSeconds'])
+            ?? quotaNumber(input['resets_in_seconds']);
+        if (seconds !== undefined && seconds >= 0) resetsAt = quotaResetIso(now + seconds * 1000);
+    }
+    // Preserve legacy display rounding; canonical usage carries exact fractions.
+    return { percent: canonical ? percent : Math.round(percent), resetsAt };
 }
 
 export function normalizeOpenCodeGoUsage(data: unknown): QuotaRecord {
@@ -106,21 +82,20 @@ export function normalizeOpenCodeGoUsage(data: unknown): QuotaRecord {
         return { error: true, reason: 'usage_parse_failed' };
     }
 
-    const windows: Array<{ label: string; percent: number; resetsAt?: string | null }> = [];
-    const push = (label: string, input: UsageWindowInput | null | undefined) => {
-        const window = windowFromInput(input);
-        if (!window) return;
-        windows.push({ ...window, label });
-    };
-
+    const canonical = Object.hasOwn(root, 'usage');
+    const usage = asRecord(root['usage']);
+    if (canonical && !usage) return { error: true, reason: 'usage_parse_failed' };
+    const windows: Array<{ label: string; percent: number; resetsAt: string | null }> = [];
+    const now = Date.now();
     const nested = asRecord(root['windows']);
-    push('5h', asRecord(root['rolling5h']) as UsageWindowInput | null
-        ?? asRecord(root['rolling']) as UsageWindowInput | null
-        ?? nested?.['rolling'] as UsageWindowInput | undefined);
-    push('Weekly', asRecord(root['weekly']) as UsageWindowInput | null
-        ?? nested?.['weekly'] as UsageWindowInput | undefined);
-    push('Monthly', asRecord(root['monthly']) as UsageWindowInput | null
-        ?? nested?.['monthly'] as UsageWindowInput | undefined);
+    const inputs = canonical ? [usage?.['rolling'], usage?.['weekly'], usage?.['monthly']]
+        : [asRecord(root['rolling5h']) ?? asRecord(root['rolling']) ?? asRecord(nested?.['rolling']),
+            asRecord(root['weekly']) ?? asRecord(nested?.['weekly']),
+            asRecord(root['monthly']) ?? asRecord(nested?.['monthly'])];
+    for (const [i, label] of ['5h', 'Weekly', 'Monthly'].entries()) {
+        const window = windowFromInput(inputs[i], now, canonical);
+        if (window) windows.push({ ...window, label });
+    }
 
     return stripUndefined({
         authenticated: true,
@@ -138,21 +113,24 @@ export function normalizeOpenCodeGoUsage(data: unknown): QuotaRecord {
     });
 }
 
-export async function probeOpenCodeGoApiKey(apiKey: string): Promise<boolean> {
+type KeyProbe = 'authenticated' | 'rejected' | 'unavailable';
+
+async function probeOpenCodeGoKeyStatus(apiKey: string): Promise<KeyProbe> {
     try {
         const resp = await fetch(OPENCODE_GO_MODELS_URL, {
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                Accept: 'application/json',
-            },
-            signal: AbortSignal.timeout(8000),
+            headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+            redirect: 'error', signal: AbortSignal.timeout(8000),
         });
-        if (!resp.ok) return false;
-        const data = await resp.json() as unknown;
-        return asRecord(data)?.['object'] === 'list';
-    } catch {
-        return false;
-    }
+        if (!resp.ok) {
+            void resp.body?.cancel().catch(() => undefined);
+            return resp.status === 401 || resp.status === 403 ? 'rejected' : 'unavailable';
+        }
+        return asRecord(await readQuotaJson(resp))?.['object'] === 'list' ? 'authenticated' : 'unavailable';
+    } catch { return 'unavailable'; }
+}
+
+export async function probeOpenCodeGoApiKey(apiKey: string): Promise<boolean> {
+    return await probeOpenCodeGoKeyStatus(apiKey) === 'authenticated';
 }
 
 export async function fetchOpenCodeGoUsageApi(apiKey: string): Promise<QuotaRecord | null> {
@@ -162,22 +140,25 @@ export async function fetchOpenCodeGoUsageApi(apiKey: string): Promise<QuotaReco
                 Authorization: `Bearer ${apiKey}`,
                 Accept: 'application/json',
             },
+            redirect: 'error',
             signal: AbortSignal.timeout(8000),
         });
+        if (!resp.ok) void resp.body?.cancel().catch(() => undefined);
         if (resp.status === 401 || resp.status === 403) {
             return { authenticated: false, reason: 'api_key_invalid' };
         }
         if (resp.status === 404) {
-            return { usageApiUnavailable: true, reason: 'usage_api_not_deployed' };
+            return { usageApiUnavailable: true, reason: 'usage_api_unavailable' };
         }
         if (!resp.ok) {
             return { error: true, reason: 'usage_fetch_failed' };
         }
         const contentType = resp.headers.get('content-type') || '';
         if (!contentType.includes('json')) {
+            void resp.body?.cancel().catch(() => undefined);
             return { usageApiUnavailable: true, reason: 'usage_api_not_json' };
         }
-        const data = await resp.json() as unknown;
+        const data = await readQuotaJson(resp);
         return normalizeOpenCodeGoUsage(data);
     } catch {
         return { error: true, reason: 'usage_fetch_failed' };
@@ -196,63 +177,22 @@ function buildStatusOnly(): QuotaRecord {
     });
 }
 
-function mergeOpenCodeQuota(base: QuotaRecord, overlay: QuotaRecord | null): QuotaRecord {
-    if (!overlay) return base;
-    if (overlay['authenticated'] === false) {
-        return stripUndefined({
-            ...base,
-            authenticated: false,
-            quotaCapable: false,
-            reason: overlay['reason'] ?? 'api_key_invalid',
-            dashboardHint: 'OpenCode Go API key was rejected. Re-run opencode providers login or update OPENCODE_GO_API_KEY.',
-        });
-    }
-    if (overlay['usageApiUnavailable']) {
-        return stripUndefined({
-            ...base,
-            authenticated: base['authenticated'] !== false,
-            quotaCapable: false,
-            quotaSource: 'opencode-go:usage-api-unavailable',
-            usageApiUnavailable: true,
-            dashboardHint: 'GET /zen/go/v1/usage is not live yet (upstream anomalyco/opencode#16017). API key works for models; quota bar will appear when the endpoint ships.',
-            windows: [],
-        });
-    }
-    if (overlay['error']) {
-        return stripUndefined({
-            ...base,
-            error: true,
-            reason: overlay['reason'] ?? 'usage_fetch_failed',
-        });
-    }
-    return stripUndefined({
-        ...base,
-        ...overlay,
-        authenticated: true,
-        account: { ...(asRecord(base['account']) || {}), ...(asRecord(overlay['account']) || {}) },
-    });
-}
-
 export async function fetchOpenCodeUsage(): Promise<QuotaRecord> {
     const apiKey = readOpenCodeGoApiKey();
     if (!apiKey) return buildStatusOnly();
-
-    const authenticated = await probeOpenCodeGoApiKey(apiKey);
-    const base = stripUndefined({
-        ...buildStatusOnly(),
-        authenticated,
-        displayTier: 'OpenCode Go',
-        account: { type: 'opencode', tier: authenticated ? 'Go' : 'auth/status only' },
-        quotaSource: authenticated ? 'opencode-go:api-key-probed' : 'opencode-go:api-key-invalid',
-    });
-
-    if (!authenticated) {
-        return stripUndefined({
-            ...base,
-            dashboardHint: 'Set OPENCODE_GO_API_KEY or run opencode providers login for OpenCode Go.',
-        });
-    }
-
+    // Presence proves only a configured key; failures must not invent an auth verdict.
+    const base: QuotaRecord = {
+        quotaCapable: false, windows: [], displayTier: 'OpenCode Go',
+        account: { type: 'opencode', tier: 'Go' }, quotaSource: 'opencode-go:usage-api',
+    };
     const usage = await fetchOpenCodeGoUsageApi(apiKey);
-    return mergeOpenCodeQuota(base, usage);
+    if (!usage) return { ...base, error: true, reason: 'usage_fetch_failed' };
+    if (!usage['usageApiUnavailable']) return { ...base, ...usage };
+    const probe = await probeOpenCodeGoKeyStatus(apiKey);
+    return {
+        ...base, ...usage, quotaSource: 'opencode-go:usage-api-unavailable',
+        ...(probe === 'authenticated' ? { authenticated: true }
+            : probe === 'rejected' ? { authenticated: false, reason: 'api_key_invalid' } : { error: true }),
+        dashboardHint: 'OpenCode Go quota endpoint is unavailable for this response; model access and quota availability are checked separately.',
+    };
 }

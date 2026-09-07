@@ -3,133 +3,91 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
-    readKiroAuthFromStore,
-    regionFromProfileArn,
+    readKiroQuotaAuthFromStore,
     resolveKiroProfileArn,
 } from '../agent/kiro-auth.js';
 import { detectCli } from '../core/cli-detection.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { asQuotaRecord as asRecord, quotaNumber, quotaPercent, quotaResetIso, readQuotaJson } from './quota-wire.js';
 
 const execFileAsync = promisify(execFile);
 
 type QuotaRecord = Record<string, unknown>;
 
-interface KiroUsageBreakdown {
-    displayName?: string;
-    displayNamePlural?: string;
-    currentUsage?: number;
-    currentUsageWithPrecision?: number;
-    usageLimit?: number;
-    usageLimitWithPrecision?: number;
-    nextDateReset?: number;
-    currentOverages?: number;
-    overageCap?: number;
-    resourceType?: string;
+function textField(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-interface KiroUsageLimitsResponse {
-    daysUntilReset?: number;
-    nextDateReset?: number;
-    subscriptionInfo?: {
-        subscriptionTitle?: string;
-        type?: string;
-        overageCapability?: string;
-    };
-    usageBreakdownList?: KiroUsageBreakdown[];
-    limits?: Array<{
-        type?: string;
-        currentUsage?: number;
-        totalUsageLimit?: number;
-        percentUsed?: number;
-    }>;
+function allowance(row: QuotaRecord | null) {
+    if (!row) return null;
+    const used = quotaNumber(row['currentUsageWithPrecision']) ?? quotaNumber(row['currentUsage']);
+    const limit = quotaNumber(row['usageLimitWithPrecision']) ?? quotaNumber(row['usageLimit']);
+    if (used === undefined || used < 0 || limit === undefined || limit <= 0) return null;
+    const percent = quotaPercent(used / limit * 100);
+    return percent === undefined ? null : { used, limit, percent };
 }
 
-function asRecord(value: unknown): QuotaRecord | null {
-    return value && typeof value === 'object' && !Array.isArray(value)
-        ? value as QuotaRecord
-        : null;
-}
-
-function numberField(value: unknown): number | undefined {
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function isoFromEpochSeconds(value: unknown): string | null {
-    const seconds = numberField(value);
-    if (seconds == null) return null;
-    const ms = seconds > 1e12 ? seconds : seconds * 1000;
-    const date = new Date(ms);
-    return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-}
-
-function usedPercent(current?: number, limit?: number): number {
-    if (current == null || limit == null || limit <= 0) return 0;
-    return Math.max(0, Math.min(100, Math.round((current / limit) * 100)));
-}
-
-export function normalizeKiroUsageLimits(data: KiroUsageLimitsResponse): QuotaRecord {
-    const windows: Array<{ label: string; percent: number; resetsAt?: string | null }> = [];
-    const subscription = data.subscriptionInfo || {};
-    const resetsAt = isoFromEpochSeconds(data.nextDateReset);
-
-    for (const breakdown of data.usageBreakdownList || []) {
-        const current = breakdown.currentUsageWithPrecision ?? breakdown.currentUsage;
-        const limit = breakdown.usageLimitWithPrecision ?? breakdown.usageLimit;
-        const label = breakdown.displayName || breakdown.resourceType || 'Usage';
-        if (current == null && limit == null) continue;
-        windows.push(stripUndefined({
-            label,
-            percent: usedPercent(current, limit),
-            resetsAt: isoFromEpochSeconds(breakdown.nextDateReset) ?? resetsAt,
-        }) as { label: string; percent: number; resetsAt?: string | null });
+/** Allowance selection adapted from OpenCodex providers/kiro-usage.ts,
+ * b94051fe91e745806102988f6dff2fec8de078ef (MIT; see LICENSE).
+ */
+export function normalizeKiroUsageLimits(value: unknown): QuotaRecord {
+    const data = asRecord(value);
+    if (!data) return { error: true, reason: 'kiro_usage_parse_failed', quotaCapable: false, windows: [] };
+    const windows: Array<{ label: string; percent: number; resetsAt: string | null }> = [];
+    const subscription = asRecord(data['subscriptionInfo']);
+    const resetsAt = quotaResetIso(data['nextDateReset']);
+    const list = Array.isArray(data['usageBreakdownList']) ? data['usageBreakdownList'].map(asRecord) : [];
+    const selected = ['AGENTIC_REQUEST', 'CREDIT'].map(type => list.find(row =>
+        textField(row?.['resourceType'])?.toUpperCase() === type)).find(Boolean) ?? null;
+    const primary = allowance(selected);
+    const overageStatus = textField(asRecord(data['overageConfiguration'])?.['overageStatus']);
+    if (primary && selected) {
+        windows.push({ label: textField(selected['displayName']) || textField(selected['resourceType']) || 'Usage',
+            percent: primary.percent, resetsAt: quotaResetIso(selected['nextDateReset']) ?? resetsAt });
+        const trialRow = asRecord(selected['freeTrialInfo']);
+        const trial = allowance(trialRow);
+        if (trial) windows.push({ label: 'Free trial', percent: trial.percent, resetsAt: quotaResetIso(trialRow?.['nextDateReset']) });
+    } else if (!Object.hasOwn(data, 'usageBreakdownList') && Array.isArray(data['limits'])) {
+        for (const value of data['limits']) {
+            const row = asRecord(value);
+            if (!row) continue;
+            const current = quotaNumber(row['currentUsage']);
+            const limit = quotaNumber(row['totalUsageLimit']);
+            const percent = quotaPercent(row['percentUsed']) ??
+                (current !== undefined && current >= 0 && limit !== undefined && limit > 0 ? quotaPercent(current / limit * 100) : undefined);
+            if (percent !== undefined) windows.push({ label: textField(row['type']) || 'Usage', percent, resetsAt });
+        }
     }
-
-    for (const limit of data.limits || []) {
-        if (windows.length) break;
-        const label = limit.type || 'Usage';
-        const percent = numberField(limit.percentUsed);
-        windows.push(stripUndefined({
-            label,
-            percent: percent != null ? Math.round(percent) : usedPercent(limit.currentUsage, limit.totalUsageLimit),
-            resetsAt,
-        }) as { label: string; percent: number; resetsAt?: string | null });
-    }
-
-    const primaryBreakdown = data.usageBreakdownList?.[0];
-    const subscriptionTitle = subscription.subscriptionTitle;
-    const subscriptionType = subscription.type;
-
+    const title = textField(subscription?.['subscriptionTitle']);
+    const type = textField(subscription?.['type']);
     return stripUndefined({
-        authenticated: true,
-        quotaCapable: windows.length > 0,
+        authenticated: true, quotaCapable: windows.length > 0,
         quotaSource: 'kiro:codewhisperer-get-usage-limits',
-        displayTier: subscriptionTitle
-            ? `Kiro ${subscriptionTitle}`
-            : subscriptionType
-                ? `Kiro ${subscriptionType}`
-                : 'Kiro',
-        account: stripUndefined({
-            type: 'kiro',
-            tier: subscriptionTitle || subscriptionType || 'authenticated',
-            plan: subscriptionType,
-        }),
-        windows,
-        daysUntilReset: data.daysUntilReset,
-        nextDateReset: resetsAt,
-        currentUsage: primaryBreakdown?.currentUsageWithPrecision ?? primaryBreakdown?.currentUsage,
-        usageLimit: primaryBreakdown?.usageLimitWithPrecision ?? primaryBreakdown?.usageLimit,
-        usageUnit: primaryBreakdown?.displayNamePlural || primaryBreakdown?.displayName,
-        overageStatus: asRecord(primaryBreakdown as unknown)?.['overageStatus'],
+        displayTier: title || type ? `Kiro ${title || type}` : 'Kiro',
+        account: stripUndefined({ type: 'kiro', tier: title || type || 'authenticated', plan: type }),
+        windows, daysUntilReset: quotaNumber(data['daysUntilReset']), nextDateReset: resetsAt,
+        currentUsage: primary?.used, usageLimit: primary?.limit,
+        usageUnit: primary ? textField(selected?.['displayNamePlural']) || textField(selected?.['displayName']) : undefined,
+        overageStatus, exhausted: primary ? primary.used >= primary.limit && overageStatus?.toUpperCase() !== 'ENABLED' : undefined,
         reverseEngineered: true,
     });
 }
 
+function kiroUsageRegion(profileArn?: string, regions?: { apiRegion?: string; ssoRegion?: string }): string {
+    return [profileArn?.split(':')[3], regions?.apiRegion, regions?.ssoRegion]
+        .find((region): region is string => !!region && /^[a-z0-9-]{1,32}$/.test(region)) ?? 'us-east-1';
+}
+
 export async function fetchKiroUsageLimits(
     accessToken: string,
-    profileArn: string,
-): Promise<KiroUsageLimitsResponse | QuotaRecord> {
-    const region = regionFromProfileArn(profileArn);
-    const url = `https://codewhisperer.${region}.amazonaws.com/`;
+    profileArn?: string,
+    regions?: { apiRegion?: string; ssoRegion?: string },
+): Promise<unknown> {
+    const region = kiroUsageRegion(profileArn, regions);
+    const url = new URL(`https://management.${region}.kiro.dev/`);
+    url.searchParams.set('origin', 'AI_EDITOR');
+    url.searchParams.set('isEmailRequired', 'true');
+    if (profileArn) url.searchParams.set('profileArn', profileArn);
 
     try {
         const resp = await fetch(url, {
@@ -139,17 +97,20 @@ export async function fetchKiroUsageLimits(
                 'Content-Type': 'application/x-amz-json-1.0',
                 Accept: 'application/json',
                 'X-Amz-Target': 'AmazonCodeWhispererService.GetUsageLimits',
+                'x-amzn-codewhisperer-optout': 'true',
             },
-            body: JSON.stringify({ profileArn }),
-            signal: AbortSignal.timeout(12000),
+            body: JSON.stringify({ origin: 'AI_EDITOR', isEmailRequired: true, ...(profileArn ? { profileArn } : {}) }),
+            redirect: 'error',
+            signal: AbortSignal.timeout(8000),
         });
 
+        if (!resp.ok) void resp.body?.cancel().catch(() => undefined);
         if (resp.status === 401 || resp.status === 403) {
             return { authenticated: false, reason: 'kiro_token_expired' };
         }
         if (!resp.ok) return { error: true, reason: `kiro_usage_http_${resp.status}` };
 
-        return await resp.json() as KiroUsageLimitsResponse;
+        return await readQuotaJson(resp);
     } catch {
         return { error: true, reason: 'kiro_usage_fetch_failed' };
     }
@@ -173,14 +134,15 @@ async function readKiroWhoamiEmail(binary?: string): Promise<string | undefined>
 
 export async function fetchKiroUsage(binary?: string): Promise<QuotaRecord> {
     const resolvedBinary = binary || detectCli('kiro-code').path;
-    const { token, profile } = readKiroAuthFromStore();
+    const { token, profile, reason: authReason } = readKiroQuotaAuthFromStore();
     const profileArn = resolveKiroProfileArn(token, profile);
 
-    if (!token?.accessToken || !profileArn) {
+    if (!token?.accessToken) {
         return stripUndefined({
             authenticated: false,
             quotaCapable: false,
             quotaSource: 'kiro:auth-store-missing',
+            reason: authReason,
             displayTier: 'Kiro',
             account: { type: 'kiro', tier: 'not logged in' },
             windows: [],
@@ -188,7 +150,7 @@ export async function fetchKiroUsage(binary?: string): Promise<QuotaRecord> {
     }
 
     const [usageResult, email] = await Promise.all([
-        fetchKiroUsageLimits(token.accessToken, profileArn),
+        fetchKiroUsageLimits(token.accessToken, profileArn ?? undefined, token),
         readKiroWhoamiEmail(resolvedBinary || undefined),
     ]);
 
@@ -227,7 +189,7 @@ export async function fetchKiroUsage(binary?: string): Promise<QuotaRecord> {
         });
     }
 
-    const normalized = normalizeKiroUsageLimits(usageResult as KiroUsageLimitsResponse);
+    const normalized = normalizeKiroUsageLimits(usageResult);
     return stripUndefined({
         ...normalized,
         account: {

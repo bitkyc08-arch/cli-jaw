@@ -49,7 +49,7 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 | `src/routes/wiki.ts` | 118L | 3 | 옵트인 위키 status/enable/configure (requireAuth, root 충돌 400, scaffold 실패 시 disabled 유지, 040) |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
-| `src/routes/settings.ts` | 504L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
+| `src/routes/settings.ts` | 756L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
@@ -69,10 +69,10 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 | `src/routes/runtime-context.ts` | 46L | 4 | runtime context entry CRUD (ephemeral prompt injection), mounted at `/api/runtime-context` |
 | `src/routes/security-audit.ts` | 18L | 2 | security audit log entries + verify, mounted at `/api/security-audit` |
 | `src/routes/i18n.ts` | 35L | 2 | language list + locale bundle |
-| `src/routes/quota.ts` | 528L | — | `settings.ts`가 호출하는 quota/auth/status reader helper |
-| `src/routes/quota-kiro-reverse.ts` | 239L | — | Kiro/CodeWhisperer reverse-engineered usage-limits reader (`fetchKiroUsage`) |
-| `src/routes/quota-agy-reverse.ts` | 158L | — | Antigravity quota snapshot reader (`fetchAgyUsage`) |
-| `src/routes/quota-cursor-dashboard.ts` | 203L | — | Cursor dashboard session/usage reader (`fetchCursorUsage`) |
+| `src/routes/quota.ts` | 634L | — | `settings.ts`가 호출하는 quota/auth/status reader helper |
+| `src/routes/quota-kiro-reverse.ts` | 201L | — | Kiro/CodeWhisperer reverse-engineered usage-limits reader (`fetchKiroUsage`) |
+| `src/routes/quota-agy-reverse.ts` | 233L | — | Antigravity quota snapshot reader (`fetchAgyUsage`) |
+| `src/routes/quota-cursor-dashboard.ts` | 334L | — | Cursor dashboard session/usage reader (`fetchCursorUsage`) |
 | `src/routes/types.ts` | 3L | — | shared `AuthMiddleware` type |
 
 ### Dashboard Board/Schedule (P3, mounted in server.ts)
@@ -315,13 +315,19 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 
 ### `/api/quota`
 
+- All provider reads, including Grok, start concurrently. A thrown provider error becomes that row's generic `quota_fetch_failed` result without suppressing successful peers; wrappers retain their underlying provider outcome.
+
+- OpenCode Go reads canonical `usage.rolling/weekly/monthly` directly from `/zen/go/v1/usage`, retaining legacy window shapes. A successful usage response needs no models preflight; unavailable usage may probe model authentication without treating transient failure as invalid credentials.
+
+- Native Claude/Codex readers normalize upstream windows with `quota-native-window.ts` and bounded JSON from `quota-wire.ts`. Codex honors `CODEX_HOME`, declared short/monthly durations, Spark weekly limits and additive read-only `resetCredits`; missing readings do not create a zero bar. Claude supports Fable and weekly-scoped model limits; its 30-second fresh and 5-minute 429 fallback caches are credential-scoped. A 429 without a measured same-credential snapshot returns an error with no fabricated quota bar.
+
 - 응답 키: `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` (`CLI_KEYS` 순서).
 - `pi`는 Settings의 Pi profile registration을 통해 endpoint/model/key를 검증하고, quota 자체는 auth/status-only로 표시한다.
-- `agy`는 `src/routes/quota-agy-reverse.ts`의 `fetchAgyUsage()`를 통해 Antigravity quota snapshot을 읽는다.
-- `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
-- `cursor`는 `src/routes/quota-cursor-dashboard.ts`의 `fetchCursorUsage()`를 통해 dashboard session/usage를 읽는다.
-- `grok`은 `~/.grok/auth.json`의 OIDC `key`를 우선 읽고 `https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig` gRPC-web 응답으로 SuperGrok weekly usage pool window를 만든다. 실패하면 legacy `cli-chat-proxy.grok.com/v1/billing` monthly credits window로 fallback한다.
-- `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
+- `agy` reads native IDE-local status plus the selected antigravity-usage account through read-only helpers. Matching account/project quota uses Google summary, then models on transient/unavailable responses; auth rejection and redirects stop. No automatic npm acquisition, OAuth refresh, token write or account switching occurs. Native local availability remains supported, and local/Google account mismatches never trigger remote credential use.
+- AGY native local snapshot이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
+- `cursor` reads its selected native OAuth store (or direct auth token), probes period usage → summary → legacy usage, then retains explicitly configured dashboard-cookie fallback. An API-key override suppresses unrelated stored OAuth reads. Keychain/memory/file selection follows the native CLI; credentials are never returned in quota rows.
+- `grok` reads native OIDC key/user identity, then requests JSON `/v1/billing?format=credits` weekly usage. It preserves fractional and omitted-zero readings, with bounded gRPC weekly compatibility and validated monthly fallback. Each failed request is isolated; session usage remains separate.
+- `kiro-code` reads a selected native social/OIDC token in a read-only SQLite snapshot and calls `management.<validated-region>.kiro.dev` GetUsageLimits. Profile is optional; malformed optional profile data does not discard a valid token. Allowance selection prefers AGENTIC_REQUEST then CREDIT and keeps free-trial pools separate.
 
 ### Wiki lifecycle ownership
 
