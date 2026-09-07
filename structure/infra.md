@@ -1512,3 +1512,12 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 ### Saved permission policy at startup
 
 Server startup loads and preserves the configured `permissions` value (`auto`, `safe` or a custom list). The selectors display `auto` as Auto (YOLO). The obsolete Safe-to-Auto coercion is removed so an explicit sidebar choice survives a restart. `tests/unit/server-permission-startup.test.ts` executes the startup source with isolated persistence and stubbed external effects across two starts.
+
+### Draft pull request CI
+
+Tests and Postinstall Platform Checks skip every job on draft pull requests,
+including their aggregates. Skipped jobs are not passing test evidence.
+`ready_for_review` restores normal PR validation. Existing push and manual
+`workflow_dispatch` behavior is unchanged. A dependent draft chain can defer
+hosted verification until its completed top branch, then dispatch the workflows
+on that exact ref and verify each run's head SHA and producer conclusions.
