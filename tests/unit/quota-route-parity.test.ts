@@ -74,6 +74,12 @@ test('quota HTTP route preserves contracts, isolates failure, and starts Grok co
             assert.equal(result['codex']?.error, true);
             assert.equal(result['codex-app']?.error, true);
             assert.equal(result['claude']?.error, undefined);
+            readers['claude'] = async () => null;
+            readers['opencode'] = async () => null;
+            const unknown = await capture('configured-but-unavailable');
+            assert.equal(unknown['claude']?.error, true);
+            assert.deepEqual(unknown['opencode']?.windows, []);
+            assert.equal(unknown['grok']?.authenticated, true);
             assert.ok(!JSON.stringify(result).includes('fixture-private-upstream-detail'));
             resetReaders();
         });
