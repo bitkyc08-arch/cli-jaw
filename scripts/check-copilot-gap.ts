@@ -25,9 +25,11 @@ const checks: CheckItem[] = [
         needle: "'/api/cli-registry'",
     },
     {
-        name: 'Settings page includes copilot model select',
-        file: 'public/index.html',
-        needle: 'id="modelCopilot"',
+        // 260908: the classic per-CLI form moved into the unified React settings page,
+        // whose Model & Provider page derives its rows from /api/cli-registry.
+        name: 'Settings Model page renders per-CLI rows from the registry',
+        file: 'public/manager/src/settings/pages/ModelProvider',
+        needle: "'/api/cli-registry'",
     },
     {
         name: 'Frontend loads registry from API',
@@ -45,7 +47,7 @@ const rows = checks.map((item: CheckItem) => {
     // Support both .js and .ts (frontend migration may change extensions)
     const candidates = item.file.includes('.')
         ? [item.file]
-        : [`${item.file}.ts`, `${item.file}.js`];
+        : [`${item.file}.ts`, `${item.file}.tsx`, `${item.file}.js`];
     let content = '';
     let resolvedFile = item.file;
     for (const f of candidates) {
