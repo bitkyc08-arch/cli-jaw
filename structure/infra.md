@@ -1508,3 +1508,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 
 - `getServerUrl(undefined)` 패턴: PORT env 우선, 없으면 DEFAULT_PORT(`3457`)
 - memory.ts: init 경로 `${JAW_HOME}/memory/` (하드코딩 `~/.cli-jaw` 제거)
+
+### Saved permission policy at startup
+
+Server startup loads and preserves the configured `permissions` value (Auto, Safe or a custom list). The obsolete Safe-to-Auto coercion is removed so an explicit sidebar choice survives a restart. `tests/unit/server-permission-startup.test.ts` executes the startup source with isolated persistence and stubbed external effects across two starts.

@@ -10,17 +10,8 @@ const CHAT = path.join(ROOT, 'public/js/features/chat.ts');
 const settingsSrc = fs.readFileSync(SETTINGS_CORE, 'utf8');
 const chatSrc = fs.readFileSync(CHAT, 'utf8');
 
-test('SSR-001: settings-core tracks active settings save promise', () => {
-    assert.match(settingsSrc, /let\s+activeSettingsSave:\s*Promise<void>\s*\|\s*null\s*=\s*null/);
-    assert.match(settingsSrc, /function\s+trackSettingsSave\(/);
-    assert.match(settingsSrc, /activeSettingsSave\s*=\s*tracked/);
-});
-
-test('SSR-002: settings-core exports waitForSettingsSaveIdle', () => {
-    assert.match(settingsSrc, /export\s+async\s+function\s+waitForSettingsSaveIdle\(\):\s*Promise<void>/);
-    assert.match(settingsSrc, /const\s+pending\s*=\s*activeSettingsSave/);
-    assert.match(settingsSrc, /if\s*\(\s*pending\s*\)\s*await\s+pending/);
-});
+// Save tracking and idle waiting are exercised with real overlapping promises in
+// web-policy-readout.test.ts; do not lock those behaviors to a singleton's syntax.
 
 test('SSR-003: updateSettings restores confirmed server state on failure', () => {
     assert.match(settingsSrc, /const\s+result\s*=\s*await\s+apiJson<SettingsData>\('\/api\/settings',\s*'PUT',\s*s\)/);
