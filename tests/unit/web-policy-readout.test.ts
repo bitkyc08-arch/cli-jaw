@@ -248,7 +248,7 @@ for (const first of ['CLI settings', 'permissions'] as const) {
 }
 test('Classic iframe replacement preserves Agents policy owner', () => {
     const page = new window.DOMParser().parseFromString(readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'), 'text/html');
-    assert.equal(page.querySelectorAll('#tabSettings > iframe.settings-frame').length, 1);
+    assert.equal(page.querySelectorAll('#settingsPage > iframe').length, 1);
     assert.ok(page.querySelector('#tabAgents .perm-toggle'));
-    assert.equal(page.querySelector('#tabSettings .perm-toggle'), null);
+    assert.equal(page.querySelector('#settingsPage .perm-toggle'), null);
 });

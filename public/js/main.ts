@@ -48,7 +48,7 @@ import {
 import { toggleSkill, filterSkills, searchSkills } from './features/skills.js';
 import {
     loadSettings, setPerm, onCliChange,
-    saveActiveCliSettings, openPromptModal, initSettingsFrame,
+    saveActiveCliSettings, openPromptModal, initSettingsFrame, toggleSettingsPage,
     onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
     openMcpModal, initMcpModal,
@@ -175,9 +175,24 @@ document.querySelector('.tab-bar')?.addEventListener('click', (e) => {
     if (!btn) return;
     const tabs = [...(btn.parentElement?.children || [])].filter(c => c.classList.contains('tab-btn'));
     const idx = tabs.indexOf(btn);
-    const names = ['agents', 'skills', 'settings'];
+    const names = ['agents', 'skills'];
     if (names[idx]) switchTab(names[idx], btn);
 });
+// Roving tab order: ArrowLeft/ArrowRight move between the right-panel tabs (WAI-ARIA tabs pattern).
+document.querySelector('.tab-bar')?.addEventListener('keydown', (e) => {
+    const event = e as KeyboardEvent;
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    const current = (event.target as HTMLElement)?.closest('.tab-btn') as HTMLElement | null;
+    if (!current) return;
+    const tabs = [...(current.parentElement?.children || [])].filter(c => c.classList.contains('tab-btn')) as HTMLElement[];
+    const next = tabs[(tabs.indexOf(current) + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+    if (!next) return;
+    event.preventDefault();
+    next.focus();
+    next.click();
+});
+
+document.getElementById('btnSettings')?.addEventListener('click', () => toggleSettingsPage());
 
 // ── Save Button ──
 document.querySelector('.sidebar-save-bar .btn-save')?.addEventListener('click', handleSave);
@@ -455,8 +470,7 @@ async function bootstrap(): Promise<void> {
     initMsgCopy();
     initGestures();
     if (window.location.hash === '#settings') {
-        const settingsTab = document.getElementById('tabBtnSettings');
-        if (settingsTab) switchTab('settings', settingsTab);
+        toggleSettingsPage(true);
     }
     try { sessionStorage.removeItem(STALE_BUNDLE_RELOAD_KEY); } catch {}
 
@@ -493,6 +507,9 @@ document.addEventListener('keydown', (e) => {
 // ── Keyboard: Escape closes modals ──────────────────
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        if (document.body.dataset['settingsOpen'] === 'true') {
+            e.preventDefault(); toggleSettingsPage(false); return;
+        }
         if (document.getElementById('chatSearch')?.classList.contains('open')) {
             e.preventDefault();
             closeChatSearch();

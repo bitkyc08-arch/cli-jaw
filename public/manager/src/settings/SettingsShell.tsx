@@ -39,6 +39,9 @@ type Props = {
     client?: SettingsClient;
     scopes?: readonly SettingsScope[];
     initialId?: SettingsCategoryId;
+    onBack?: (() => void) | undefined;
+    pageTitle?: string;
+    pageBadge?: string;
 };
 
 function useDirtyStore(): DirtyStore {
@@ -64,7 +67,7 @@ function usePendingCount(store: DirtyStore): number {
 }
 
 export function SettingsShell({ port = null, instanceUrl = null, onDirtyChange, onSaved,
-    manager, client: suppliedClient, scopes: requestedScopes, initialId }: Props) {
+    manager, client: suppliedClient, scopes: requestedScopes, initialId, onBack, pageTitle, pageBadge }: Props) {
     const scopes = requestedScopes ?? (manager ? ['instance', 'manager'] as const : ['instance'] as const);
     const scopeKey = scopes.join(':');
     const [activeId, setActiveId] = useState<SettingsCategoryId>(initialId ?? (scopes.includes('instance') ? 'agent' : 'manager-display'));
@@ -160,12 +163,27 @@ export function SettingsShell({ port = null, instanceUrl = null, onDirtyChange, 
         }
     }, [onSaved]);
 
+    const requestBack = () => {
+        if (activeSaveRef.current) return;
+        // The host owns close/port dirty confirmation; category navigation stays here.
+        onBack?.();
+    };
     useSaveShortcut({ enabled: isDirty && !saving, containerRef, onSave: () => { void onSave(); } });
     return (
-        <div className="settings-shell-host"><div className="settings-shell" ref={containerRef}>
+        <div className="settings-shell-host"><div className="settings-shell" ref={containerRef}
+            onKeyDown={event => {
+                if (!onBack || event.key !== 'Escape' || event.defaultPrevented) return;
+                if ((event.target as Element).closest('[role="dialog"], dialog, [role="listbox"]')) return;
+                event.preventDefault(); event.stopPropagation(); requestBack();
+            }}>
             <SettingsSidebar scopes={manager ? scopes : scopes.filter(scope => scope !== 'manager')}
-                hasInstance={hasInstance} locale={locale} activeId={selected?.id ?? activeId} onSelect={onSelect} />
-            <section className="settings-page" aria-live="polite">
+                hasInstance={hasInstance} locale={locale} activeId={selected?.id ?? activeId} onSelect={onSelect} onBack={onBack ? requestBack : undefined} />
+            <section className="settings-page" aria-label={pageTitle ?? selected?.label ?? 'Settings'}>
+                <main className="settings-page-main">
+                <header className="settings-page-heading">
+                    <h2>{pageTitle ?? selected?.label ?? 'Settings'}</h2>
+                    <span className="settings-page-badge">{pageBadge ?? (selected?.scope === 'manager' ? 'Manager' : 'Instance')}</span>
+                </header>
                 <Suspense fallback={<div className="settings-loading">Loading…</div>}>
                     {Page ? <Page key={`${selected!.id}:${port}:${scopeKey}:${discardRevision}`}
                         port={port ?? 0} instanceUrl={instanceUrl ?? ''} {...(manager ? { manager } : {})}
@@ -175,6 +193,7 @@ export function SettingsShell({ port = null, instanceUrl = null, onDirtyChange, 
                 <SaveBar isDirty={isDirty} saving={saving} pendingCount={pendingCount} error={saveError}
                     onDiscard={onDiscard} onSave={() => void onSave()} />
                 {toast ? <Toast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} /> : null}
+                </main>
             </section>
         </div></div>
     );

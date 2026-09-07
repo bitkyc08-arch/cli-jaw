@@ -384,7 +384,7 @@ test('App renders NotesWorkspace outside Workbench and imports notes CSS', () =>
     assert.ok(managerNotesCss.includes('.notes-milkdown-scroll'), 'WYSIWYG shell must provide one shared scroll container for frontmatter and document body');
     assert.ok(router.includes('<NotesWorkspace'), 'SidebarRailRouter must render NotesWorkspace');
     assert.ok(router.includes("props.sidebarMode === 'settings' ?"), 'SidebarRailRouter must branch the manager sidebar column for Dashboard settings (navigation lives in the unified SettingsShell since 260908 wp4)');
-    assert.ok(router.includes('<DashboardSettingsWorkspace'), 'SidebarRailRouter must render Dashboard settings workspace');
+    assert.ok(router.includes('<SettingsPage'), 'SidebarRailRouter must render Dashboard settings workspace');
     assert.ok(main.includes('./manager-notes.css'), 'manager notes CSS must be loaded');
     assert.ok(main.includes('./manager-dashboard-settings.css'), 'manager dashboard settings CSS must be loaded');
     assert.equal(workbench.includes("'notes'"), false, 'Workbench tabs must not include Notes');

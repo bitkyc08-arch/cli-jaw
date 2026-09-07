@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { instanceLabel } from '../instance-label';
 import { icon } from '../../../js/icons';
 import { HelpTopicButton } from '../help/HelpTopicButton';
@@ -107,9 +109,12 @@ export function WorkbenchHeader(props: WorkbenchHeaderProps) {
 }
 
 export function WorkbenchSettingsToggle(props: { open: boolean; onToggle: () => void }) {
-    return <button type="button" className="workbench-settings-toggle" aria-label="Instance settings"
+    const [slot, setSlot] = useState<HTMLElement | null>(null);
+    useEffect(() => { setSlot(document.getElementById('command-settings-slot')); }, []);
+    if (!slot) return null;
+    return createPortal(<button type="button" className="workbench-settings-toggle" aria-label="Instance settings"
         title="Instance settings" aria-pressed={props.open} aria-controls="workbench-instance-settings"
         onClick={props.onToggle}>
         <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: icon('settings', 16) }} />
-    </button>;
+    </button>, slot);
 }
