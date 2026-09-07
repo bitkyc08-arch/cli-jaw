@@ -7,6 +7,7 @@ export default defineConfig({
   base: '/dist/',
   publicDir: false,
   build: {
+    manifest: true,
     outDir: 'dist',
     emptyOutDir: true,
     modulePreload: false,
@@ -14,6 +15,7 @@ export default defineConfig({
       input: {
         app: 'public/index.html',
         manager: 'public/manager/index.html',
+        settings: 'public/settings/index.html',
       },
       output: {
         manualChunks(id: string) {

@@ -6,149 +6,64 @@ import { join } from 'node:path';
 const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
 
-// ─── DOM wiring ─────────────────────────────────────
-
-test('every element id settings-slack.ts reads exists in index.html', () => {
-    // The audit caught a settings module whose markup was never added, making
-    // the whole surface dead code. This check is mechanical so it cannot rot.
-    const module = read('public/js/features/settings-slack.ts');
-    const html = read('public/index.html');
-    const ids = [...module.matchAll(/getElementById\('(sl[A-Za-z]+)'\)/g)].map(m => m[1]!);
-    assert.ok(ids.length >= 12, `expected the module to drive many ids, found ${ids.length}`);
-    for (const id of new Set(ids)) {
-        assert.ok(html.includes(`id="${id}"`), `index.html is missing #${id}`);
-    }
+// Classic now hosts the shared Slack page through the settings iframe.
+// Lane A owns the shared page, registry, reset/setup and credential assertions below.
+test('Classic settings has one lazy shared iframe and no duplicate Slack fields', async () => {
+    const { JSDOM } = await import('jsdom');
+    const dom = new JSDOM(read('public/index.html'), { url: 'http://127.0.0.1:3457/' });
+    try {
+        const tab = dom.window.document.querySelector('#tabSettings')!;
+        assert.equal(tab.children.length, 1);
+        const frame = tab.querySelector('iframe.settings-frame')!;
+        assert.equal(frame.getAttribute('src'), 'dist/settings/index.html');
+        assert.equal(frame.getAttribute('loading'), 'lazy');
+        assert.equal(frame.getAttribute('title'), 'Instance settings');
+        assert.equal(frame.hasAttribute('sandbox'), false);
+        assert.equal(tab.querySelector('input, select, button'), null);
+        assert.ok(dom.window.document.querySelector('#tabAgents #selCli'));
+    } finally { dom.window.close(); }
 });
 
-test('every sl* id in index.html has a listener in main.ts', () => {
-    const html = read('public/index.html');
-    const main = read('public/js/main.ts');
-    const slackBlock = html.slice(html.indexOf('id="channelSlackSettings"'));
-    const ids = [...slackBlock.matchAll(/id="(sl[A-Za-z]+)"/g)].map(m => m[1]!);
-    for (const id of new Set(ids)) {
-        assert.ok(main.includes(`getElementById('${id}')`), `main.ts never wires #${id}`);
-    }
-});
-
-test('the channel switcher exposes a slack button wired to setActiveChannel', () => {
-    assert.ok(read('public/index.html').includes('id="chSlack"'), 'no Slack switcher button');
-    assert.match(read('public/js/main.ts'), /getElementById\('chSlack'\)[\s\S]{0,80}setActiveChannel\('slack'\)/);
-});
-
-test('slack settings load on page load', () => {
-    // Without this the saved settings never populate the form.
-    const core = read('public/js/features/settings-core.ts');
-    assert.match(core, /import \{ loadSlackSettings \}/);
-    assert.match(core, /loadSlackSettings\(s\)/);
-});
-
-test('slack setters are re-exported from the settings barrel', () => {
-    const barrel = read('public/js/features/settings.ts');
-    for (const name of ['setSlack', 'setSlackForwardAll', 'setSlackAllowBots', 'setSlackMentionOnly', 'setSlackReplyInThread', 'saveSlackSettings']) {
-        assert.ok(barrel.includes(name), `settings.ts does not re-export ${name}`);
-    }
-});
-
-test('both slack token inputs are password fields', () => {
-    // A Slack bot token in a plain text input is the same exposure class as a
-    // Discord token, which index.html already masks.
-    const html = read('public/index.html');
-    for (const id of ['slBotToken', 'slAppToken']) {
-        const idx = html.indexOf(`id="${id}"`);
-        assert.ok(idx > 0, `missing #${id}`);
-        const tagStart = html.lastIndexOf('<input', idx);
-        assert.match(html.slice(tagStart, idx), /type="password"/, `#${id} is not masked`);
-    }
-});
-
-// ─── Primary Slack credentials ──────────────────────
-
-test('the slack section keeps only the two token fields above advanced settings', () => {
-    const html = read('public/index.html');
-    const slackBlock = html.slice(html.indexOf('id="channelSlackSettings"'), html.indexOf('<!-- MCP Servers -->'));
-    assert.ok(!slackBlock.includes('class="slack-setup-card"'), 'obsolete guide card remains');
-    assert.ok(!slackBlock.includes('class="slack-setup-step"'), 'obsolete guide steps remain');
-    assert.ok(!slackBlock.includes('id="slack-copy-manifest"'), 'obsolete manifest button remains');
-    assert.ok(!slackBlock.includes('id="slack-open-apps"'), 'obsolete app-page button remains');
-    assert.match(slackBlock, /<label for="slBotToken"[^>]*>봇 토큰<\/label>/);
-    assert.match(slackBlock, /<label for="slAppToken"[^>]*>수신용 앱 토큰 \(선택\)<\/label>/);
-    assert.ok(slackBlock.includes('id="slack-reset-connection"'), 'connection reset button missing');
-});
-
-test('the Slack reset control is bound and translated in every locale', () => {
-    const module = read('public/js/features/settings-slack.ts');
-    assert.match(module, /getElementById\('slack-reset-connection'\)[\s\S]{0,160}resetSlackConnection\(\)/);
-    for (const locale of ['en', 'ja', 'ko', 'zh']) {
-        const dict = JSON.parse(read(`public/locales/${locale}.json`)) as Record<string, string>;
-        for (const key of [
-            'settings.slack.resetConnection',
-            'settings.slack.resetConfirm',
-            'settings.slack.resetEmpty',
-            'settings.slack.resetFailed',
-            'settings.slack.resetManagedByEnvironment',
-            'settings.slack.managedByEnvironment',
-        ]) {
-            assert.ok(dict[key], `${locale}.json missing ${key}`);
-        }
-    }
-});
-
-test('environment-managed Slack connection controls have a read-only UI surface', () => {
-    const html = read('public/index.html');
-    assert.ok(html.includes('id="slack-environment-managed"'));
-    assert.ok(html.includes('id="slack-onboarding-trigger"'));
-    const classic = read('public/js/features/settings-slack.ts');
-    assert.match(classic, /slackEnvironmentVariables/);
-    assert.match(classic, /input\.disabled = environmentManaged/);
-    const manager = read('public/manager/src/settings/pages/ChannelsSlack.tsx');
-    assert.match(manager, /slackEnvironmentVariables\?: string\[\]/);
-    assert.match(manager, /disabled=\{environmentManaged\}/);
-});
-
-test('non-credential fields are demoted to a collapsed advanced section', () => {
-    const html = read('public/index.html');
-    const detailsIdx = html.indexOf('<details class="slack-advanced">');
-    assert.ok(detailsIdx > 0, 'advanced <details> missing');
-    for (const id of ['slTeamId', 'slChannelIds', 'slAttachPort', 'slMentionOn', 'slThreadOn', 'slForwardOn', 'slAllowBotsOn']) {
-        assert.ok(html.indexOf(`id="${id}"`) > detailsIdx, `#${id} should live inside the advanced section`);
-    }
-    // Only the two credential inputs stay top-level.
-    const sectionIdx = html.indexOf('id="channelSlackSettings"');
-    assert.ok(html.indexOf('id="slBotToken"') > sectionIdx && html.indexOf('id="slBotToken"') < detailsIdx);
-    assert.ok(html.indexOf('id="slAppToken"') > sectionIdx && html.indexOf('id="slAppToken"') < detailsIdx);
-});
-
-test('token prefix validation is wired from settings-slack.ts', () => {
-    const module = read('public/js/features/settings-slack.ts');
-    assert.match(module, /initSlackSetupGuide/);
-    assert.ok(!module.includes("getElementById('slack-copy-manifest')"));
-    assert.ok(!module.includes("getElementById('slack-open-apps')"));
-    assert.ok(module.includes("bindPrefixValidation('slBotToken'"));
-    assert.ok(module.includes("bindPrefixValidation('slAppToken'"));
-    const main = read('public/js/main.ts');
-    assert.match(main, /initSlackSetupGuide\(\)/);
-});
-
-test('slAttachPort is saved, loaded, and change-wired like its neighbors', () => {
-    const module = read('public/js/features/settings-slack.ts');
-    assert.match(module, /slack: \{ botToken, appToken, teamId, channelIds, attachPort \}/, 'save PUT must carry attachPort');
-    assert.ok(module.includes("getElementById('slAttachPort')"));
-    const main = read('public/js/main.ts');
-    assert.ok(main.includes("getElementById('slAttachPort')?.addEventListener('change', saveSlackSettings)"));
-});
-
-test('slack toggle defaults in the markup match the backend defaults', () => {
-    // mentionOnly and replyInThread default TRUE for Slack, unlike Discord's
-    // mentionOnly. A mismatched `active` class would show the toggle off while
-    // the backend behaved as on.
-    const html = read('public/index.html');
-    const block = html.slice(html.indexOf('id="channelSlackSettings"'));
-    for (const onId of ['slMentionOn', 'slThreadOn']) {
-        const idx = block.indexOf(`id="${onId}"`);
-        assert.ok(idx > 0, `missing #${onId}`);
-        const tag = block.slice(block.lastIndexOf('<button', idx), block.indexOf('>', idx));
-        assert.match(tag, /class="perm-btn active"/, `#${onId} should default active`);
-    }
+test('Classic iframe bridge preserves proxy URL, accepts only its frame and disposes listeners', async t => {
+    const { setupWebUiDom, resetWebUiDom } = await import('./web-ui-test-dom.ts');
+    setupWebUiDom();
+    t.after(resetWebUiDom);
+    // Import the real bridge with no live API traffic from barrel initialization.
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('{}', { headers: { 'content-type': 'application/json' } });
+    t.after(() => { globalThis.fetch = originalFetch; });
+    document.head.innerHTML = '<base href="http://127.0.0.1/i/3465/">';
+    document.body.innerHTML = '<div id="tabSettings"><iframe class="settings-frame"></iframe></div>';
+    document.documentElement.dataset['theme'] = 'dark';
+    t.mock.module('../../public/js/provider-icons.js', { namedExports: { providerIcon: () => '', providerLabel: (value: string) => value } });
+    const { initSettingsFrame } = await import('../../public/js/features/settings.ts');
+    const dispose = initSettingsFrame();
+    t.after(dispose);
+    const frame = document.querySelector<HTMLIFrameElement>('iframe')!;
+    assert.equal(frame.src, 'http://127.0.0.1/i/3465/dist/settings/index.html');
+    const messages: Array<{ data: unknown; origin: string }> = [];
+    frame.contentWindow!.postMessage = (data: unknown, origin: string) => { messages.push({ data, origin }); };
+    frame.dispatchEvent(new window.Event('load'));
+    assert.deepEqual(messages, [{ data: { type: 'jaw-preview-theme-sync', theme: 'dark' }, origin: window.location.origin }]);
+    const receive = (source: Window, origin: string, type = 'jaw-settings-ready') => window.dispatchEvent(
+        new window.MessageEvent('message', { source, origin, data: { type } }),
+    );
+    receive(window, window.location.origin);
+    receive(frame.contentWindow!, 'https://other.invalid');
+    receive(frame.contentWindow!, window.location.origin, 'jaw-settings-saved');
+    assert.equal(messages.length, 1);
+    receive(frame.contentWindow!, window.location.origin);
+    assert.equal(messages.length, 2);
+    document.documentElement.dataset['theme'] = 'light';
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+    assert.deepEqual(messages.at(-1)?.data, { type: 'jaw-preview-theme-sync', theme: 'light' });
+    const before = messages.length;
+    dispose();
+    frame.dispatchEvent(new window.Event('load'));
+    receive(frame.contentWindow!, window.location.origin);
+    document.documentElement.dataset['theme'] = 'auto';
+    await new Promise<void>(resolve => queueMicrotask(resolve));
+    assert.equal(messages.length, before);
 });
 
 // ─── routes and manager registration ────────────────
@@ -163,11 +78,37 @@ test('the per-channel slack send route mirrors discord', () => {
     assert.match(slackBlock, /httpStatus\(e, 500\)/);
 });
 
-test('the manager registers the slack settings page in all three places', () => {
-    // A page missing from any one of these cannot be navigated to.
-    assert.match(read('public/manager/src/settings/types.ts'), /'channels-slack'/);
-    assert.match(read('public/manager/src/settings/SettingsShell.tsx'), /'channels-slack': lazy\(\(\) => import\('\.\/pages\/ChannelsSlack'\)\)/);
-    assert.match(read('public/manager/src/settings/SettingsSidebar.tsx'), /id: 'channels-slack'/);
+test('Slack registry entry is reachable through shared settings navigation', async t => {
+    const { SETTINGS_REGISTRY, entriesForScopes } = await import('../../public/manager/src/settings/settings-registry');
+    const entries = SETTINGS_REGISTRY.filter(entry => entry.id === 'channels-slack');
+    assert.equal(entries.length, 1); assert.equal(entries[0]!.scope, 'instance');
+    assert.ok(entriesForScopes(['instance'], true, 'en').some(entry => entry.id === 'channels-slack'));
+    assert.equal(entriesForScopes(['manager'], false, 'en').some(entry => entry.id === 'channels-slack'), false);
+    const { JSDOM } = await import('jsdom'); const React = await import('react');
+    const dom = new JSDOM('<!doctype html><html lang="en"><body><div id="root"></div></body></html>', { url: 'http://localhost:24576' });
+    const globals = globalThis as unknown as Record<string, unknown>;
+    const values = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement, React, IS_REACT_ACT_ENVIRONMENT: true };
+    const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    Object.assign(globals, values);
+    const { createRoot } = await import('react-dom/client'); const { act } = React;
+    const { SettingsShell } = await import('../../public/manager/src/settings/SettingsShell');
+    const container = dom.window.document.getElementById('root')!, root = createRoot(container);
+    t.after(async () => {
+        await act(async () => root.unmount()); dom.window.close();
+        for (const [key, descriptor] of previous) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globals[key]; }
+    });
+    const requests: string[] = [];
+    const client: import('../../public/manager/src/settings/types').SettingsClient = {
+        async get<T>(path: string) { requests.push(path); return (path === '/api/settings' ? { slack: {} } : {}) as T; },
+        async put() { throw new Error('Unexpected write'); }, async post() { throw new Error('Unexpected write'); }, async delete() { throw new Error('Unexpected write'); },
+    };
+    await act(async () => root.render(React.createElement(SettingsShell, { initialId: 'display', scopes: ['instance'], port: 3465, instanceUrl: '/i/3465', client })));
+    const slack = Array.from(container.querySelectorAll<HTMLButtonElement>('.settings-sidebar button')).find(button => button.textContent === 'Channels — Slack')!;
+    await act(async () => { slack.click(); await entries[0]!.load(); });
+    assert.equal(slack.getAttribute('aria-current'), 'page');
+    assert.equal(container.querySelector<HTMLInputElement>('#sl-botToken')?.type, 'password');
+    assert.equal(container.querySelector<HTMLInputElement>('#sl-appToken')?.type, 'password');
+    assert.ok(requests.includes('/api/settings'));
 });
 
 test('manager shared components accept slack', () => {
@@ -257,12 +198,8 @@ test('loadSlackSettings honours the true-by-default toggles', async () => {
     const source = read('public/js/features/settings-slack.ts');
     assert.match(source, /const mentionOnly = sc\.mentionOnly !== false/);
     assert.match(source, /const replyInThread = sc\.replyInThread !== false/);
-    // And the markup must agree: the ON button carries `active`.
-    const html = read('public/index.html');
-    const block = html.slice(html.indexOf('id="channelSlackSettings"'));
-    const idx = block.indexOf('id="slMentionOn"');
-    const tag = block.slice(block.lastIndexOf('<button', idx), block.indexOf('>', idx));
-    assert.match(tag, /perm-btn active/, `slMentionOn should default active: ${tag}`);
+    // The legacy API remains callable, while its DOM owner has moved to the iframe.
+    assert.doesNotMatch(read('public/index.html'), /id="slMentionOn"/);
 });
 
 // ─── parity sweep ───────────────────────────────────

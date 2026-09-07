@@ -582,14 +582,14 @@ export function switchTab(name: string, targetBtn: Element): void {
         targetBtn.setAttribute('aria-selected', 'true');
     }
     // Lazy-load tab content
-    if (name === 'settings') { import('./features/settings.js').then(m => m.loadSettings()); }
     if (name === 'agents') { import('./features/employees.js').then(m => m.loadEmployees()); }
     if (name === 'skills') { import('./features/skills.js').then(m => m.loadSkills()); }
 }
 
 export function handleSave(): void {
     const isSettings = document.getElementById('tabSettings')?.classList.contains('active');
-    import('./features/settings.js').then(m => isSettings ? m.savePerCli() : m.updateSettings());
+    if (isSettings) return;
+    import('./features/settings.js').then(m => m.updateSettings());
 }
 
 export function initMsgCopy(): void {

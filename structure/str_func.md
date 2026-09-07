@@ -503,14 +503,23 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 583 files source/assets, ~104099L; generated `public/dist` and `public/public/dist` excluded)
-│   ├── index.html            ← 뼈대 + header project/git status anchor (1225L)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 593 files source/assets, ~103516L; generated `public/dist` and `public/public/dist` excluded)
+│   ├── index.html            ← 뼈대 + header project/git status anchor (682L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
 │   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2519L)
 │   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
 │   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (261L)
+│   ├── manager/src/settings/ ← unified instance and Manager settings
+│   │   ├── settings-registry.ts ← scope-filtered page registry (35L)
+│   │   ├── pages/components/SlackSetup.tsx ← native Slack setup dialog (119L)
+│   │   ├── pages/manager/shared.tsx ← Manager locale copy and row controls (517L)
+│   │   ├── pages/manager/Display.tsx ← Manager display registry UI settings (92L)
+│   │   ├── pages/manager/Activity.tsx ← read-only title support (8L)
+│   │   ├── pages/manager/Developer.tsx ← Manager diff defaults (7L)
+│   │   ├── pages/manager/Embedding.tsx ← dedicated memory API settings (8L)
+│   │   └── pages/manager/TelegramHub.tsx ← shared Shell dirty owner for Hub API (5L)
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
 │   └── js/                   ← 114 .ts files (root 21 + features/ 70 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 │       ├── bounded-api.ts    ← bounded authenticated JSON reads and decision writes (49L)

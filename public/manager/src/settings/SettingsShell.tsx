@@ -3,6 +3,7 @@ import {
     lazy,
     useCallback,
     useEffect,
+    useLayoutEffect,
     useMemo,
     useRef,
     useState,
@@ -14,7 +15,10 @@ import type {
     SettingsPageProps,
     DirtyStore,
     SaveHandler,
+    SettingsClient, SettingsScope, ManagerSettingsContext,
 } from './types';
+import { SETTINGS_REGISTRY, entriesForScopes } from './settings-registry';
+import { normalizeDashboardLocale } from './pages/manager/shared';
 import { SettingsSidebar } from './SettingsSidebar';
 import { createDirtyStore } from './dirty-store';
 import { createSettingsClient } from './settings-client';
@@ -23,36 +27,18 @@ import { Toast, type ToastShape } from './components/Toast';
 import { useSaveShortcut } from './components/useSaveShortcut';
 import { describeError } from './components/error-normalize';
 
-const PAGE_REGISTRY: Record<
-    SettingsCategoryId,
-    LazyExoticComponent<ComponentType<SettingsPageProps>>
-> = {
-    agent: lazy(() => import('./pages/Agent')),
-    profile: lazy(() => import('./pages/Profile')),
-    display: lazy(() => import('./pages/Display')),
-    model: lazy(() => import('./pages/ModelProvider')),
-    'channels-telegram': lazy(() => import('./pages/ChannelsTelegram')),
-    'channels-discord': lazy(() => import('./pages/ChannelsDiscord')),
-    'channels-slack': lazy(() => import('./pages/ChannelsSlack')),
-    speech: lazy(() => import('./pages/SpeechKeys')),
-    heartbeat: lazy(() => import('./pages/Heartbeat')),
-    memory: lazy(() => import('./pages/Memory')),
-    employees: lazy(() => import('./pages/Employees')),
-    network: lazy(() => import('./pages/Network')),
-    permissions: lazy(() => import('./pages/Permissions')),
-    prompts: lazy(() => import('./pages/Prompts')),
-    mcp: lazy(() => import('./pages/Mcp')),
-    browser: lazy(() => import('./pages/Browser')),
-    'dashboard-meta': lazy(() => import('./pages/DashboardMeta')),
-    'telegram-hub': lazy(() => import('./pages/TelegramHub')),
-    'advanced-export': lazy(() => import('./pages/AdvancedExport')),
-};
+const PAGE_REGISTRY = Object.fromEntries(SETTINGS_REGISTRY.map(entry =>
+    [entry.id, lazy(entry.load)])) as Record<SettingsCategoryId, LazyExoticComponent<ComponentType<SettingsPageProps>>>;
 
 type Props = {
-    port: number;
-    instanceUrl: string;
+    port?: number | null;
+    instanceUrl?: string | null;
     onDirtyChange?: (dirty: boolean) => void;
     onSaved?: () => void;
+    manager?: ManagerSettingsContext;
+    client?: SettingsClient;
+    scopes?: readonly SettingsScope[];
+    initialId?: SettingsCategoryId;
 };
 
 function useDirtyStore(): DirtyStore {
@@ -77,127 +63,119 @@ function usePendingCount(store: DirtyStore): number {
     );
 }
 
-export function SettingsShell({ port, instanceUrl, onDirtyChange, onSaved }: Props) {
-    const [activeId, setActiveId] = useState<SettingsCategoryId>('agent');
+export function SettingsShell({ port = null, instanceUrl = null, onDirtyChange, onSaved,
+    manager, client: suppliedClient, scopes: requestedScopes, initialId }: Props) {
+    const scopes = requestedScopes ?? (manager ? ['instance', 'manager'] as const : ['instance'] as const);
+    const scopeKey = scopes.join(':');
+    const [activeId, setActiveId] = useState<SettingsCategoryId>(initialId ?? (scopes.includes('instance') ? 'agent' : 'manager-display'));
+    const [discardRevision, setDiscardRevision] = useState(0);
     const dirty = useDirtyStore();
     const isDirty = useDirtyFlag(dirty);
     const pendingCount = usePendingCount(dirty);
-    const client = useMemo(() => createSettingsClient(port), [port]);
-
-    const saveHandlerRef = useRef<SaveHandler | null>(null);
+    const hasInstance = port !== null && instanceUrl !== null;
+    const locale = normalizeDashboardLocale(manager?.ui.locale ?? document.documentElement.lang);
+    const proxyClient = useMemo(() => port === null ? null : createSettingsClient(port), [port]);
+    const unavailableClient: SettingsClient = useMemo(() => {
+        const reject = async (): Promise<never> => { throw new Error('No selected instance'); };
+        return { get: reject, put: reject, post: reject, delete: reject };
+    }, []);
+    const client = suppliedClient ?? proxyClient ?? unavailableClient;
+    const available = entriesForScopes(scopes, hasInstance, locale).filter(entry => entry.scope !== 'manager' || manager);
+    const selected = available.find(entry => entry.id === activeId) ?? available[0];
+    const Page = selected ? PAGE_REGISTRY[selected.id] : null;
+    const owner = useMemo(() => ({}), [port, instanceUrl, client, scopeKey, Boolean(manager)]);
+    const registration = useMemo(() => ({}), [owner, selected?.id, discardRevision]);
+    const activeEpochRef = useRef<object>(owner);
+    const activeSaveRef = useRef<object | null>(null);
+    const saveHandlerRef = useRef<{ owner: object; handler: SaveHandler } | null>(null);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [toast, setToast] = useState<ToastShape | null>(null);
-
     const containerRef = useRef<HTMLDivElement | null>(null);
 
     const registerSave = useCallback((handler: SaveHandler | null) => {
-        saveHandlerRef.current = handler;
-    }, []);
+        if (activeEpochRef.current !== owner) return;
+        if (handler) saveHandlerRef.current = { owner: registration, handler };
+        else if (saveHandlerRef.current?.owner === registration) saveHandlerRef.current = null;
+    }, [owner, registration]);
 
-    // Phase 2: switching instances mid-edit must not carry dirty state across.
-    useEffect(() => {
+    useLayoutEffect(() => {
+        activeEpochRef.current = owner;
+        activeSaveRef.current = null;
         dirty.clear();
         saveHandlerRef.current = null;
+        setSaving(false);
         setSaveError(null);
         setToast(null);
-    }, [port, dirty]);
+        return () => {
+            if (activeEpochRef.current === owner) {
+                activeEpochRef.current = {};
+                activeSaveRef.current = null;
+            }
+        };
+    }, [owner, dirty]);
 
-    useEffect(() => {
-        onDirtyChange?.(isDirty);
-    }, [isDirty, onDirtyChange]);
+    useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+    useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
-    useEffect(() => {
-        return () => onDirtyChange?.(false);
-    }, [onDirtyChange]);
-
-    const onSelect = useCallback(
-        (next: SettingsCategoryId) => {
-            if (next === activeId) return;
-            if (saving) return;
-            if (dirty.isDirty() && !window.confirm('Discard unsaved changes?')) return;
-            dirty.clear();
-            setSaveError(null);
-            setToast(null);
-            saveHandlerRef.current = null;
-            setActiveId(next);
-        },
-        [activeId, dirty, saving],
-    );
-
-    const onDiscard = useCallback(() => {
-        if (saving) return;
+    const onSelect = (next: SettingsCategoryId) => {
+        if (next === selected?.id || !available.some(entry => entry.id === next) || activeSaveRef.current) return;
+        if (dirty.isDirty() && !window.confirm('Discard unsaved changes?')) return;
         dirty.clear();
         setSaveError(null);
-    }, [dirty, saving]);
-
+        setToast(null);
+        saveHandlerRef.current = null;
+        setActiveId(next);
+    };
+    const onDiscard = () => {
+        if (activeSaveRef.current) return;
+        dirty.clear();
+        setSaveError(null);
+        setDiscardRevision(value => value + 1);
+    };
     const onSave = useCallback(async () => {
-        if (saving) return;
-        const handler = saveHandlerRef.current;
+        if (activeSaveRef.current) return;
+        const handler = saveHandlerRef.current?.handler;
         setSaveError(null);
         if (!handler) {
-            dirty.clear();
+            setSaveError('No save handler is available for this page.');
             return;
         }
+        const epoch = activeEpochRef.current, operation = {};
+        activeSaveRef.current = operation;
         setSaving(true);
+        const current = () => activeSaveRef.current === operation && activeEpochRef.current === epoch;
         try {
             await handler();
+            if (!current()) return;
             onSaved?.();
             setToast({ kind: 'ok', message: 'Saved.' });
         } catch (err: unknown) {
+            if (!current()) return;
             const message = describeError(err);
             setSaveError(message);
             setToast({ kind: 'err', message: `Failed: ${message}` });
         } finally {
-            setSaving(false);
+            if (current()) { activeSaveRef.current = null; setSaving(false); }
         }
-    }, [dirty, onSaved, saving]);
+    }, [onSaved]);
 
-    useSaveShortcut({
-        enabled: isDirty && !saving,
-        containerRef,
-        onSave: () => {
-            void onSave();
-        },
-    });
-
-    const Page = PAGE_REGISTRY[activeId];
-
+    useSaveShortcut({ enabled: isDirty && !saving, containerRef, onSave: () => { void onSave(); } });
     return (
-        <div className="settings-shell" ref={containerRef}>
-            <SettingsSidebar activeId={activeId} onSelect={onSelect} />
+        <div className="settings-shell-host"><div className="settings-shell" ref={containerRef}>
+            <SettingsSidebar scopes={manager ? scopes : scopes.filter(scope => scope !== 'manager')}
+                hasInstance={hasInstance} locale={locale} activeId={selected?.id ?? activeId} onSelect={onSelect} />
             <section className="settings-page" aria-live="polite">
                 <Suspense fallback={<div className="settings-loading">Loading…</div>}>
-                    {Page ? (
-                        <Page
-                            port={port}
-                            instanceUrl={instanceUrl}
-                            client={client}
-                            dirty={dirty}
-                            registerSave={registerSave}
-                        />
-                    ) : (
-                        <div className="settings-placeholder">
-                            This page lands in a later phase.
-                        </div>
-                    )}
+                    {Page ? <Page key={`${selected!.id}:${port}:${scopeKey}:${discardRevision}`}
+                        port={port ?? 0} instanceUrl={instanceUrl ?? ''} {...(manager ? { manager } : {})}
+                        client={client} dirty={dirty} registerSave={registerSave} />
+                        : <div role="alert">Settings unavailable</div>}
                 </Suspense>
-                <SaveBar
-                    isDirty={isDirty}
-                    saving={saving}
-                    pendingCount={pendingCount}
-                    error={saveError}
-                    onDiscard={onDiscard}
-                    onSave={() => void onSave()}
-                />
-                {toast ? (
-                    <Toast
-                        kind={toast.kind}
-                        message={toast.message}
-                        onDismiss={() => setToast(null)}
-                    />
-                ) : null}
+                <SaveBar isDirty={isDirty} saving={saving} pendingCount={pendingCount} error={saveError}
+                    onDiscard={onDiscard} onSave={() => void onSave()} />
+                {toast ? <Toast kind={toast.kind} message={toast.message} onDismiss={() => setToast(null)} /> : null}
             </section>
-        </div>
+        </div></div>
     );
 }

@@ -90,34 +90,16 @@ test('GROK-FE-002: legacy settings fallback registry exposes grok-build without 
     assert.match(constants, /models:\s*\[\s*'auto'/);
 });
 
-test('LEGACY-FE-001: legacy settings sidebar exposes every canonical CLI row', () => {
+test('LEGACY-FE-001: classic active/flush selector exposes every canonical CLI; per-CLI rows live in the unified settings frame', () => {
     const html = src('public/index.html');
-    const settingsCore = src('public/js/features/settings-core.ts');
-    const main = src('public/js/main.ts');
-
-    for (const [cli, suffix] of [
-        ['ai-e', 'AiE'],
-        ['claude', 'Claude'],
-        ['codex', 'Codex'],
-        ['codex-app', 'CodexApp'],
-        ['cursor', 'Cursor'],
-        ['kiro-code', 'KiroCode'],
-        ['gemini', 'Gemini'],
-        ['grok', 'Grok'],
-        ['opencode', 'Opencode'],
-        ['copilot', 'Copilot'],
-    ] as const) {
+    const agent = src('public/manager/src/settings/pages/Agent.tsx');
+    for (const cli of ['ai-e', 'claude', 'codex', 'codex-app', 'cursor', 'kiro-code', 'gemini', 'grok', 'opencode', 'copilot'] as const) {
         assert.match(html, new RegExp(`<option value="${cli}"`), `active/flush selector must include ${cli}`);
-        assert.match(html, new RegExp(`id="model${suffix}"`), `settings row must include model${suffix}`);
     }
-
-    // claude-e is hidden from the active/flush dropdowns but keeps its (hidden) settings row.
-    assert.match(html, /id="modelClaudeE"/);
-    assert.match(html, /id="providerAiE"/);
-    assert.match(settingsCore, /function toDomSuffix\(cli: string\)/);
-    assert.match(settingsCore, /split\(\/\[\^a-zA-Z0-9\]\+\/\)/);
-    assert.match(main, /function toDomSuffix\(cli: string\)/);
-    assert.match(main, /onPerCliProviderChange/);
+    // The classic per-CLI settings rows were replaced by the standalone SettingsShell iframe (260908 wp4);
+    // the React Agent page owns per-CLI provider/model rows and hides claude-e from the active runtime list.
+    assert.match(html, /<iframe class="settings-frame" src="dist\/settings\/index.html"/);
+    assert.match(agent, /perCli\[next\]\?\.provider \|\| nextMeta\.defaultProvider/);
 });
 
 test('GROK-FE-003: quota renderer shows setup commands for status-only CLIs', () => {
@@ -172,19 +154,15 @@ test('AI-E-FE-001: legacy active settings store provider only in perCli', () => 
     assert.doesNotMatch(saveActive, /overrides\[cli\]\.provider\s*=/);
 });
 
-test('AI-E-FE-002: active AI-E provider change syncs per-CLI provider before rebuilding controls', () => {
-    const main = src('public/js/main.ts');
-    assert.match(main, /function syncAiEProviderSelectsFromActiveProvider\(eventTarget: EventTarget \| null\): void/);
-    assert.match(main, /document\.getElementById\('providerAiE'\)/);
-    assert.match(main, /perCliProvider\.value\s*=\s*provider/);
-
-    const listenerStart = main.indexOf("document.getElementById('selCliProvider')?.addEventListener('change'");
-    assert.ok(listenerStart >= 0, 'selCliProvider change listener must exist');
-    const listenerEnd = main.indexOf("document.getElementById('selModel')", listenerStart);
-    assert.ok(listenerEnd > listenerStart, 'selCliProvider listener must appear before selModel listener');
-    const listener = main.slice(listenerStart, listenerEnd);
-    const syncIdx = listener.indexOf('syncAiEProviderSelectsFromActiveProvider(event.target)');
-    const cliChangeIdx = listener.indexOf('onCliChange()');
-    assert.ok(syncIdx >= 0, 'listener must prime providerAiE from selAiEProvider');
-    assert.ok(cliChangeIdx > syncIdx, 'listener must sync providerAiE before onCliChange rebuilds controls');
+test('AI-E-FE-002: provider change updates perCli provider before model/effort are re-resolved (Agent page)', () => {
+    const agent = src('public/manager/src/settings/pages/Agent.tsx');
+    const start = agent.indexOf('onProviderChange={(next) => {');
+    assert.ok(start >= 0, 'Agent page must own the provider change handler');
+    const handler = agent.slice(start, agent.indexOf('onModelChange', start));
+    const draftIdx = handler.indexOf('setRuntimeDraft({ ...draft, provider: next');
+    const providerIdx = handler.indexOf("setEntry(`perCli.${draft.cli}.provider`");
+    const modelIdx = handler.indexOf("setEntry(`activeOverrides.${draft.cli}.model`");
+    assert.ok(draftIdx >= 0 && providerIdx > draftIdx, 'provider change must sync the per-CLI provider entry after updating the draft');
+    assert.ok(modelIdx > providerIdx, 'model override must be written after the provider entry');
 });
+

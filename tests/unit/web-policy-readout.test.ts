@@ -35,3 +35,10 @@ test('Classic explicit legacy save keeps literal-auto payload and does not optim
     setPerm('safe');assert.deepEqual(writes,[{path:'/api/settings',method:'PUT',body:{permissions:'auto'}}]);
     assert.equal(document.querySelector('.perm-toggle')!.textContent,before);
 });
+
+test('Classic iframe replacement preserves Agents policy owner', () => {
+    const page = new window.DOMParser().parseFromString(readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'), 'text/html');
+    assert.equal(page.querySelectorAll('#tabSettings > iframe.settings-frame').length, 1);
+    assert.ok(page.querySelector('#tabAgents .perm-toggle'));
+    assert.equal(page.querySelector('#tabSettings .perm-toggle'), null);
+});

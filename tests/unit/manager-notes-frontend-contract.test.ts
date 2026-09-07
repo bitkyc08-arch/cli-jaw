@@ -354,7 +354,7 @@ test('App renders NotesWorkspace outside Workbench and imports notes CSS', () =>
     assert.ok(router.includes('import { NotesSidebar, type NotesSidebarMode }'), 'SidebarRailRouter must import NotesSidebar for the existing navigator column and local search mode type');
     assert.ok(app.includes('import { useNotesModel }'), 'App must import the parent-owned Notes model hook');
     assert.ok(router.includes('import { DashboardSettingsWorkspace }'), 'SidebarRailRouter must import Dashboard settings workspace');
-    assert.ok(router.includes('import { DashboardSettingsSidebar'), 'SidebarRailRouter must import Dashboard settings sidebar');
+    assert.ok(router.includes("from './dashboard-settings/DashboardSettingsSidebar'"), 'SidebarRailRouter must keep the Dashboard settings section type from the settings sidebar module (navigation itself lives in the unified SettingsShell)');
     assert.ok(router.includes("props.sidebarMode === 'notes'"), 'SidebarRailRouter must branch by sidebar mode');
     assert.ok(router.includes("props.sidebarMode === 'settings'"), 'SidebarRailRouter must branch by Dashboard settings mode');
     assert.ok(router.includes('workspace-surface-stack'), 'SidebarRailRouter must keep workspace mode surfaces mounted');
@@ -383,7 +383,7 @@ test('App renders NotesWorkspace outside Workbench and imports notes CSS', () =>
     assert.ok(managerNotesCss.includes('flex-direction: column'), 'WYSIWYG shell must use column flow for toolbar, status, frontmatter, and editor');
     assert.ok(managerNotesCss.includes('.notes-milkdown-scroll'), 'WYSIWYG shell must provide one shared scroll container for frontmatter and document body');
     assert.ok(router.includes('<NotesWorkspace'), 'SidebarRailRouter must render NotesWorkspace');
-    assert.ok(router.includes('<DashboardSettingsSidebar'), 'SidebarRailRouter must render Dashboard settings nav in the manager sidebar');
+    assert.ok(router.includes("props.sidebarMode === 'settings' ?"), 'SidebarRailRouter must branch the manager sidebar column for Dashboard settings (navigation lives in the unified SettingsShell since 260908 wp4)');
     assert.ok(router.includes('<DashboardSettingsWorkspace'), 'SidebarRailRouter must render Dashboard settings workspace');
     assert.ok(main.includes('./manager-notes.css'), 'manager notes CSS must be loaded');
     assert.ok(main.includes('./manager-dashboard-settings.css'), 'manager dashboard settings CSS must be loaded');
