@@ -11,6 +11,10 @@ on:
       - preview
       - main
   pull_request:
+  # Manual runs also start the advisory coverage job. publish.yml and the
+  # release scripts only accept `--event push` runs, so a dispatch never
+  # certifies a release.
+  workflow_dispatch:
 
 concurrency:
   group: tests-${{ github.workflow }}-${{ github.ref }}
@@ -119,16 +123,189 @@ jobs:
             emit false
           fi
 
-  node-tests:
-    name: node-tests
+      # A missing or malformed classifier output must fail this job instead of
+      # silently reading as "nothing changed" in every `== 'true'` condition.
+      - name: Assert the scope output is usable
+        env:
+          CODE_SCOPE: ${{ steps.scope.outputs.code }}
+        run: |
+          case "$CODE_SCOPE" in
+            true|false) echo "changes.outputs.code=$CODE_SCOPE" ;;
+            *) echo "::error::changes.outputs.code was '$CODE_SCOPE', expected true or false"; exit 1 ;;
+          esac
+
+  # The suite, split by file across four Linux runners.
+  #
+  # tests/run.mts --shard i/N sorts the selected files in byte order and keeps
+  # index % N === i-1 (tests/setup/shard.ts), so every runner computes the same
+  # disjoint, complete partition without any coordination. Only the suite lives
+  # here: typecheck, gates, build and the scans run once in `gates` and
+  # `integration`, not four times. Ported from opencodex's ci.yml
+  # (`test ${{ matrix.shard }}/4`, fail-fast: false); Bun batching and crash
+  # retries were deliberately not carried — a shard that fails here failed a
+  # test.
+  test:
+    name: test ${{ matrix.shard }}/4
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    # A quarter of a suite that took 345s serially. A shard that needs longer
+    # than this is wedged, not slow.
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Checkout public submodules
+        run: |
+          git submodule update --init skills_ref
+          git submodule update --init officecli
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep
+          rg --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build native modules
+        run: npm rebuild better-sqlite3
+
+      # Several unit tests execute dist/bin/cli-jaw.js (clone, launchd-multi,
+      # electron-jaw-spawn …), so the compiled tree has to exist in every shard.
+      - name: Build TypeScript
+        run: npx tsc
+
+      - name: Run shard
+        shell: bash {0}
+        env:
+          TEST_SHARD: "${{ matrix.shard }}/4"
+        run: |
+          started=$(date +%s)
+          npx tsx --experimental-test-module-mocks tests/run.mts --scope root,unit --shard "$TEST_SHARD"
+          status=$?
+          echo "shard $TEST_SHARD wall time: $(( $(date +%s) - started ))s (step limit: 300s)"
+          exit $status
+        timeout-minutes: 5
+
+  # Everything that needs a built package or a live server: the integration,
+  # manager and bin suites (never run in CI before this job existed), the CLI
+  # and API smokes that used to be separate steps, and the fresh-install smoke.
+  #
+  # Quarantined (self-skipping unless opted in; they need real provider auth
+  # and inference, which CI does not have):
+  #   tests/integration/agy-print-smoke.test.ts               JAW_AGY_SMOKE=1
+  #   tests/integration/codex-app-multiplex-activation.test.ts  activation flag + CODEX_HOME auth
+  integration:
+    name: integration
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Checkout public submodules
+        run: |
+          git submodule update --init skills_ref
+          git submodule update --init officecli
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep
+          rg --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build native modules
+        run: npm rebuild better-sqlite3
+
+      # `npm run build` (not bare tsc): graceful-shutdown boots dist/bin/cli-jaw.js,
+      # which reads dist/src/prompt/templates — atomic-build.sh copies those,
+      # tsc does not.
+      - name: Build (atomic dist with assets)
+        run: npm run build
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Check frontend build output
+        run: npm run check:frontend-build-output
+
+      # api-smoke fails closed under CI when this server is missing
+      # (tests/integration/api-smoke.test.ts), so a startup failure can never
+      # turn into a green skip.
+      - name: Start test server (port 3457)
+        run: |
+          node dist/server.js > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 40); do
+            if curl -sf http://localhost:3457/api/session > /dev/null 2>&1; then
+              echo "✅ Server ready after $((i/2))s"
+              exit 0
+            fi
+            sleep 0.5
+          done
+          echo "::error::server did not become ready on :3457"
+          cat server.log
+          exit 1
+
+      - name: Integration, manager and bin suites
+        env:
+          TEST_PORT: "3457"
+          CI: "true"
+        run: npx tsx --experimental-test-module-mocks tests/run.mts --scope integration,manager,bin
+
+      - name: Stop test server
+        if: always()
+        run: kill "$(cat server.pid)" 2>/dev/null || true
+
+      - name: Fresh install smoke (safe mode)
+        run: npm run test:fresh-install
+
+  # Fixed-cost checks, run exactly once: gate:all (which already includes
+  # tsc --noEmit for server + frontend and the strict-baseline checker), the
+  # dependency gates, the devlog audit, and the repo scans.
+  gates:
+    name: gates
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       SUBMODULE_PAT: ${{ secrets.SUBMODULE_PAT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Checkout public submodules
         run: |
@@ -154,72 +331,23 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install system test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ripgrep
-          rg --version
-
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
       - name: Build native modules
         run: npm rebuild better-sqlite3
 
-      - name: Build TypeScript
-        run: npx tsc
-
-      - name: Run tests
-        # `-e` is off for this step so the elapsed time is reported even when
-        # the suite fails; the original exit status is re-raised at the end.
-        shell: bash {0}
-        run: |
-          started=$(date +%s)
-          npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test-force-exit --test tests/*.test.ts tests/unit/*.test.ts
-          status=$?
-          elapsed=$(( $(date +%s) - started ))
-          echo "suite wall time: ${elapsed}s (step limit: 480s)"
-          # Warn while there is still room to act. The old limit was reached
-          # with no warning at all, because nothing reported how close the
-          # suite was running to it: the last green run had 9 seconds of
-          # headroom and looked exactly like a healthy one.
-          if [ "$elapsed" -gt 360 ]; then
-            echo "::warning::test suite took ${elapsed}s, within 2 minutes of the 480s step limit — split it or trim the slow suites before it starts timing out"
-          fi
-          exit $status
-        # The 3-minute limit was already being met by 9 seconds: the last green
-        # run (30162036088, 2026-07-25) spent 2m51s here. 5581 lines of tests
-        # landed after it, and the step started dying with ~1270 tests still
-        # unreported — no single slow test, just a suite that outgrew its box.
-        #
-        # 8 minutes is roughly 2.5x the current runtime rather than a number
-        # picked to make today pass, so ordinary growth does not put this back
-        # in the same position. The limit still exists to catch a genuine hang;
-        # subprocess-spawning suites carry their own per-process timeouts well
-        # under it, so a stuck case fails with a name instead of killing the
-        # step silently.
-        timeout-minutes: 8
+      - name: Validate windows-unit manifest
+        run: node scripts/ci/windows-unit-manifest.mjs
 
       - name: Release gates (gate:all)
         run: npm run gate:all
-
-      - name: Build frontend
-        run: npm run build:frontend
-
-      - name: Check frontend build output
-        run: npm run check:frontend-build-output
-
-      - name: Fresh install smoke (safe mode)
-        run: npm run test:fresh-install
 
       - name: Deps security check
         run: npm run check:deps
 
       - name: Dependency advisory gate
         run: npm run check:deps:audit
-
-      - name: Strict-baseline regression gate
-        run: npm run check:strict-baseline
 
       - name: Verify devlog submodule
         id: devlog-check
@@ -252,35 +380,77 @@ jobs:
           find . \( -name '*.js' -o -name '*.ts' \) -not -path './node_modules/*' -not -path './skills_ref/*' -not -name '*.d.ts' \
             | xargs wc -l | sort -rn | awk '$1 > 500 && !/total/ { print "⚠️ " $0; found=1 } END { if (!found) print "✅ All files under 500 lines" }'
 
-      - name: CLI basic tests
-        run: npx tsx --test tests/integration/cli-basic.test.ts
+  # Advisory coverage over the root+unit suite. Runs on dev pushes and manual
+  # dispatch only, never on preview/main or pull requests, and is not in
+  # ci-aggregate's needs — it can neither delay nor spoil release certification.
+  # tests/run.mts turns --experimental-test-coverage into run({ coverage:true }),
+  # which node:test added in 22.10; the version check makes that explicit.
+  coverage:
+    name: coverage (advisory)
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
-      - name: API smoke tests
+      - name: Checkout public submodules
         run: |
-          npx tsx server.ts &
-          SERVER_PID=$!
-          # Wait for server to be ready (max 10s)
-          for i in $(seq 1 20); do
-            if curl -sf http://localhost:3457/api/session > /dev/null 2>&1; then
-              echo "✅ Server ready after $((i/2))s"
-              break
-            fi
-            sleep 0.5
-          done
-          TEST_PORT=3457 npx tsx --test tests/integration/api-smoke.test.ts || SMOKE_EXIT=$?
-          kill $SERVER_PID 2>/dev/null || true
-          exit ${SMOKE_EXIT:-0}
-        env:
-          NODE_ENV: test
+          git submodule update --init skills_ref
+          git submodule update --init officecli
 
-  # The single required status check for the `main` ruleset.
-  #
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ripgrep
+          rg --version
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build native modules
+        run: npm rebuild better-sqlite3
+
+      - name: Require node:test coverage support (>= 22.10)
+        run: node -e "const [a,b]=process.versions.node.split('.').map(Number); if (a<22||(a===22&&b<10)) { console.error('node '+process.versions.node+' lacks run({coverage})'); process.exit(1) }"
+
+      - name: Build TypeScript
+        run: npx tsc
+
+      - name: Run suite with coverage
+        shell: bash {0}
+        run: |
+          npx tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --scope root,unit 2>&1 | tee coverage.txt
+          status=${PIPESTATUS[0]}
+          grep -A3 'start of coverage report' coverage.txt | head -5 || true
+          exit $status
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-${{ github.sha }}
+          path: coverage.txt
+          if-no-files-found: warn
 
   # Fast Windows unit lane on every code PR (#384). Before this, Windows tests
   # ran only in postinstall-platform.yml behind a literal paths: allowlist, so
   # a PR touching Windows behavior in unlisted files merged with zero Windows
-  # CI. Explicit file list - pwsh does not expand globs. Windows flakes in
-  # these suites block merge by design; that is the lane's purpose.
+  # CI. The file list lives in scripts/ci/windows-unit-manifest.txt and is
+  # validated by scripts/ci/windows-unit-manifest.mjs on Linux (gates job +
+  # tests/unit/windows-unit-manifest.test.ts) and here, so a renamed test breaks
+  # CI instead of silently vanishing from the lane. Windows flakes in these
+  # suites block merge by design; that is the lane's purpose.
   windows-unit:
     name: windows-unit
     needs: changes
@@ -290,6 +460,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -309,72 +481,60 @@ jobs:
       - name: Ensure native modules are loadable
         run: node scripts/ensure-native-modules.cjs
 
-      - name: Run Windows-relevant unit tests
-        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/windows-service-esm.test.ts tests/unit/service-windows-branch.test.ts tests/unit/windows-service-lifecycle-honesty.test.ts tests/unit/windows-installer-shims.test.ts tests/unit/windows-spawn-primitives.test.ts tests/unit/manager-browser-open.test.ts tests/unit/eaddrinuse-diagnostics-contract.test.ts tests/unit/tui-env-flags.test.ts tests/unit/windows-launch-spec.test.ts tests/unit/service-lifecycle-cli.test.ts tests/unit/claude-sdk-windows-launch.test.ts tests/unit/claude-sdk-session.test.ts tests/unit/claude-sdk-control.test.ts tests/unit/claude-sdk-core-hardening.test.ts tests/unit/claude-sdk-deferred-core.test.ts
+      # The validator prints the list; $LASTEXITCODE is checked immediately
+      # because pwsh does not turn a native non-zero exit into a terminating
+      # error, and any later native call would overwrite it. Arguments go
+      # through one array so nothing is re-parsed by a shell.
+      - name: Run Windows-relevant unit tests (manifest)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(& node scripts/ci/windows-unit-manifest.mjs --print)
+          if ($LASTEXITCODE -ne 0) { throw "windows-unit manifest validation failed ($LASTEXITCODE)" }
+          if ($files.Count -eq 0) { throw 'windows-unit manifest is empty' }
+          $tsx = (& node -p "require.resolve('tsx/cli')").Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $tsx) { throw 'cannot resolve the installed tsx' }
+          $nodeArgs = @($tsx, '--import', './tests/setup/test-home.ts', '--experimental-test-module-mocks', '--test') + $files
+          Write-Host "windows-unit: $($files.Count) files"
+          & node @nodeArgs
+          exit $LASTEXITCODE
 
+  # The single required status check for the `main` ruleset.
+  #
   # The check name is the job `name:` below and is load-bearing: the branch
-  # ruleset and the publish gate both match on the literal string
-  # `ci-aggregate`. Renaming this job silently detaches both of them, so the
-  # name is pinned explicitly instead of being inherited from the job id.
+  # ruleset matches on the literal string `ci-aggregate`. (publish.yml and the
+  # release scripts select the whole run by workflow file, SHA, push event and
+  # branch, not by this job name — but the ruleset does.) Renaming this job
+  # silently detaches the ruleset, so the name is pinned explicitly instead of
+  # being inherited from the job id.
   #
   # It runs on every event this workflow accepts — including docs-only pull
-  # requests, where `node-tests` is legitimately skipped — so a required check
-  # always has a run to wait for.
+  # requests, where the producers are legitimately skipped — so a required
+  # check always has a run to wait for. The decision table lives in
+  # scripts/ci/aggregate-check.sh so tests/unit/ci-aggregate-rules.test.ts can
+  # drive it; the checkout below is unconditional for that reason.
   ci-aggregate:
     name: ci-aggregate
-    needs: [changes, node-tests, windows-unit]
+    needs: [changes, test, integration, gates, windows-unit]
     # `always()` rather than the default success() semantics: the point of this
     # job is to report on upstream failures, so it must still run after one.
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Checkout aggregate script
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/ci
+          sparse-checkout-cone-mode: false
+
       - name: Verify producers
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          NODE_TESTS_RESULT: ${{ needs.node-tests.result }}
-          WINDOWS_UNIT_RESULT: ${{ needs.windows-unit.result }}
           CODE_CHANGED: ${{ needs.changes.outputs.code }}
-        run: |
-          set -uo pipefail
-          failed=0
-
-          # `success` and `skipped` pass; `failure`, `cancelled`, an empty
-          # result, and anything unrecognised fail. Skipped and failed are
-          # deliberately NOT collapsed together: a docs-only change skips
-          # node-tests on purpose, a broken one does not.
-          check() {
-            job="$1"
-            result="$2"
-            case "$result" in
-              success)  echo "PASS  $job: success" ;;
-              skipped)  echo "PASS  $job: skipped (not required for this change)" ;;
-              failure)  echo "FAIL  $job: failure"; failed=1 ;;
-              cancelled) echo "FAIL  $job: cancelled"; failed=1 ;;
-              '')       echo "FAIL  $job: no result reported"; failed=1 ;;
-              *)        echo "FAIL  $job: unexpected result '$result'"; failed=1 ;;
-            esac
-          }
-
-          check changes "$CHANGES_RESULT"
-          check node-tests "$NODE_TESTS_RESULT"
-          check windows-unit "$WINDOWS_UNIT_RESULT"
-
-          # A skip is only legitimate when change detection actually said the
-          # change was docs-only. If it said "code" and the suite still did not
-          # run, something dropped the job and the check must not go green.
-          if [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "true" ] && [ "$NODE_TESTS_RESULT" = "skipped" ]; then
-            echo "FAIL  node-tests was skipped even though change detection reported code changes"
-            failed=1
-          fi
-
-          if [ "$CHANGES_RESULT" = "success" ] && [ "$CODE_CHANGED" = "true" ] && [ "$WINDOWS_UNIT_RESULT" = "skipped" ]; then
-            echo "FAIL  windows-unit was skipped even though change detection reported code changes"
-            failed=1
-          fi
-
-          if [ "$failed" -ne 0 ]; then
-            echo "::error::ci-aggregate failed — see the per-job results above"
-            exit 1
-          fi
-          echo "ci-aggregate: all required jobs succeeded or were legitimately skipped"
+          TEST_RESULT: ${{ needs.test.result }}
+          INTEGRATION_RESULT: ${{ needs.integration.result }}
+          GATES_RESULT: ${{ needs.gates.result }}
+          WINDOWS_UNIT_RESULT: ${{ needs.windows-unit.result }}
+        run: bash scripts/ci/aggregate-check.sh

@@ -54,10 +54,12 @@ Activity persistence uses the existing SQLite trace tables: nullable `trace_runs
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
 | `prebuild`, `pretest`, `pretest:all`, `pretest:integration`, `pretest:smoke` | `npm run ensure:native` |
-| `test` | `tsx --experimental-test-module-mocks tests/run.mts` — programmatic driver, `isolation:'process'` + `concurrency:true` |
+| `test` | `tsx --experimental-test-module-mocks tests/run.mts` — programmatic driver, `isolation:'process'` + `concurrency:true`, fresh `CLI_JAW_HOME` per child, `forceExit` unless `--watch`. Options: `--scope root,unit,integration,manager,browser,bin` (default `root,unit`), `--shard i/N` (byte-ordered round-robin, `tests/setup/shard.ts`), `--list` (print selection, exit 0) |
+| `test:shard` | `tsx --experimental-test-module-mocks tests/run.mts --scope root,unit --shard` — `npm run test:shard -- 1/4` runs exactly what CI's `test 1/4` job runs |
+| `test:integration:all` | `tsx --experimental-test-module-mocks tests/run.mts --scope integration,manager,bin` — CI's `integration` job set; `api-smoke` needs a server on `TEST_PORT` and fails closed when `CI` is set |
 | `test:all` | `tsx --experimental-test-module-mocks tests/run.mts --all` |
 | `test:integration` | `tsx --experimental-test-module-mocks --test tests/integration/*.test.ts` |
-| `test:coverage` | `tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --all` |
+| `test:coverage` | `tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --all` — the driver turns the flag into `run({ coverage: true })` (node:test ≥ 22.10); the flag alone is ignored by the programmatic API |
 | `test:watch` | `tsx --experimental-test-module-mocks tests/run.mts --watch` |
 | `test:web-ui-runtime` | `tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/web-ui-runtime-*.test.ts tests/unit/web-ui-processblock-runtime.test.ts tests/unit/web-ui-mermaid-runtime.test.ts tests/unit/web-ui-sanitizer.test.ts tests/unit/web-ui-build-output-guard.test.ts` |
 | `test:events` | `tsx --test tests/events.test.ts` |
@@ -131,21 +133,71 @@ the cmd shim or direct Node entry point instead.
 
 ### Direct smoke utilities
 
+### CI job graph (`.github/workflows/test.yml`, #565)
+
+opencodex `ci.yml` 의 샤딩 구조를 이식했다. 하나의 직렬 `node-tests` 잡(9m51s, 34128612867)이
+아래 그래프로 바뀌었고, 같은 커밋 기준 전체 벽시계 5m00s (34139039203).
+
+```
+changes ──┬── test 1/4 … test 4/4   tsc + tests/run.mts --scope root,unit --shard i/4   (fail-fast: false, 5-min step limit)
+          ├── integration           npm run build → build:frontend → server :3457 → --scope integration,manager,bin (CI=1) → fresh-install smoke
+          ├── gates                 gate:all · check:deps · check:deps:audit · devlog _fin audit · copilot gap · file size · windows manifest validate
+          ├── windows-unit          scripts/ci/windows-unit-manifest.txt via windows-unit-manifest.mjs --print (pwsh, one argv array)
+          └── coverage (advisory)   dev push / workflow_dispatch only; continue-on-error; not in the aggregate
+                     └──────────────► ci-aggregate   bash scripts/ci/aggregate-check.sh
+```
+
+집계 규칙 (`scripts/ci/aggregate-check.sh`, 진리표는 `tests/unit/ci-aggregate-rules.test.ts`):
+
+| `changes` | `code` | producer 결과 | 판정 |
+|---|---|---|---|
+| success | true | 전부 success | pass |
+| success | true | 하나라도 skipped | **fail** (잡이 떨어져 나간 것) |
+| success | false | success 또는 skipped | pass (docs-only) |
+| — | — | failure / cancelled / 빈 값 / 미지 값 | fail |
+| ≠ success | 또는 true/false 이외 | — | fail |
+
+`ci-aggregate` 이름은 브랜치 ruleset 이 문자 그대로 매칭하므로 바꾸지 않는다. `publish.yml` 과
+릴리스 스크립트는 잡 이름이 아니라 **워크플로 파일명·정확한 SHA·push 이벤트·preview|main 브랜치**로
+런을 고른다 (`publish.yml:85`, `promote-to-main.sh:29`, `release-preview.sh:289`). `workflow_dispatch` 런은
+그 필터를 통과하지 못하므로 릴리스를 인증할 수 없다.
+
+CI 에서 skip 은 실패다: `api-smoke` 는 서버가 없으면 `CI` 아래에서 assert-fail 한다. 격리(quarantine) 목록 —
+provider 인증과 실제 추론이 필요해 opt-in 으로만 도는 파일:
+
+| file | opt-in | reason |
+|---|---|---|
+| `tests/integration/agy-print-smoke.test.ts` | `JAW_AGY_SMOKE=1` + AGY 인증 | 실제 AGY print 모드 추론 |
+| `tests/integration/codex-app-multiplex-activation.test.ts` | activation flag + `CODEX_HOME/auth.json` | 정확한 codex-cli 버전과 실제 추론 |
+
+integration 잡의 skip 목록이 이 표와 달라지면 새 격리가 아니라 회귀다.
+
+샤드 분할은 `tests/setup/shard.ts`: 선택 파일을 `Buffer.compare`(LC_ALL=C 바이트 순)로 정렬하고
+`index % N === i-1` 을 취한다 — `node --test-shard` 및 opencodex helper 와 같은 규칙이라 러너마다 같은
+분할이 나온다. 파일 수 균형 ≠ 시간 균형: 34139039203 기준 72/83/104/89s. 한 샤드가 240s 를 넘거나
+최대/최소가 2배를 넘으면 N 을 올린다. `forceExit` 는 마지막 테스트 뒤 열린 핸들이 샤드를 5분 한도까지
+붙잡던 문제(34138235928 shard 3/4)를 막는다; 실제로 멈춘 테스트는 여전히 그 한도까지 간다.
+
 `test.yml`의 `windows-unit`은 기존 Windows 서비스·설치·실행 검사에 더해
 `claude-sdk-windows-launch`, `claude-sdk-session`, `claude-sdk-control`,
 `claude-sdk-core-hardening`, `claude-sdk-deferred-core`의 명시적 테스트 파일을 실행한다.
 SDK query와 프로세스 경계는 fixture로 격리하며, macOS에서 같은 파일을 실행한 결과는
-실제 Windows job의 성공 증거를 대신하지 않는다. 기존 10개 파일·Node 22·aggregate
-검증과 code-change skip 거부 조건은 유지한다.
+실제 Windows job의 성공 증거를 대신하지 않는다. 파일 목록은 인라인이 아니라
+`scripts/ci/windows-unit-manifest.txt` 에 있고, `scripts/ci/windows-unit-manifest.mjs` 가 Linux(`gates` 잡 +
+`tests/unit/windows-unit-manifest.test.ts`)와 Windows 양쪽에서 같은 규칙(빈 목록·중복·`tests/unit/` 밖·없는 파일
+거부)으로 검증한다. Node 22·aggregate 검증과 code-change skip 거부 조건은 유지한다.
 
 #### 테스트 격리는 프로세스 단위지 DB 단위가 아니다
 
-`tests/run.mts` 는 `isolation:'process'` 로 파일마다 자식 프로세스를 띄우지만, **모든
-자식이 `tests/setup/test-home.ts` 가 한 번 정한 같은 `CLI_JAW_HOME` 을 상속한다.** 즉
-프로세스는 갈라져도 `jaw.db` 는 하나다. 이 문장을 "subprocess DB isolation" 으로 읽으면
-없는 보장을 있다고 믿게 된다 (#521 조사에서 실제로 그 오독으로 잘못된 가설을 세웠다).
+`tests/run.mts` 는 `isolation:'process'` 로 파일마다 자식 프로세스를 띄우고, #564 부터는
+`run({ execArgv: ['--import', tests/setup/test-home.ts] })` 로 **자식마다 새 `CLI_JAW_HOME` = 새 `jaw.db`** 를
+준다 (그 전에는 부모가 한 번 정한 홈을 모두 상속해 하나의 `jaw.db` 를 공유했고, 샤딩으로 배치 구성이
+바뀌자 두 파일이 첫 open 마이그레이션을 경쟁해 `SqliteError: duplicate column name` 으로 죽었다).
+파일 **안**의 격리는 여전히 없다 — 한 파일의 여러 케이스는 같은 DB 를 본다. 이 문장을 케이스 단위
+"subprocess DB isolation" 으로 읽으면 없는 보장을 있다고 믿게 된다 (#521 조사에서 실제로 그 오독으로
+잘못된 가설을 세웠다).
 
-실제로 스위트를 지켜주는 것은 두 가지다:
+파일 안에서 스위트를 지켜주는 것은 두 가지다:
 
 - `src/core/db.ts` 의 `journal_mode = WAL` + `busy_timeout = 5000`. WAL 에서 리더는
   라이터를 막지 않으므로 평범한 동시 접근은 잠금이 되지 않는다.
@@ -309,7 +361,7 @@ packaged resources, actual native UI, provider authentication or OS-wide behavio
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `promote-to-main.sh`, `pick-gyp-python.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
+`atomic-build.sh`, `audit-fresh-install-evidence.mjs`, `bundle-sidecar.sh`, `capture-agy-quota-fixture.mjs`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-redaction-sinks.mjs`, `check-sidecar-prune-safety.mjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `claim-audit.mjs`, `collect-fresh-install-evidence.sh`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-risk-gate.mjs`, `install-wsl.sh`, `install.sh`, `jwc-110-e2e.mjs`, `jwc-no-global-smoke.mjs`, `link-current-nvm-bin.cjs`, `pi-rpc-probe.mts`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-1.6.0.sh`, `release-gates.mjs`, `release-preview.sh`, `promote-to-main.sh`, `pick-gyp-python.sh`, `require-release-evidence.mjs`, `signal-dashboard-restart.mjs`, `sync-electron-version.cjs`, `verify-fresh-install.sh`, `verify-release-evidence.mjs`, `ci/aggregate-check.sh`, `ci/windows-unit-manifest.mjs`, `ci/windows-unit-manifest.txt`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`, `smoke/tui-fullscreen-frame-smoke.ts`, `smoke/tui-ws-sequence-stress.ts`.
 
 ---
 

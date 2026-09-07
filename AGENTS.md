@@ -51,6 +51,15 @@ rebase 중 만나는 충돌은 대개 두 종류이고 해소법이 정해져 �
 반응하므로 **설치 표면(installer surface) 증거는 `dev` 푸시로 얻을 수 없고**,
 피처 브랜치는 여전히 PR 을 열어야 CI 가 돈다.
 
+`test.yml` 은 샤딩된 잡 그래프다 (#565, opencodex `ci.yml` 이식):
+`changes` → { `test 1..4/4` (root+unit 을 `tests/run.mts --scope root,unit --shard i/4` 로 4분할),
+`integration` (`npm run build` + 3457 서버 위에서 `--scope integration,manager,bin` + fresh-install smoke),
+`gates` (`gate:all` 과 나머지 스캔 1회), `windows-unit`, 자문용 `coverage` } → 필수 체크 `ci-aggregate`.
+Windows 레인의 파일 목록은 `scripts/ci/windows-unit-manifest.txt` 에 있고 Linux 에서도 검증된다
+(`scripts/ci/windows-unit-manifest.mjs`). 집계 규칙은 `scripts/ci/aggregate-check.sh` 가 갖는다 —
+docs-only 변경에서만 producer skip 이 통과로 읽히고, 그 외 skip/failure/cancelled 는 실패다.
+`coverage` 는 `dev` push 와 `workflow_dispatch` 에서만 돌고 집계에 들어가지 않는다.
+
 `dev` 가 릴리스 브랜치가 된 것은 아니다. `publish.yml` 은 인증 런을 SHA 로 찾되
 **`preview`/`main` 런만** 받아들이고(`:76` 의 `headBranch` 필터, #521 에서 좁힘),
 승격은 `--branch preview` 로 찾는다(`scripts/promote-to-main.sh:28-34`). 이 필터가
@@ -285,19 +294,25 @@ npm run build:frontend  # public/js·public/manager 변경 시 (→ public/dist)
 
 ### Test Scope (`npm test`는 전체가 아니다)
 
-`npm test`는 root와 `tests/unit/`만 실행한다 (`tests/run.mts`의 파일 수집). `tests/integration/`은
-**포함되지 않으므로**, "전체 스위트 통과"를 근거로 삼기 전에 범위를 확인할 것.
+`npm test`는 root와 `tests/unit/`만 실행한다 (`tests/run.mts`의 파일 수집). `tests/integration/`·
+`tests/manager/`·`tests/bin/`은 **포함되지 않으므로**, "전체 스위트 통과"를 근거로 삼기 전에 범위를 확인할 것.
+CI 는 그 세 디렉터리를 `integration` 잡에서 실제 서버(3457)와 함께 돌린다 (#565); provider 인증이 필요한
+`agy-print-smoke`·`codex-app-multiplex-activation` 두 파일만 opt-in 격리(quarantine)로 남는다.
 
 ```bash
-npm test              # root + tests/unit/ (integration 제외)
-npm run test:all      # + tests/integration/
-npm run test:integration
+npm test                         # root + tests/unit/ (integration 제외)
+npm run test:shard -- 1/4        # 위 집합의 결정적 1/4 (CI 의 test i/4 와 같은 분할)
+npm run test:integration:all     # tests/integration + manager + bin (CI integration 잡과 같은 집합; TEST_PORT 서버 필요)
+npm run test:all                 # 전부
+npx tsx --experimental-test-module-mocks tests/run.mts --scope unit --shard 2/4 --list   # 실행 없이 선택 파일만 출력
 ```
 
 - 회귀 판정은 깨끗한 baseline과 `comm -13`으로 비교해 **신규 실패 0건**을 증명한다.
-- 테스트 파일은 각자 별도 프로세스로 돌지만 `CLI_JAW_HOME`과 SQLite 파일은 공유한다.
-  실제 DB를 건드리는 케이스를 여러 파일에 나눠 두면 잠금으로 간헐 실패한다 — 한 파일에 모으거나
-  주입 지점으로 DB를 우회할 것.
+- 테스트 파일은 각자 별도 프로세스로 돌고, 파일마다 새 `CLI_JAW_HOME`(= 새 `jaw.db`)을 받는다
+  (`tests/run.mts` 가 `execArgv` 로 `tests/setup/test-home.ts` 를 자식마다 다시 import). 한 파일 안에서
+  DB 를 공유하는 케이스는 여전히 한 파일에 모으거나 주입 지점으로 DB 를 우회할 것.
+- 샤드 분할은 바이트 순 정렬 + `index % N` 이라 파일이 추가되면 배정이 옮겨진다; 새로 CI 에서만 깨지는 파일은
+  `--list` 로 같은 샤드 동료를 확인한 뒤 로컬에서 그 샤드를 그대로 돌려 재현한다.
 - 소스를 정규식으로 검사하는 테스트는 리팩터링 때마다 의미 없이 깨진다. 새로 만들지 말고,
   기존 것이 깨지면 문자열을 갱신하기 전에 **동작 검증으로 교체할 수 있는지** 먼저 볼 것.
 

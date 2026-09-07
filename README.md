@@ -852,7 +852,9 @@ entrypoint or cron. Full guide: [structure/remote-headless.md](structure/remote-
 npm run build          # tsc → dist/
 npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts (hot-reload)
-npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
+npm test               # programmatic node:test driver (tests/run.mts, isolation:'process', per-file test home)
+npm run test:shard -- 1/4        # deterministic quarter of root+unit (same split CI's test i/4 runs)
+npm run test:integration:all     # tests/integration + manager + bin (CI's integration job; needs a TEST_PORT server)
 npm run gate:all       # named release/docs parity gates (incl. doc-drift, strict-baseline, redaction-sinks)
 npm run docs:check     # AST commands/routes inventory vs structure docs
 bash structure/check-doc-drift.sh

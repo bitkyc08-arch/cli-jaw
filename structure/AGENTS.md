@@ -72,7 +72,7 @@ When refreshing docs from recent non-strict commits, check these first:
 - `public/js/features/process-block.ts`: hydrated expand (`reconstructStepsFromBlock`), `data-had-detail` release placeholder — `frontend.md` + `stream-events.md` §12.
 - `src/goal/pause-gate.ts` / `src/agent/lifecycle-handler.ts`: `goal_pause_gate_pending` continuation suppression — `stream-events.md`, `INDEX.md` delta.
 - `src/agent/events/claude.ts`: plain `claude` `text_delta` live streaming — `stream-events.md` §3.
-- `tests/run.mts` / `package.json` test scripts: programmatic test driver — `infra.md` scripts table.
+- `tests/run.mts` / `package.json` test scripts: programmatic test driver (`--scope`/`--shard i/N`/`--list`, per-file test home) — `infra.md` scripts table; CI job graph, aggregate truth table and quarantine list — `infra.md` § CI job graph.
 - `scripts/release-preview.sh` / `scripts/promote-to-main.sh` / `.github/workflows/publish.yml`: release path is `feature → preview → main` then a `workflow_dispatch`-only npm publish; `dev` is never in the release path. Promotion requires an already-certified `preview` SHA, the promoted `main` commit is a new SHA with the same tree, and the promote script exits without checking the publish outcome and cannot be re-run afterwards. Keep the flow, the `publish.yml` input names, and the partial-release recovery steps in `infra.md` § 릴리스 파이프라인과 부분 실패 복구 aligned with the actual scripts, and mirror the precondition in root `README.md`.
 - `bin/commands/service.ts` / `src/core/instance-lifecycle.ts`: home-scoped `service stop|restart`, ownership pidfile, and native-service delegation — `commands.md`, root README/AGENTS/CLAUDE.
 - `src/orchestrator/attestation.ts`: PABCD `--attest` evidence gate — `prompt_flow.md`, `INDEX.md`.
