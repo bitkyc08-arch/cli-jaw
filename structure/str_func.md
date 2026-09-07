@@ -455,6 +455,7 @@ cli-jaw/
 │   │   ├── runtime-event-parse.ts ← versioned presentation boundary decoder (90L)
 │   │   ├── presentation.ts   ← independent Activity/Legacy mode and server-supplied identity parser (24L)
 │   │   ├── activity-state.ts ← bounded pure Activity preview reducer (155L)
+│   │   ├── activity-kind.ts ← tool name → kind classifier and adjacent render grouping (42L)
 │   │   ├── activity-replay.ts ← bounded live/replay coordination without I/O (244L)
 │   │   ├── activity-read.ts ← fixed-through history and exact saved-answer readers (174L)
 │   │   ├── runtime-request-notice.ts ← versioned metadata-only request wake-up contract (12L)
@@ -505,14 +506,14 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 582 files source/assets, ~101808L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 583 files source/assets, ~101931L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1234L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
 │   │   ├── chat.css          ← chat/message/virtual-scroll + inline image min-height/object-fit/error fallback (2519L)
 │   │   ├── native-requests.css ← live decision form, focus and bounded responsive scrolling (55L)
-│   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (225L)
+│   │   └── activity.css      ← scoped live Activity disclosure and reversible Legacy visibility (261L)
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
 │   └── js/                   ← 114 .ts files (root 21 + features/ 70 + diagram/ 3 + render/ 20, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 │       ├── bounded-api.ts    ← bounded authenticated JSON reads and decision writes (49L)
@@ -520,7 +521,8 @@ cli-jaw/
 │       ├── features/
 │       │   ├── presentation-preference.ts ← bounded generation-fenced settings preference refresh (52L)
 │       │   ├── activity-live.ts ← host-port live ownership, final correction and remount (339L)
-│       │   ├── activity-view.ts ← bounded native disclosure and remembered choices (240L)
+│       │   ├── activity-view.ts ← one-row turn header, grouped rows and remembered choices (248L)
+│       │   ├── activity-rows.ts ← Codex-style tool row/group DOM builders with icons (76L)
 │       │   ├── activity-history.ts ← owned transcript restoration, queue and recovery (322L)
 │       │   ├── activity-http.ts ← authenticated bounded Activity reads (17L)
 │       │   ├── native-request-bridge.ts ← SSE health/epoch, captured identity and request refresh (133L)
