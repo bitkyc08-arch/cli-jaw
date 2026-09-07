@@ -104,6 +104,10 @@ test('HD-003: HTML help topics and HELP_TOPICS stay in sync', () => {
     const reachableTopics = uniqueHelpTopics(html);
 
     assert.deepEqual(reachableTopics, topicIds, 'index.html reachable help topics should exactly match HELP_TOPICS');
+    const settingsHelp = findHelpButton(html, 'activeChannel');
+    assert.match(settingsHelp.attrs, /data-help-topics="activeChannel telegram discord slack fallbackOrder mcp stt"/);
+    assert.ok(html.indexOf('data-help-topic="activeChannel"') < html.indexOf('id="tabSettings"'),
+        'settings help must remain outside the iframe-only settings panel');
     assert.ok(!directTopics.includes('keyboardShortcuts'), 'keyboard shortcuts should be reached through the chat composer group');
     for (const topic of ['chatInput', 'orchestration', 'attachments', 'diagrams', 'keyboardShortcuts']) {
         assert.ok(topicIds.includes(topic), `missing classic help topic: ${topic}`);

@@ -259,7 +259,7 @@
                 style="display:none"></div>
             <button class="btn-attach" data-i18n-title="btn.attach" title="파일 첨부"><span data-icon="paperclip"></span></button>
             <input type="file" id="fileInput" hidden multiple>
-            <button class="btn-voice" id="btnVoice" data-i18n-title="voice.start" title="음성 녹음"><span data-icon="mic"></span></button>
+            <button class="btn-voice" id="btnVoice" aria-describedby="voiceShortcutHint" data-i18n-title="voice.start" title="음성 녹음"><span data-icon="mic"></span></button>
             <span class="voice-timer" id="voiceTimer" style="display:none">00:00</span>
             <button class="btn-voice-cancel" id="btnVoiceCancel" style="display:none" title="취소">✕</button>
             <div class="chat-input-shell">
@@ -272,6 +272,7 @@
             </div>
             <button class="btn-send" id="btnSend" aria-label="Send message"><span data-icon="send"></span></button>
         </div>
+        <span id="voiceShortcutHint" class="voice-shortcut-hint" data-i18n="stt.shortcutHint">Ctrl+Shift+Space (⌘+Shift+Space on Mac) · Alt/Option+M</span>
     </div>
 
     <!-- Right Sidebar (Tabbed) -->
@@ -281,6 +282,9 @@
             <button class="tab-btn active" id="tabBtnAgents" role="tab" aria-selected="true" aria-controls="tabAgents" data-i18n="tab.agents">에이전트</button>
             <button class="tab-btn" id="tabBtnSkills" role="tab" aria-selected="false" aria-controls="tabSkills" data-i18n="tab.skills">스킬</button>
             <button class="tab-btn" id="tabBtnSettings" role="tab" aria-selected="false" aria-controls="tabSettings" data-i18n="tab.settings">설정</button>
+            <button class="help-trigger" type="button" data-help-topic="activeChannel"
+                data-help-topics="activeChannel telegram discord slack fallbackOrder mcp stt"
+                data-i18n-aria="help.activeChannel.aria" aria-label="메신저 및 설정 도움말">?</button>
         </div>
         <div class="sidebar-save-bar">
             <button class="btn-save" data-i18n="btn.saveSettings">저장</button>

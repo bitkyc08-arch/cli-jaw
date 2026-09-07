@@ -68,5 +68,8 @@ test('STT shortcut copy and locale strings mention the fallback shortcut', () =>
         assert.ok(values['stt.shortcutHint'].includes('Alt/Option+M'), `${locale} STT hint must mention fallback shortcut`);
         assert.ok(values['help.keyboardShortcuts.howTo.1'].includes('Alt/Option+M'), `${locale} shortcut help must mention fallback shortcut`);
     }
-    assert.ok(read('public/index.html').includes('Alt/Option+M'), 'static HTML fallback hint must mention fallback shortcut before i18n loads');
+    const html = read('public/index.html');
+    assert.match(html, /id="btnVoice" aria-describedby="voiceShortcutHint"/);
+    assert.match(html, /id="voiceShortcutHint"[^>]*data-i18n="stt.shortcutHint"[^>]*>[^<]*Alt\/Option\+M/);
+    assert.ok(html.includes('Alt/Option+M'), 'static HTML fallback hint must mention fallback shortcut before i18n loads');
 });

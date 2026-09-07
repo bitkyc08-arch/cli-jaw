@@ -1486,6 +1486,12 @@ div.math-placeholder {
     animation: revealUp 0.35s var(--ease-out-expo) 0.3s both;
 }
 
+.voice-shortcut-hint {
+    padding: 0 var(--space-5) var(--space-2);
+    color: var(--text-dim);
+    font-size: var(--text-xs);
+}
+
 .chat-input-shell {
     flex: 1;
     min-width: 0;

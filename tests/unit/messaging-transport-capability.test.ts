@@ -56,14 +56,16 @@ test('manager transport chips parse health.channels', () => {
     assert.ok(managerTransportChipLabels(snapshot.discord).includes('Configured') || managerTransportChipLabels(snapshot.discord).includes('Not configured'));
 });
 
-test('classic settings surface references transport status row outside hidden panels', () => {
-    const html = read('public/index.html');
-    const settingsChannel = read('public/js/features/settings-channel.ts');
-    const transportRow = read('public/js/features/transport-status-row.ts');
-
-    assert.ok(html.includes('id="channelTransportStatus"'), 'status row container must exist outside channel panels');
-    assert.ok(settingsChannel.includes('refreshTransportStatusRow'), 'settings channel loader must refresh transport row');
-    assert.ok(transportRow.includes("t('settings.channel.sendCapable')"), 'transport row must render send-capable label');
+test('shared settings channel pages expose live transport capability', () => {
+    assert.match(read('public/index.html'), /class="settings-frame" src="dist\/settings\/index.html"/);
+    for (const channel of ['telegram', 'discord', 'slack']) {
+        const page = read(`public/manager/src/settings/pages/Channels${channel[0]!.toUpperCase()}${channel.slice(1)}.tsx`);
+        assert.match(page, new RegExp(`<TransportStatusChips[^>]*channel="${channel}"`));
+    }
+    const chips = read('public/manager/src/settings/pages/components/TransportStatusChips.tsx');
+    assert.match(chips, /client.get<unknown>\('\/api\/health'\)/);
+    assert.match(chips, /role="status" aria-live="polite"/);
+    assert.match(chips, /transportChipLabels\(status\)/);
 });
 
 // The malformed sentinel is one element long, so a bare .length check read it as
