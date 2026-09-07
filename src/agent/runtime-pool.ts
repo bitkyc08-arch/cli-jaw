@@ -275,7 +275,7 @@ function piRuntime(session: PiRpcSession): PiManagedRuntime {
     return {
         session,
         get alive() { return session.alive; },
-        supportsInterrupt: session.abortEffective,
+        get supportsInterrupt() { return session.abortEffective; },
         close: () => session.close(),
         interrupt: () => session.abort(),
         kill: () => session.kill(),
@@ -340,7 +340,7 @@ function piSessionForLease(session: PiRpcSession, instructions?: string): PiRpcS
     return {
         child: session.child,
         get alive() { return session.alive; },
-        abortEffective: session.abortEffective,
+        get abortEffective() { return session.abortEffective; },
         get sessionId() { return session.sessionId; },
         set sessionId(value) { session.sessionId = value; },
         sendPrompt: (message, opts) => session.sendPrompt(`${instructions}\n\n${message}`, opts),
@@ -518,7 +518,9 @@ async function createPiEntry(
             ...(opts.forceNew || !opts.storedSessionId ? {} : { sessionId: opts.storedSessionId }),
         });
         if (store.entries.get(key) !== creating) {
-            session.close();
+            try {
+                void Promise.resolve(session.close()).catch(() => { console.warn('[runtime-pool] superseded Pi close unconfirmed'); });
+            } catch { console.warn('[runtime-pool] superseded Pi close unconfirmed'); }
             throw new Error('runtime pool creation superseded');
         }
         const runtime = piRuntime(session);
