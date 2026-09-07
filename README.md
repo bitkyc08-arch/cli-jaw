@@ -577,7 +577,7 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; native usage with optional dashboard-session fallback |
-| **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; weekly usage pool read from `~/.grok/auth.json` via Grok Build billing |
+| **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; JSON weekly usage read with native credentials, with gRPC/monthly fallbacks |
 | **Kiro** | registry-selected | `kiro` | AWS Kiro free tier; `kiro-cli chat --no-interactive` runtime |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | Free models available |
 | **Copilot** | `claude-sonnet-4.6` | `copilot login` | Free tier available |
