@@ -143,7 +143,7 @@ test('steerAgent calls killActiveAgent with "steer" reason', () => {
         'steerAgent should call killActiveAgent for its scope with "steer" reason',
     );
     assert.ok(
-        steerBody.includes('waitForProcessEnd'),
+        steerBody.includes('waitForMainProcessEnd'),
         'steerAgent should wait for process end after kill',
     );
 });

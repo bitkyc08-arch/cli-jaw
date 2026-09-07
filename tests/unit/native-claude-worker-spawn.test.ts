@@ -107,7 +107,15 @@ test.mock.module('../../src/agent/lifecycle-handler.js', { namedExports: { ...li
     handleAgentExit: async (input: Parameters<typeof lifecycle.handleAgentExit>[0]) => {
         await beforeLifecycle?.(input); return lifecycle.handleAgentExit(input);
     } } });
-const { spawnAgent, killActiveAgent, killAgentById, killAllAgents, waitForExitSettled, waitForProcessEnd,
+const pipeline = await import('../../src/orchestrator/pipeline.ts');
+let observeSteerDispatch: ((...args: Parameters<typeof pipeline.orchestrate>) => void) | undefined;
+test.mock.module('../../src/orchestrator/pipeline.js', { namedExports: { ...pipeline,
+    orchestrate: async (...args: Parameters<typeof pipeline.orchestrate>) => {
+        assert.ok(observeSteerDispatch, 'this fixture must not start real orchestration');
+        observeSteerDispatch(...args);
+    },
+} });
+const { spawnAgent, steerAgent, killActiveAgent, killAgentById, killAllAgents, waitForExitSettled, waitForProcessEnd, waitForMainProcessEnd,
     waitForAllProcessesEnd, activeMainProcesses, activeProcesses } = await import('../../src/agent/spawn.ts');
 const { subscribe } = await import('../../src/core/event-bus.ts');
 const { poolStats } = await import('../../src/agent/runtime-pool.ts');
@@ -136,7 +144,7 @@ const runTest = (name: string, fn: (t: TestContext) => Promise<void>) => test(na
 
 test.beforeEach(t => {
     inputs.length = 0; queries.length = 0; factoryDone.length = 0; beforeFactory = undefined; beforeLifecycle = undefined;
-    beforeFixtureResume = undefined; detectedBinary = process.execPath;
+    beforeFixtureResume = undefined; observeSteerDispatch = undefined; detectedBinary = process.execPath;
     config.settings.cli = 'claude'; config.settings.workingDir = root; config.settings.projectDirs = [root];
     config.settings.permissions = 'auto'; config.settings.fallbackOrder = []; config.settings.activeOverrides = {};
     config.settings.perCli = { ...config.settings.perCli, claude: { model: 'default', effort: 'low', transport: 'native' } };
@@ -222,6 +230,94 @@ runTest('worker in the same scope completes independently while the main query r
     assert.equal(poolStats().busy, 1); assert.equal(hasClaudeRuns(opts.scopeKey), true);
     assert.equal(killActiveAgent(opts.scopeKey, 'steer'), true);
     assert.equal((await main.promise).runtimeOutcome?.status, 'stopped');
+});
+
+runTest('main steer continues while its same-scope worker stays alive and inclusive waits still include it', async t => {
+    // Advance only interval polls, never the unchanged steer/shutdown deadlines.
+    // Enable before creating watchdogs so their cleanup owns the same clock.
+    t.mock.timers.enable({ apis: ['setInterval'] });
+    const ready = deferred(), workerEntered = deferred(), releaseWorker = deferred(), opts = options();
+    const prompt = 'replacement after main-only wait';
+    const dispatches: Array<Parameters<typeof pipeline.orchestrate>> = [];
+    observeSteerDispatch = (...args) => { dispatches.push(args); };
+    let continuationStarted = false, scopedDone = false, globalDone = false;
+    const off = subscribe(event => {
+        if (event.event === 'steer_started' && event.data['scope'] === opts.scopeKey && event.data['prompt'] === prompt) continuationStarted = true;
+    });
+    const main = spawnAgent('HOLD_NATIVE_FIXTURE', { ...opts, lifecycle: { onActivity: () => ready.resolve() } });
+    let worker: ReturnType<typeof spawnAgent> | undefined;
+    let steering: ReturnType<typeof steerAgent> | undefined;
+    const waits: Promise<void>[] = [];
+    try {
+        await ready.promise;
+        beforeFixtureResume = async () => { workerEntered.resolve(); await releaseWorker.promise; };
+        const workerId = 'steer-survivor-' + serial;
+        worker = spawnAgent('HOLD_TOOL_PROGRESS', { ...opts, agentId: workerId, sysPrompt: 'Worker instructions' });
+        await workerEntered.promise;
+        const workerChild = queries.at(-1)!.child;
+        steering = steerAgent(opts.scopeKey, prompt, 'web', { chatSessionId: opts.chatSessionId, requestId: 'steer-' + opts.requestId });
+        assert.equal((await main.promise).runtimeOutcome?.status, 'stopped');
+        await waitForExitSettled(opts.scopeKey);
+        assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+        waits.push(waitForProcessEnd(opts.scopeKey, 2000).then(() => { scopedDone = true; }));
+        waits.push(waitForAllProcessesEnd(2000).then(() => { globalDone = true; }));
+        t.mock.timers.tick(100);
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(continuationStarted, true, 'a settled main must not wait for the intentionally surviving worker');
+        assert.equal(await steering, 'new-run');
+        assert.equal(dispatches.length, 1);
+        assert.equal(dispatches[0]![0], prompt);
+        assert.equal(dispatches[0]![1]?.['_skipInsert'], true);
+        assert.equal(dispatches[0]![1]?.['_steerContext'], 'PRE-TOOL COMMENTARY');
+        assert.equal(hasClaudeWorker(workerId), true);
+        assert.equal(workerChild.exitCode, null); assert.equal(workerChild.signalCode, null);
+        assert.equal(scopedDone, false); assert.equal(globalDone, false);
+    } finally {
+        releaseWorker.resolve();
+        if (worker) assert.equal((await worker.promise).runtimeOutcome?.status, 'done');
+        if (activeMainProcesses.has(opts.scopeKey)) killActiveAgent(opts.scopeKey, 'user');
+        await main.promise;
+        t.mock.timers.tick(100);
+        if (steering) await steering;
+        await Promise.all(waits);
+        off();
+    }
+    assert.equal(scopedDone, true); assert.equal(globalDone, true);
+    assert.equal(hasClaudeRuns(opts.scopeKey), false);
+});
+
+runTest('main-only wait counts map-less retained mains, excludes workers and other scopes, and keeps its deadline bounded', async t => {
+    t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+    const opts = options();
+    const main = reserveClaudeRun({ runId: 'retained-main-' + serial, scope: opts.scopeKey, cancel() {} });
+    const worker = reserveClaudeRun({ runId: 'retained-worker-' + serial, scope: opts.scopeKey, workerId: 'wait-worker-' + serial, cancel() {} });
+    const other = reserveClaudeRun({ runId: 'other-main-' + serial, scope: 'other-' + opts.scopeKey, cancel() {} });
+    let mainDone = false, scopedDone = false, globalDone = false;
+    const mainWait = waitForMainProcessEnd(opts.scopeKey).then(() => { mainDone = true; });
+    const scoped = waitForProcessEnd(opts.scopeKey).then(() => { scopedDone = true; });
+    const global = waitForAllProcessesEnd(3000).then(() => { globalDone = true; });
+    try {
+        assert.equal(activeMainProcesses.has(opts.scopeKey), false);
+        t.mock.timers.tick(100); await Promise.resolve();
+        assert.equal(mainDone, false); assert.equal(scopedDone, false); assert.equal(globalDone, false);
+        main.finish(); t.mock.timers.tick(100); await mainWait;
+        assert.equal(scopedDone, false); assert.equal(globalDone, false);
+        worker.finish(); t.mock.timers.tick(100); await scoped;
+        assert.equal(globalDone, false, 'another scope still owns its main control');
+        other.finish(); t.mock.timers.tick(100); await global;
+
+        const held = reserveClaudeRun({ runId: 'deadline-main-' + serial, scope: opts.scopeKey, cancel() {} });
+        try {
+            let expired = false;
+            const bounded = waitForMainProcessEnd(opts.scopeKey).then(() => { expired = true; });
+            t.mock.timers.tick(2999); await Promise.resolve(); assert.equal(expired, false);
+            t.mock.timers.tick(1); await bounded;
+            assert.equal(held.current(), true, 'deadline completion is not proof of physical cleanup');
+        } finally { held.finish(); }
+    } finally {
+        main.finish(); worker.finish(); other.finish(); t.mock.timers.tick(100);
+        await Promise.all([mainWait, scoped, global]);
+    }
 });
 
 

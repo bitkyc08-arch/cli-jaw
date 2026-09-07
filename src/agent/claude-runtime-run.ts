@@ -189,12 +189,12 @@ export function startClaudeNativeRun(input: ClaudeNativeRunOptions): { child: nu
                     },
                     record: (context, body) => { if (body.kind === 'turn-start') started = true; return recordRuntimeEvent(context, body); },
                 } }).catch(failure => {
-                    if (worker && failure instanceof ClaudeAcquireFailure) {
+                    if (failure instanceof ClaudeAcquireFailure) {
                         awaitingUnleasedCleanup = true;
                         void failure.cleanup.then(() => {
                             cleanupSafe = true; awaitingUnleasedCleanup = false;
                             if (finalized) {
-                                try { input.cleanupUnleased?.(); }
+                                try { if (worker) input.cleanupUnleased?.(); }
                                 finally { control.finish(); }
                             }
                         }).catch(() => { console.warn('[runtime:claude] unleased cleanup remains fenced'); });
