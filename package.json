@@ -79,6 +79,8 @@
     "pretest:smoke": "npm run ensure:native",
     "test": "tsx --experimental-test-module-mocks tests/run.mts",
     "test:all": "tsx --experimental-test-module-mocks tests/run.mts --all",
+    "test:shard": "tsx --experimental-test-module-mocks tests/run.mts --scope root,unit --shard",
+    "test:integration:all": "tsx --experimental-test-module-mocks tests/run.mts --scope integration,manager,bin",
     "test:integration": "tsx --experimental-test-module-mocks --test tests/integration/*.test.ts",
     "test:coverage": "tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --all",
     "test:watch": "tsx --experimental-test-module-mocks tests/run.mts --watch",
