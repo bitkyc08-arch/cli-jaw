@@ -132,7 +132,7 @@ test('Go key precedence remains env, dedicated file, native auth, settings', t =
     t.after(() => { if (old === undefined) delete process.env.OPENCODE_GO_API_KEY; else process.env.OPENCODE_GO_API_KEY = old; });
     let dedicated = true; let native = true;
     t.mock.method(fs, 'readFileSync', (path: unknown) => {
-        const name = String(path);
+        const name = String(path).replaceAll('\\', '/');
         if (name.endsWith('opencode-go-api-key')) { if (dedicated) return 'file-key'; throw new Error('absent'); }
         if (name.endsWith('opencode/auth.json')) return JSON.stringify(native ? { 'opencode-go': { key: 'native-key' } } : {});
         if (name.endsWith('settings.json')) return JSON.stringify({ quota: { opencodeGoApiKey: 'settings-key' } });
