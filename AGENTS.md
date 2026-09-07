@@ -214,6 +214,8 @@ Before any public push, run `npm run check:private-boundary` for the index and `
 
 ### Native decisions
 
+The Classic permission selector saves explicit Auto/Safe choices. Server startup preserves the saved policy; never reintroduce the obsolete safe-to-auto coercion. Existing runtime-specific policy support and settings invalidation still apply.
+
 Pi capability preparation owns one asynchronous, completed-close version probe
 per RPC instance; preparing input is not dispatched or treated as legacy yet.
 Keep both capability getters live and typed finality unchanged. Direct Stop and
