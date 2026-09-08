@@ -96,6 +96,30 @@ test('a private remote-tracking ref cannot hide outgoing history from a new publ
     assert.throws(() => checkPush(root, input, remote), /devlog\/private/);
 });
 
+test('history the destination already advertises is not re-scanned when another branch fast-forwards onto it', t => {
+    // Mirrors the release train: dev detached private records and was pushed; preview and
+    // main are then fast-forwarded to commits dev already published at the same remote.
+    const root = fixture(t);
+    const remote = join(fixture(t), 'destination.git');
+    git(root, 'init', '--bare', '-q', remote);
+    put(root, 'README.md'); git(root, 'add', '.'); git(root, 'commit', '-qm', 'public base');
+    const base = git(root, 'rev-parse', 'HEAD');
+    git(root, 'push', '-q', remote, 'HEAD:refs/heads/main');
+    put(root, 'devlog/old.md'); git(root, 'add', '.'); git(root, 'commit', '-qm', 'legacy private record');
+    git(root, 'rm', '-q', 'devlog/old.md'); git(root, 'commit', '-qm', 'detach private records');
+    const dev = git(root, 'rev-parse', 'HEAD');
+    // Already published on dev at this destination; a preview fast-forward re-pushes the same commits.
+    git(root, 'push', '-q', remote, 'HEAD:refs/heads/dev');
+    assert.doesNotThrow(() => checkPush(root, 'refs/heads/preview ' + dev + ' refs/heads/preview ' + base, remote));
+    // Without the destination, the range still rejects the intermediate private commit.
+    assert.throws(() => checkRange(root, base, dev), /devlog\/old/);
+    // New private history above what the destination advertises is still rejected.
+    put(root, 'devlog/new.md'); git(root, 'add', '.'); git(root, 'commit', '-qm', 'new private');
+    git(root, 'rm', '-q', 'devlog/new.md'); git(root, 'commit', '-qm', 'clean tip');
+    const head = git(root, 'rev-parse', 'HEAD');
+    assert.throws(() => checkPush(root, 'refs/heads/dev ' + head + ' refs/heads/dev ' + dev, remote), /devlog\/new/);
+});
+
 test('prepublish lifecycle rejects private input before build and preserves build/check ordering', t => {
     const root = fixture(t);
     const lifecycle = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')).scripts.prepublishOnly;
