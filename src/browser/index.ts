@@ -29,6 +29,7 @@ export {
 } from './actions.js';
 
 export { visionClick, extractCoordinates } from './vision.js';
+export { sanitizeTarget, appendBounded, MAX_TARGET_LENGTH, MAX_CODEX_STDOUT_BYTES } from './vision-input.js';
 export * as adaptiveFetch from './adaptive-fetch/index.js';
 export * as webAi from './web-ai/index.js';
 export type * from './web-ai/index.js';
