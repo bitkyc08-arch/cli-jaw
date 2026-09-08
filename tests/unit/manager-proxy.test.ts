@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+import { createManagerApiJsonParser } from '../../src/routes/code-body-parser.js';
 import http, { type IncomingMessage, type Server } from 'node:http';
 import {
     buildProxyUpgradeRequest,
@@ -172,11 +173,67 @@ test('dashboard proxy exposes websocket upgrade routing contract', () => {
     assert.ok(proxy.includes('buildProxyUpgradeRequest'));
 });
 
-test('manager dashboard skips express.json for legacy /i proxy paths so POST bodies stream upstream', () => {
-    const server = read('src/manager/server.ts');
-
-    assert.ok(server.includes('/^\\/i\\/\\d+(?:\\/|$)/.test(req.path)'), 'manager must bypass JSON parser on legacy proxy paths');
-    assert.match(server, /Legacy \/i\/:port proxy streams the raw request body upstream/);
+test('manager production parser and legacy proxy preserve small and large raw JSON bodies', async () => {
+    const received: Array<{ method: string | undefined; url: string | undefined;
+        contentType: string | undefined; transferEncoding: string | undefined; body: Buffer }> = [];
+    const target = http.createServer((req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (chunk: Buffer) => chunks.push(chunk));
+        req.on('error', () => res.destroy());
+        req.on('end', () => {
+            const body = Buffer.concat(chunks);
+            received.push({ method: req.method, url: req.url, contentType: req.headers['content-type'],
+                transferEncoding: req.headers['transfer-encoding'], body });
+            res.writeHead(201, { 'content-type': 'application/octet-stream' });
+            res.end(body);
+        });
+    });
+    const app = express();
+    app.use(createManagerApiJsonParser());
+    const manager = http.createServer(app);
+    try {
+        const targetPort = await listen(target);
+        installDashboardProxy(app, manager, { from: targetPort, count: 1 });
+        const managerPort = await listen(manager);
+        const targetPath = '/api/message?source=parser-regression';
+        const bodies = [
+            // Whitespace and a raw JSON escape expose unwanted parse/reserialization.
+            Buffer.from(String.raw` { "text": "\u0061", "number": 1 } ` + '\n'),
+            Buffer.from(JSON.stringify({ text: '가'.repeat(24_000), request: 'large' }, null, 2) + '\n'),
+        ];
+        assert.ok(bodies[0]!.length < 65_536);
+        assert.ok(bodies[1]!.length > 65_536, 'large body must exceed the ordinary Manager JSON limit');
+        for (const [index, body] of bodies.entries()) {
+            const response = await new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
+                const req = http.request({ host: '127.0.0.1', port: managerPort,
+                    path: `/i/${targetPort}${targetPath}`, method: 'POST',
+                    // Small input has a length; large input exercises chunked forwarding.
+                    headers: { 'content-type': 'application/json',
+                        ...(index === 0 ? { 'content-length': String(body.length) } : {}) },
+                    signal: AbortSignal.timeout(10_000),
+                }, res => {
+                    const chunks: Buffer[] = [];
+                    res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                    res.on('error', reject);
+                    res.on('end', () => resolve({ status: res.statusCode || 0, body: Buffer.concat(chunks) }));
+                });
+                req.on('error', reject);
+                req.write(body.subarray(0, 13));
+                req.write(body.subarray(13, 50_000));
+                req.end(body.subarray(50_000));
+            });
+            assert.equal(response.status, 201, `body ${index}: response must come from the worker`);
+            assert.deepEqual(response.body, body, `body ${index}: worker echo must remain byte-exact`);
+            assert.equal(received.length, index + 1, 'each request reaches the worker exactly once');
+            assert.deepEqual(received[index], { method: 'POST', url: targetPath,
+                contentType: 'application/json', transferEncoding: index === 0 ? undefined : 'chunked', body });
+        }
+    } finally {
+        // A parser regression can strand the upstream request; failure cleanup must not hang.
+        manager.closeAllConnections();
+        target.closeAllConnections();
+        await Promise.all([closeServer(manager), closeServer(target)]);
+    }
 });
 
 test('legacy dashboard proxy injects external-link escape policy into HTML responses', async () => {

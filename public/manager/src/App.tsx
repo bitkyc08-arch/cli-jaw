@@ -297,7 +297,6 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         view.setActivityDockHeight(height);
         void saveUi({ activityDockHeight: height });
     }
-
     function handleSidebarModeChange(mode: DashboardSidebarMode): void {
         const sidebarMode = normalizeSidebarModeForBuild(mode);
         if (!guardSettingsTransition({ sidebarMode })) return;

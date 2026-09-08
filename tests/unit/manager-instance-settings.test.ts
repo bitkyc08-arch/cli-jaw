@@ -252,7 +252,7 @@ test('App host guards real settings drafts through document and desktop subscrip
         ['../../public/manager/src/sync/useInvalidationSubscription.ts', { useInvalidationSubscription: noop }],
         ['../../public/manager/src/hooks/useManagerEventStream.ts', { useManagerEventStream: noop }],
         ['../../public/manager/src/usePreviewSttLifecycle.ts', { usePreviewSttLifecycle: noop }],
-        ['../../public/manager/src/jaw-ceo/useJawCeoDashboardBridge.ts', { useJawCeoDashboardBridge: () => ({ voice: {}, ceo: {}, open: false, setOpen: noop }) }],
+        ['../../public/manager/src/jaw-ceo/useJawCeoDashboardBridge.tsx', { useJawCeoDashboardBridge: () => ({ voice: {}, ceo: {}, open: false, setOpen: noop }) }],
         ['../../public/manager/src/components/InstanceDetailPanel.tsx', { InstanceDetailPanel: () => null }],
         ['../../public/manager/src/components/InstanceListContent.tsx', { InstanceListContent: () => null }],
         ['../../public/manager/src/dashboard-reminders/TrayRemindersApp.tsx', { TrayRemindersApp: () => null }],
