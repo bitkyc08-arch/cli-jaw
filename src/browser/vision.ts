@@ -100,7 +100,11 @@ function codexVision(screenshotPath: string, target: string): Promise<VisionCoor
         ];
 
         const child = spawn('codex', args, {
-            stdio: ['pipe', 'pipe', 'pipe'],
+            // stdin is ignored, not piped: an open pipe makes codex wait on
+            // "Reading additional input from stdin", so the process only ended
+            // when the timeout killed it — burning the full budget on a turn
+            // that had already answered.
+            stdio: ['ignore', 'pipe', 'pipe'],
             timeout: 60000,
         });
 
