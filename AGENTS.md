@@ -4,6 +4,8 @@ System-level AI agent with full computer control via CLI wrapping (pi, agy, ai-e
 
 Native Code API: `/api/code` is composed by `src/code-mode/host.ts` and `src/routes/code-native.ts`. Keep per-backend storage, captured turn ownership, full snapshots/compact replay, byte limits, native approval capabilities, and observed process-exit proof aligned with `structure/runtime-integration.md` and `server_api.md`. It uses direct native adapters rather than Jaw orchestration or its runtime pools.
 
+Native Code interruption seals callbacks before persisting accepted buffered content under the captured store owner. Worker and Manager share the Code JSON body policy in `src/routes/code-body-parser.ts` (1MiB decoded prompt, 6MiB + 4KiB envelope); generic API limits stay separate. Settings navigation guards the drafts actually being discarded, including keyboard and desktop subscriptions.
+
 ## Repository Structure
 
 ```
@@ -275,7 +277,7 @@ Native quota readers follow the OpenCodex source contract: Codex window duration
 
 - Claude unleased acquisition cleanup stays attached to its captured main/worker control after logical settlement; rejected cleanup is not physical completion. Late completion must not replay lifecycle or run main through worker-directory cleanup. Main steer, slash fallback and queue steer use the main-only wait while inclusive scoped/global shutdown still counts workers; preserve the following exit-settle/salvage barrier. See `structure/runtime-integration.md` and `structure/prompt_flow.md`.
 
-- `multiSession.midRunPolicy` 기본값은 `'steer'`다. JWC와 steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor와 Grok은 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. Cursor는 원래 요청·수락된 추가 지시·제한된 부분 출력을 읽기 전용 문맥으로, 현재 운영 지침을 활성 지침으로 복원한다. Grok에는 이 재주입을 적용하지 않는다.
+- `multiSession.midRunPolicy` 기본값은 `'steer'`다. steer 가능한 Codex App turn은 in-band 입력을 받는다. Native Cursor와 Grok은 `replaceTurn` 훅으로 원래 prompt 취소 응답·업데이트·callback을 모두 처리한 뒤 같은 native session에 다시 요청한다. 이는 `cancel-reprompt`이며 native-input이 아니다. Cursor는 원래 요청·수락된 추가 지시·제한된 부분 출력을 읽기 전용 문맥으로, 현재 운영 지침을 활성 지침으로 복원한다. Grok에는 이 재주입을 적용하지 않는다.
 - Native Cursor와 Grok은 전송 완료 뒤에도 main 객체·세대·정규 소유권을 재검사하고 입력을 한 번만 기록한다. 진행 중인 replacement의 후속 입력은 큐로 갈 수 있지만, 취소·전송·기록 실패는 자동 재시도하지 않는다. Stop으로 무효화된 입력은 실제 enqueue까지 보호하고 `cancelled`로 끝내며, 이후 새 입력은 받을 수 있다. 나머지 런타임의 기존 in-band/kill-steer 동작과 `followup`/`collect` 대기는 유지한다.
 - `/steer`는 런타임 훅을 사용한다. 별도 `/queue steer <n>`은 기존 항목을 중단 후 우선 실행하는 동작을 유지한다. Kill 경로의 제한된 부분 출력은 pre-kill MAX(id)와 정확한 exit-settle 배리어 뒤 `withSteerContext`로 복원한다. 전체 과거 맥락 보존을 보장하지 않는다. 정책 표는 `structure/prompt_flow.md`를 참고한다.
 

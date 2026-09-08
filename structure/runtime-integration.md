@@ -351,7 +351,12 @@ Activity projection. Embedded structured data is redacted before persistence;
 truncation is explicit. Materialized items remain complete. Sequence-ordered
 `code_item_update` events carry append suffixes or status/phase changes, while
 full replacements use `code_item`. Production coalesces intermediate content for
-50ms and flushes final/control changes. Replay and snapshots are byte-bounded;
+50ms and flushes final/control changes. Interruption seals native callbacks, then
+synchronously persists already accepted pending content while the captured
+session/epoch/turn still owns each write. Late callbacks stay rejected; failed
+persistence or exhausted event capacity cannot retry content through the terminal
+reserve. Store settlement remains the sole turn-terminal authority. Replay and
+snapshots are byte-bounded;
 snapshots include the complete active turn or fail explicitly. Hard bounds are
 4MiB/event, 8MiB/replay or snapshot, 32MiB ordinary events/turn and a separate
 2MiB control/terminal reserve. Capacity errors settle as visible failed turns;

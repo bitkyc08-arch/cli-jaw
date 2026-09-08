@@ -65,8 +65,9 @@ npm run sidecar:bundle
 - copies `dist/`, `public/`, `package.json`, and lockfile into
   `electron/sidecar/server`,
 - installs production dependencies with scripts disabled from the copied lockfile,
-- does not install JWC, `jawcode`, `@jawcode-dev`, `@oven`, or `bun`; users who
-  select JWC must install/build jawcode separately and set `JWC_SDK_PATH`,
+- excludes retired JWC, `jawcode`, `@jawcode-dev`, `@oven`, and `bun` payloads;
+  saved JWC selections require an explicit supported runtime choice, and Code
+  sessions use the native Codex, Claude, Cursor or Grok adapter,
 - prunes frontend-only packages,
 - rebuilds `better-sqlite3`,
 - creates `bin/jaw` or `bin/jaw.cmd` to launch `dist/bin/cli-jaw.js`,

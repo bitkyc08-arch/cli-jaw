@@ -566,3 +566,9 @@ visible, and their model controls are disabled until a supported runtime is
 chosen. Classic native selects keep a disabled selected tombstone so rendering
 cannot silently choose the first available runtime. No settings write occurs
 merely from displaying the retired value.
+
+Settings navigation tracks the Instance and Dashboard drafts separately. Leaving
+Dashboard, closing Instance settings or changing instance confirms only drafts
+that the transition discards. Retained pages preserve their drafts. Both keyboard
+and desktop shortcut subscriptions observe Dashboard dirty-state changes even
+when a retained Instance draft already keeps the aggregate dirty flag true.

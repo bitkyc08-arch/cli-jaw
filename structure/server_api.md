@@ -38,33 +38,33 @@ Live `/api/orchestrate/snapshot` tool hydration now reads up to400 newest durabl
 
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
-| `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
-| `src/routes/static.ts` | 137L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
-| `src/routes/system.ts` | 82L | 5 | health/session/runtime/auth-token/slack-manifest |
-| `src/routes/messages.ts` | 186L | 5 | message list/count/search/latest and exact saved Activity answer |
-| `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
+| `server.ts` | 761L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
+| `src/routes/static.ts` | 160L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
+| `src/routes/system.ts` | 149L | 5 | health/session/runtime/auth-token/slack-manifest |
+| `src/routes/messages.ts` | 187L | 5 | message list/count/search/latest and exact saved Activity answer |
+| `src/routes/command.ts` | 259L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
-| `src/routes/chat-sessions.ts` | 62L | 4 | session list/create/switch/delete (전 route requireAuth) |
+| `src/routes/chat-sessions.ts` | 60L | 4 | session list/create/switch/delete (전 route requireAuth) |
 | `src/routes/search.ts` | 95L | 1 | `/api/search` 통합 검색 (requireAuth, corpus 검증, cursor 400) |
-| `src/routes/wiki.ts` | 118L | 3 | 옵트인 위키 status/enable/configure (requireAuth, root 충돌 400, scaffold 실패 시 disabled 유지, 040) |
+| `src/routes/wiki.ts` | 150L | 3 | 옵트인 위키 status/enable/configure (requireAuth, root 충돌 400, scaffold 실패 시 disabled 유지, 040) |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
-| `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
+| `src/routes/events.ts` | 140L | 1 | `/api/events` data-only SSE event channel |
 | `src/routes/settings.ts` | 756L | 24 | settings/prompt/default-runtime migration/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
-| `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
-| `src/routes/orchestrate.ts` | 1085L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
+| `src/routes/jaw-memory.ts` | 362L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
+| `src/routes/orchestrate.ts` | 1222L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
 | `src/routes/goal.ts` | 183L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
-| `src/routes/messaging.ts` | 267L | 7 | upload/file-open/voice/telegram/channel/discord send + 온보딩 크리덴셜 검증 |
+| `src/routes/messaging.ts` | 522L | 7 | upload/file-open/voice/telegram/channel/discord send + 온보딩 크리덴셜 검증 |
 | `src/routes/employees.ts` | 123L | 5 | employee CRUD + reset |
-| `src/routes/skills.ts` | 89L | 5 | skills list/read/enable/disable/reset |
-| `src/routes/avatar.ts` | 146L | 4 | avatar summary + agent/user image upload/delete/read |
-| `src/routes/traces.ts` | 80L | 3 | public trace summary/event read routes |
+| `src/routes/skills.ts` | 90L | 5 | skills list/read/enable/disable/reset |
+| `src/routes/avatar.ts` | 147L | 4 | avatar summary + agent/user image upload/delete/read |
+| `src/routes/traces.ts` | 167L | 3 | public trace summary/event read routes |
 | `src/routes/runtime-requests.ts` | 35L | 2 | exact-bound ephemeral native decisions; existing instance auth |
 | `src/routes/runtime-request-notices.ts` | 22L | — | captured chat to presentation-scope SSE notice mapping |
-| `src/routes/link-preview.ts` | 319L | 2 | Rich link preview metadata fetch + guarded image proxy |
-| `src/routes/heartbeat.ts` | 289L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
+| `src/routes/link-preview.ts` | 300L | 2 | Rich link preview metadata fetch + guarded image proxy |
+| `src/routes/heartbeat.ts` | 305L | 4 | heartbeat GET + validated PUT + mention-watch hold read/fresh-start |
 | `src/routes/jaw-ceo.ts` | 321L | 20 | Jaw CEO coordinator: state/message/query/docs-edit/settings/events/pending/watch/audit/voice/confirmations |
 | `src/routes/runtime-context.ts` | 46L | 4 | runtime context entry CRUD (ephemeral prompt injection), mounted at `/api/runtime-context` |
 | `src/routes/security-audit.ts` | 18L | 2 | security audit log entries + verify, mounted at `/api/security-audit` |
@@ -184,7 +184,7 @@ Cursor/Grok activation and Activity controls are separate from this API foundati
 | Security Audit | `GET /api/security-audit/entries` `GET /api/security-audit/verify` |
 | Heartbeat | `GET/PUT /api/heartbeat` `GET /api/heartbeat/:jobId/mention-watch-hold` `POST /api/heartbeat/:jobId/mention-watch-fresh-start` |
 | Browser | `POST /api/browser/start` `POST /api/browser/stop` `GET /api/browser/status` `GET /api/browser/doctor` `POST /api/browser/cleanup-runtimes` `GET /api/browser/snapshot` `POST /api/browser/screenshot` `POST /api/browser/act` `POST /api/browser/vision-click` `POST /api/browser/navigate` `POST /api/browser/reload` `POST /api/browser/resize` `GET /api/browser/tabs` `GET /api/browser/active-tab` `POST /api/browser/tab-switch` `POST /api/browser/tab-new` `POST /api/browser/tab-close` `POST /api/browser/tab-cleanup` `POST /api/browser/evaluate` `GET /api/browser/text` `GET /api/browser/dom` `GET /api/browser/console` `GET /api/browser/network` `POST /api/browser/fetch` `POST /api/browser/wait-for-selector` `POST /api/browser/wait-for-text` `POST /api/browser/web-ai/render` `POST /api/browser/web-ai/context-dry-run` `POST /api/browser/web-ai/context-render` `GET /api/browser/web-ai/status` `POST /api/browser/web-ai/send` `GET /api/browser/web-ai/poll` `GET /api/browser/web-ai/watch` `GET /api/browser/web-ai/watchers` `GET /api/browser/web-ai/sessions` `POST /api/browser/web-ai/sessions/prune` `GET /api/browser/web-ai/notifications` `GET /api/browser/web-ai/capabilities` `POST /api/browser/web-ai/query` `POST /api/browser/web-ai/code` `POST /api/browser/web-ai/code-extract` `POST /api/browser/web-ai/stop` `GET /api/browser/web-ai/diagnose` |
-| Code Mode | `GET /api/code/git-info` `GET /api/code/models` `POST /api/code/model-default` `POST /api/code/workspace/pick` `GET /api/code/model-assignments` `PUT /api/code/model-assignments/:role` `DELETE /api/code/model-assignments/:role` `GET /api/code/model-presets` `GET /api/code/sessions` `GET /api/code/sessions/stored` `POST /api/code/sessions/load` `POST /api/code/sessions/:id/ext` `POST /api/code/sessions/:id/fork` `POST /api/code/sessions/:id/model` `POST /api/code/sessions` `POST /api/code/sessions/:id/prompt` `POST /api/code/sessions/:id/cancel` `POST /api/code/sessions/:id/config` `DELETE /api/code/sessions/:id` `GET /api/code/permissions` `POST /api/code/permissions/:id` |
+| Code Mode | `GET /api/code/models` `GET /api/code/sessions` `GET /api/code/sessions/:id` `GET /api/code/sessions/:id/events` `GET /api/code/sessions/:id/items` `POST /api/code/sessions` `PATCH /api/code/sessions/:id` `POST /api/code/sessions/:id/prompt` `POST /api/code/sessions/:id/cancel` `POST /api/code/sessions/:id/attach` `POST /api/code/permissions/:id` `GET /api/code/git-info` `POST /api/code/workspace/pick` |
 | Orchestrate | `POST /api/orchestrate/reset` `GET /api/orchestrate/state` `GET /api/orchestrate/workers` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` (also accepts a current/recent `runId`) `GET /api/orchestrate/worker-runs` `GET /api/orchestrate/worker-runs/:runId` `GET /api/orchestrate/worker-runs/:runId/events` `GET /api/orchestrate/worker-runs/:runId/output` `GET /api/orchestrate/snapshot` `DELETE /api/orchestrate/queue/:id` `POST /api/orchestrate/queue/:id/hold` `DELETE /api/orchestrate/queue/:id/hold` `POST /api/orchestrate/queue/:id/steer` `POST /api/orchestrate/dispatch/pending` `GET /api/orchestrate/dispatch/pending/:jti` `POST /api/orchestrate/dispatch` `POST /api/orchestrate/dispatch/batch` `GET /api/orchestrate/worker/:agentId/result` (also accepts a current `runId`) `PUT /api/orchestrate/state` |
 | Background Tasks | `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` |
 | Goal | `GET /api/goal` `GET /api/goal/history` `POST /api/goal` |
@@ -422,7 +422,7 @@ All trace routes set `Cache-Control: no-store` before auth/parsing. Activity dis
 | Runtime monitors | `GET /api/manager/runtime-status` `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` |
 | Registry | `GET /api/dashboard/registry` `PATCH /api/dashboard/registry` |
 
-`PATCH /api/dashboard/registry` `ui` is whitelisted by `normalizeUi` (`src/manager/registry.ts`); `ui.instanceSettingsOpen` (boolean, default `false`, 260908 wp3) persists whether the Workbench instance-settings side panel is open, and `ui.selectedTab` still accepts the legacy `'settings'` value, which hydrates as `overview` with the panel open.
+`PATCH /api/dashboard/registry` `ui` is whitelisted by `normalizeUi` (`src/manager/registry.ts`); `ui.instanceSettingsOpen` (boolean, default `false`, 260908 wp3) persists whether the Workbench full instance-settings page is open, and `ui.selectedTab` still accepts the legacy `'settings'` value, which hydrates as `overview` with the settings page open.
 | Lifecycle | `POST /api/dashboard/lifecycle/:action` (start/stop/restart/perm/unperm) |
 | Process control | `GET /api/dashboard/process-control` `POST /api/dashboard/process-control/adopt` `POST /api/dashboard/process-control/stop-managed` `POST /api/dashboard/process-control/force-release` |
 | Desktop/Electron | `GET /api/dashboard/desktop-status` `GET/POST /api/dashboard/electron-metrics` |
@@ -470,6 +470,21 @@ policy on both the worker and Manager. Responses use `{ok:true,...}` or
 
 Snapshots contain complete items. Replay may contain `code_item_update` append
 suffixes and status/phase changes; apply only once in contiguous sequence to the
-existing item. Preserve `firstSequence` ordering. JSON parser errors receive a
-JSON Code error response before any lazy host initialization. Old JWC-specific
-role/preset/ext/fork/config routes in this namespace return410.
+existing item. Preserve `firstSequence` ordering. Worker and Manager use the same
+Code JSON envelope cap of 6MiB + 4KiB; decoded prompt `text` is limited to 1MiB
+of UTF-8 bytes. The larger envelope accepts JSON escape expansion without
+increasing the decoded prompt allowance. Oversized envelopes return413 and
+oversized decoded prompts return400 before lazy host initialization. JSON parser
+errors receive a JSON Code error response. Parsing precedes authentication, so
+malformed or oversized requests can return400/413 before an authentication error.
+Other API requests retain their existing worker 1MiB / Manager 64KiB limits and
+Manager streaming exemptions.
+
+Retired compatibility endpoints return410 and are excluded from the active
+Code Mode inventory: `GET /api/code/sessions/stored`,
+`POST /api/code/sessions/load`, and all methods on `/api/code/model-default`,
+`/api/code/model-assignments`, `/api/code/model-presets`,
+`/api/code/model-assignments/:role`, `/api/code/sessions/:id/ext`,
+`/api/code/sessions/:id/fork`, `/api/code/sessions/:id/config` and
+`/api/code/sessions/:id/model`. Unsupported paths such as session DELETE or
+permission-list GET are not functional native APIs.

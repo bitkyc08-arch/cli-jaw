@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-07-10 (image inlay/channel relay SoT sync)
-> `server.ts` 640L / `src/routes/` 36 TS files (238 route handlers including `/`; 237 API endpoints; `src/routes/` subtotal 199 handlers) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 48 TS files (spawn.ts 2544L + events/ submodules + cursor/claude-e/agy runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 100 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 9 files (+`hub-callback.ts`) / `src/messaging/` 13 files (+`thread-target.ts`, `extract-images.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
+> Native Code sessions live in `src/code-mode/`; the two HTTP hosts share `src/routes/code-body-parser.ts`. The route inventory and its partial-AST boundary are documented in [server_api.md](server_api.md); runtime ownership and replay are documented in [runtime-integration.md](runtime-integration.md). File-tree line counts below are maintained by `verify-counts.sh`.
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -19,7 +19,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (760L)
+├── server.ts                 ← Express 라우트 base + auth/CORS/rate-limit + WS bootstrap + `register*Routes()` glue + startup stale orc_state guard + graceful shutdown(closeDb) + employee migration + seed defaults + registerAvatarRoutes + async listen bootstrap (await initActiveMessagingRuntime) + orphaned jaw-emp-* cleanup + clearAllEmployeeSessions startup + no-store Vite index serving (761L)
 ├── lib/                      ← 외부 통합/공용 헬퍼 (5 root files + mcp/ 8 files)
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + softResetSkills + runSkillReset + trusted repair gate + clone cooldown (83L)
 │   ├── mcp/                  ← MCP 모듈 분리 (8 files)
@@ -70,6 +70,22 @@ cli-jaw/
 │   │   ├── tcc.ts            ← macOS TCC / screen-recording 권한 점검 (55L)
 │   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (258L)
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
+│   ├── code-mode/            ← native Code sessions, independent of Jaw orchestration
+│   │   ├── host.ts ← per-backend lazy composition and storage (64L)
+│   │   ├── manager.ts ← session index, admission and resource capacity (296L)
+│   │   ├── session.ts ← captured turn ownership, cancellation and accepted-buffer drain (623L)
+│   │   ├── normalize.ts ← redacted materialized transcript and coalescing (534L)
+│   │   ├── store.ts ← SQLite ownership, replay, snapshots and byte budgets (794L)
+│   │   ├── provider.ts ← native handle and turn-context contracts (53L)
+│   │   ├── types.ts ← internal session and store contracts (12L)
+│   │   ├── wire.ts ← public request/event DTOs (178L)
+│   │   └── providers/        ← direct native adapters and capabilities
+│   │       ├── catalog.ts ← model/capability descriptions (71L)
+│   │       ├── codex-app.ts ← Codex app-server adapter (320L)
+│   │       ├── claude.ts ← Claude native adapter (93L)
+│   │       ├── acp.ts ← shared ACP resource ownership (134L)
+│   │       ├── cursor.ts ← Cursor native adapter (21L)
+│   │       └── grok.ts ← Grok native adapter (23L)
 │   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── runtime/          ← shared native contract foundation (provider activation follows separately)
 │   │   │   ├── acp/          ← shared v1 wire boundary and bounded native transport
@@ -379,6 +395,9 @@ cli-jaw/
 │   │   └── diff.ts            ← git diff 감지 + IDE diff 뷰 + 서브모듈 재귀 + fingerprint 비교 (238L)
 │   ├── project-git-summary.ts ← Web UI header용 read-only primary project git summary helper (`projectDirs[0]`, branch/hash, modified/untracked counts, home path guard, 115L) ✨
 │   ├── routes/               ← Express 라우트 추출 (36 TS files: registrar + helper modules + extracted base-route modules, 199 direct app route registrations incl. `/`)
+│   │   ├── code-body-parser.ts ← shared worker/Manager Code envelope policy (29L)
+│   │   ├── code-native.ts ← native session API and retired-route responses (208L)
+│   │   ├── code.ts ← workspace picker and Git summary helpers (79L)
 │   │   ├── _http-error.ts    ← route-level HTTP error helper (status/code/detail 추출) (35L)
 │   │   ├── types.ts          ← `AuthMiddleware` shared type (3L)
 │   │   ├── static.ts         ← root/uploads/widgets + guarded local image/video `/api/image` 서빙 (160L)
