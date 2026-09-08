@@ -767,3 +767,10 @@ test('narrow instance rows contain text and move whole quick actions below selec
     assert.match(css, /\.instance-row-title strong\s*\{[^}]*flex:\s*0 1 auto;[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/);
     assert.doesNotMatch(css, /\.(?:instance-row|instance-row-body|instance-row-quick|instance-row-select|quick-btn)\s*\{[^}]*overflow:\s*(?:hidden|clip)/);
 });
+
+test('sidebar status labels expose full text and explicit ellipsis', () => {
+    const css = read('public/manager/src/manager-components.css');
+    const row = read('public/manager/src/components/InstanceRow.tsx');
+    assert.match(css, /\.instance-row-status-pill\s*\{[^}]*text-overflow:\s*ellipsis;/);
+    assert.ok(row.includes('title={statusLabel}'));
+});

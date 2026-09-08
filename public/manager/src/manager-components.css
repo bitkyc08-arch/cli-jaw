@@ -387,6 +387,12 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 .instance-row-status-line[data-status="offline"] {
     color: var(--sidebar-row-ready);
 }
+.instance-row-status-pill {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .instance-row-status-pill,
 .instance-row-working-duration {
     color: inherit;

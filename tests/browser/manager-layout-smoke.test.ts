@@ -507,6 +507,7 @@ layoutTest('manager sidebar shell resizes, persists, resets, and collapses', asy
                 row.setAttribute('data-narrow-row', label);
                 row.querySelector('.instance-row-title strong').textContent = '아주 긴 한국어 프로젝트 이름과 작업 인스턴스 상태 확인';
                 row.querySelector('.instance-row-status-pill').textContent = '온라인 작업 준비 상태 확인';
+                row.querySelector('.instance-row-status-pill').title = '온라인 작업 준비 상태 확인';
                 row.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
                 row.querySelectorAll('[aria-controls]').forEach(el => el.removeAttribute('aria-controls'));
                 row.querySelectorAll('.action-sessions').forEach(el => el.remove());
@@ -548,6 +549,15 @@ layoutTest('manager sidebar shell resizes, persists, resets, and collapses', asy
                     const next = await readNarrow();
                     stableFrames = JSON.stringify(next) === JSON.stringify(geometry) ? stableFrames + 1 : 0;
                     geometry = next;
+                }
+                const statusText = await page.locator('[data-narrow-row] .instance-row-status-pill').evaluateAll(elements => elements.map(element => ({
+                    ellipsis: globalThis.getComputedStyle(element).textOverflow,
+                    title: element.getAttribute('title'), text: element.textContent,
+                })));
+                assert.equal(statusText.length, 2);
+                for (const status of statusText) {
+                    assert.equal(status.ellipsis, 'ellipsis');
+                    assert.equal(status.title, status.text, 'full status text remains available in its tooltip');
                 }
                 const screenshot = `sidebar-synthetic-${requestedSidebarWidth}-${sessions ? 'sessions' : 'no-sessions'}.png`;
                 captures.push({ requestedSidebarWidth, sessions, syntheticDOM: true, screenshot, geometry });
