@@ -19,6 +19,7 @@
 - Route refactors belong in `INDEX.md`, `server_api.md`, `infra.md`, and `str_func.md`. CLI handler splits and auth helper changes belong in `commands.md`, `memory_architecture.md`, `telegram.md`, and `str_func.md`.
 
 - Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `frontend.md`.
+- Manager terminal presentation preserves backend PTY ownership across hide/unmount. Keep hydration-first bounded creation, explicit recovery, stable tab identity and focus ownership separate from native Code API sessions; theme updates must not recreate shells. See `frontend.md`.
 
 ## Current sync hotspots (2026-06)
 

@@ -582,7 +582,9 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     assert.ok(terminal.includes("import { Terminal } from '@xterm/xterm'"), 'TerminalPanel must use xterm.js for real terminal input/rendering');
     assert.ok(terminal.includes("import { FitAddon } from '@xterm/addon-fit'"), 'TerminalPanel must fit terminal rows/cols to the panel');
     assert.ok(terminal.includes('term.onData(data => {'), 'xterm input must stream directly to the terminal bridge');
-    assert.ok(terminal.includes('term.onResize(({ cols, rows }) => { void bridge.resize(id, cols, rows); })'), 'terminal resize must flow to the PTY backend');
+    assert.ok(terminal.includes('term.onResize(({ cols, rows }) => { void resizeTerminal(id, cols, rows); })'), 'terminal resize events must use the shared handled boundary');
+    const resizeBoundary = terminal.slice(terminal.indexOf('const resizeTerminal = useCallback'), terminal.indexOf('const fitTerminal = useCallback'));
+    assert.match(resizeBoundary, /try\s*\{[\s\S]*await bridge\.resize\(id, cols, rows\)[\s\S]*catch\s*\{[\s\S]*setPresentationError/, 'the shared resize boundary must call PTY resize and handle rejection');
     assert.ok(terminal.includes('createAccessibilityInputBridge'), 'terminal must include an accessibility input bridge for Computer Use/native text injection');
     assert.ok(terminal.includes("textarea.terminal-a11y-input"), 'accessibility input bridge must use a dedicated input instead of xterm internals');
     assert.ok(terminal.includes('aria-label="Terminal automation input"'), 'dedicated accessibility input must not share xterm helper textarea labels');

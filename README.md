@@ -500,6 +500,8 @@ Monitor each AI engine's health and usage at a glance.
 
 Prefer a native window to a browser tab? CLI-JAW ships an **Electron desktop shell** that boots the manager dashboard and supervises the underlying `jaw dashboard serve` process for you. Packaged desktop builds include a Node.js sidecar server, so the app can prefer its bundled `jaw` shim before falling back to a global terminal install.
 
+The Manager sidebar separates instance selection from session and process actions, and remembers your preferred width when panels temporarily narrow the workspace. Its bottom terminal has named session tabs, keyboard navigation and light/dark/auto theme support. Hiding the panel keeps shells running; closing a terminal session ends that shell. Failed terminal startup offers explicit recovery without discarding existing sessions.
+
 For end users, download the desktop artifact from **GitHub Releases**:
 
 - **macOS**: download the DMG, drag CLI-JAW into Applications, then launch it. Current builds are unsigned / un-notarized, so first launch may require right-click → **Open** in Finder.

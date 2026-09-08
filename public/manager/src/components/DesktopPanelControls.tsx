@@ -1,3 +1,4 @@
+import { TERMINAL_REVEAL_CONTROL_ID } from '../terminal/terminal-shortcut-queue';
 import { usePanelActions, usePanelLayout } from '../panels/PanelLayoutProvider';
 import { currentManagerSurface, panelCapabilityEnabled, resolvePanelCapabilities } from '../panels/panel-capabilities';
 
@@ -33,25 +34,28 @@ export function DesktopPanelControls() {
     const terminalEnabled = panelCapabilityEnabled(terminalCapability);
     const rightEnabled = panelCapabilityEnabled(rightCapability);
 
-    const bottomOpen = panelLayout.state.bottomPanel.open;
+    const bottomPanel = panelLayout.state.bottomPanel;
+    const terminalOpen = bottomPanel.open && (bottomPanel.activeTab ?? bottomPanel.tabs[0]) === 'terminal';
     const rightOpen = panelLayout.effectiveRightOpen;
 
     return (
         <div className="command-panel-controls" aria-label="Desktop panels">
             <button
-                className={`command-panel-toggle${bottomOpen ? ' is-active' : ''}`}
+                className={`command-panel-toggle${terminalOpen ? ' is-active' : ''}`}
                 type="button"
                 disabled={!terminalEnabled}
                 onClick={() => {
                     if (!terminalEnabled) return;
-                    if (bottomOpen) {
+                    if (terminalOpen) {
                         panelActions.toggleBottomPanel();
                     } else {
                         panelActions.openBottomTab('terminal');
+                        document.dispatchEvent(new CustomEvent('jaw:shortcut-action', { detail: 'focusTerminal' }));
                     }
                 }}
+                id={TERMINAL_REVEAL_CONTROL_ID}
                 aria-label="Toggle terminal panel"
-                aria-pressed={bottomOpen}
+                aria-pressed={terminalOpen}
                 title={terminalCapability.reason ?? 'Terminal (Ctrl+`)'}
             >
                 <TerminalIcon />

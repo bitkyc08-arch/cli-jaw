@@ -39,7 +39,7 @@ export function BottomPanel(props: BottomPanelProps) {
             aria-label="Bottom panel"
             aria-hidden={!bp.open}
         >
-            <PanelResizer direction="vertical" onDelta={handleHeightDelta} />
+            <PanelResizer direction="vertical" onDelta={handleHeightDelta} ariaLabel="Resize bottom panel height" ariaValueNow={bp.height} />
             {!ownsChrome && (
                 <BottomPanelTabBar
                     tabs={bp.tabs}

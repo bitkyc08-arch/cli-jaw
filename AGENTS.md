@@ -194,6 +194,7 @@ Before any public push, run `npm run check:private-boundary` for the index and `
 ### Architecture Docs Sync
 
 - Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `structure/frontend.md`.
+- Manager terminal presentation preserves backend PTY ownership across hide/unmount. Keep hydration-first bounded creation, explicit recovery, stable tab identity and focus ownership separate from native Code API sessions; theme updates must not recreate shells. See `structure/frontend.md`.
 
 - Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `structure/server_api.md`.
 
