@@ -240,7 +240,11 @@ Establish the surface before the first call:
 
 What stays true across surfaces: read state before acting, prefer an accessibility element index over raw coordinates, use coordinates only when the target is visible but absent from the element tree, and re-read state after anything that changes the UI.
 
-Platform shape differs. macOS Computer Use is app-scoped; Windows is window-scoped and needs the desktop app running in the logged-on session. An empty window list on Windows usually means the transport is not connected rather than that no windows are open — treat it as a precondition failure, not an empty result. The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
+Platform shape differs. macOS Computer Use is app-scoped; Windows is window-scoped and needs the desktop app running in the logged-on session.
+
+Two Windows results look like success and are not. An enumeration that answers **proves nothing about the connection** — it can succeed locally while no window is readable. And an empty window list usually means the **transport is not connected** rather than that no windows are open; treat it as a precondition failure, not an empty result.
+
+The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
 
 If a precondition fails, stop and report `precondition failed: <name>`. Never fall back to CDP silently.
 

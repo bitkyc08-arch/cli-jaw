@@ -1,13 +1,18 @@
-// #308: the prompts must teach the RIGHT Computer Use API per platform.
+// #308 originally pinned the RIGHT Computer Use API per platform, because
+// telling a Windows agent to call a macOS-only tool produced an opaque runtime
+// error rather than a clean precondition failure.
 //
-// macOS is app-scoped (`get_app_state`), Windows is window-scoped
-// (`list_windows` -> `get_window_state`). Telling a Windows agent to call
-// `get_app_state` produces `sky.get_app_state is not a function`, so the
-// Windows guidance must never mention it.
+// That intent still matters, but the tool names it asserted are gone. A current
+// Codex build exposes no `mcp__computer_use__*` tool at all - even with the
+// computer-use plugin enabled and declaring its MCP server - and provides a CUA
+// JavaScript session instead. Pinning names made the templates fail closed
+// against a surface that no longer exists.
 //
-// Note the scoping: the macOS assertions are global (those tools genuinely
-// belong in the doc), while the Windows prohibitions are checked ONLY inside
-// the Windows section. A global negative would break the macOS contract.
+// So these tests now assert what survives a host change: the prompts must tell
+// the agent to establish the surface rather than assume it, must keep the
+// platform SHAPE distinction (macOS app-scoped, Windows window-scoped), must
+// preserve the two Windows results that look like success, and must keep the
+// sandbox flag honest.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -27,41 +32,41 @@ function windowsLines(source: string): string {
 }
 
 for (const file of ['a1-system.md', 'control-system.md', 'employee.md']) {
-    test(`PLAT-001 (${file}): teaches the Windows window-scoped sequence`, () => {
+    test(`PLAT-001 (${file}): tells the agent to establish the surface, not assume it`, () => {
         const src = read(file);
-        assert.match(src, /list_windows\(\)/, 'Windows discovery call must be documented');
-        assert.match(src, /get_window_state/, 'Windows state read must be documented');
+        assert.match(src, /surface belongs to the host|host-provided|host-owned/i,
+            'the prompt must say the tool surface is host-provided');
+        assert.match(src, /do not assume tool names|Do not assume a tool name/i,
+            'the prompt must forbid assuming tool names');
     });
 
-    test(`PLAT-002 (${file}): never tells Windows to use the macOS-only calls`, () => {
+    test(`PLAT-002 (${file}): keeps the platform shape distinction`, () => {
+        const src = read(file);
+        assert.match(src, /app-scoped/i, 'macOS app-scoped shape must remain');
+        assert.match(src, /window-scoped/i, 'Windows window-scoped shape must remain');
+    });
+
+    test(`PLAT-003 (${file}): never instructs a specific retired tool call on Windows`, () => {
         const windows = windowsLines(read(file));
         assert.ok(windows.length > 0, 'the file must actually mention Windows');
-        // "no get_app_state" / "does not exist" statements are allowed; what is
-        // banned is an instruction to CALL it on Windows.
         assert.doesNotMatch(windows, /Windows[^.\n]*(?:call|use|start with|first action is)\s+`?get_app_state/i);
         assert.doesNotMatch(windows, /Windows[^.\n]*(?:call|use)\s+`?select_text/i);
     });
-
-    test(`PLAT-003 (${file}): keeps the macOS app-scoped contract`, () => {
-        const src = read(file);
-        assert.match(src, /get_app_state/, 'macOS state-first call must remain');
-    });
 }
 
-test('PLAT-004: a1-system documents the two Windows results that look like success', () => {
+test('PLAT-004: a1-system keeps the two Windows results that look like success', () => {
     const a1 = read('a1-system.md');
-    assert.match(a1, /list_apps\(\)[^\n]*(?:not a health|dead pipe|never[^\n]*health)/i,
-        'list_apps must be marked as NOT a health signal');
-    assert.match(a1, /not on the pipe/i,
-        'an empty window list must be described as a pipe/session precondition failure');
-    assert.match(a1, /node_repl/, 'the node_repl requirement must be stated');
+    // An enumeration that answers is not a health check for the connection.
+    assert.match(a1, /proves nothing about the connection|not a health/i,
+        'an enumeration that answers must be marked as not proving connectivity');
+    // An empty window list is a transport failure, not an empty result.
+    assert.match(a1, /transport is not connected|not on the pipe/i,
+        'an empty window list must be described as a transport precondition failure');
 });
 
-test('PLAT-005: a1-system states the Windows host preconditions', () => {
+test('PLAT-005: a1-system states the Windows host precondition that still holds', () => {
     const a1 = read('a1-system.md');
     assert.match(a1, /logged-on/i, 'the logged-on session requirement must be stated');
-    assert.match(a1, /config\.toml/, 're-reading config.toml after launch must be stated');
-    assert.match(a1, /pipe/i, 'the named pipe must be explained');
 });
 
 test('PLAT-006: the sandbox bypass is named honestly and never auto-applied', () => {
@@ -79,3 +84,19 @@ test('PLAT-007: Linux and WSL remain denied', () => {
     assert.match(a1, /no Computer Use host|CDP only|only the \*\*CDP browser path\*\*/i,
         'Linux/WSL must be pointed at CDP');
 });
+
+test('PLAT-008: no template hard-codes a Computer Use MCP tool name as the contract', () => {
+    // The retired names may appear at most once per file, and only as historical
+    // context explaining that older builds exposed them.
+    for (const file of ['a1-system.md', 'control-system.md', 'employee.md']) {
+        const src = read(file);
+        const hits = src.match(/mcp__computer_use__/g) ?? [];
+        assert.ok(hits.length <= 1,
+            `${file} names the retired MCP surface ${hits.length} times; at most one historical mention is allowed`);
+        if (hits.length === 1) {
+            assert.match(src, /[Oo]lder builds exposed/,
+                `${file} may only mention the retired name as historical context`);
+        }
+    }
+});
+
