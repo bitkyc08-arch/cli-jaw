@@ -1425,7 +1425,7 @@ async function runSlackInit(ctx?: TransportInitContext): Promise<TransportStartO
             return transportNotStarted('token_shared_other_home');
         }
         if (observed.kind === 'uncertain') {
-            log.warn('[slack] token claim inspection unavailable; failing open:', observed.error);
+            log.warn('[slack] token claim inspection unavailable; failing open:', logErrorText(observed.error));
         }
     }
 
@@ -1496,7 +1496,7 @@ async function runSlackInit(ctx?: TransportInitContext): Promise<TransportStartO
                 ? arb.recordPresence()
                 : null;
         if (claim?.kind === 'unavailable') {
-            log.warn('[slack] shared token claim unavailable; failing open:', claim.error);
+            log.warn('[slack] shared token claim unavailable; failing open:', logErrorText(claim.error));
         }
         if (claim?.kind === 'foreign_live') {
             arb.applyForeignLiveOnce(() => {
