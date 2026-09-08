@@ -507,3 +507,85 @@ jobs:
           GATES_RESULT: ${{ needs.gates.result }}
           WINDOWS_UNIT_RESULT: ${{ needs.windows-unit.result }}
         run: bash scripts/ci/aggregate-check.sh
+
+
+  # Explicit final-candidate browser evidence; never part of push/PR admission.
+  # Existing workflow registration supplies dispatch at a selected dev ref.
+  hosted-manager-qa:
+    name: Hosted Manager QA
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      EXPECTED_SHA: ${{ github.sha }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/jaw-qa-browsers
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Initialize external evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/jaw-hosted-qa-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/artifacts"
+          mkdir -p "$evidence"
+          echo "QA_ARTIFACT_DIR=$evidence" >> "$GITHUB_ENV"
+          printf 'INCOMPLETE run=%s attempt=%s expected=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$EXPECTED_SHA" > "$evidence/preflight.log"
+          actual="$(git rev-parse HEAD)"
+          printf 'checkout=%s ref=%s\n' "$actual" "$GITHUB_REF" >> "$evidence/preflight.log"
+          [[ "$EXPECTED_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$actual" = "$EXPECTED_SHA"
+          test "$actual" = "$GITHUB_SHA"
+
+      - name: Setup QA Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.17.0
+          cache: npm
+
+      - name: Provision locked browser dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            node --version
+            npm --version
+            uname -a
+            sha256sum package-lock.json
+            npm ci --ignore-scripts
+            node node_modules/playwright-core/cli.js install --with-deps chromium
+            sudo apt-get install -y fonts-noto-cjk
+            fc-match :lang=ko
+            npm run ensure:native
+          } 2>&1 | tee "$QA_ARTIFACT_DIR/provision.log"
+
+      - name: Build exact candidate without global linking
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            npm run build --ignore-scripts
+            bash scripts/verify-dist-assets.sh
+            npm run build:frontend --ignore-scripts
+            npm run check:frontend-build-output
+          } 2>&1 | tee "$QA_ARTIFACT_DIR/build.log"
+
+      - name: Run owned sequential Manager browser QA
+        timeout-minutes: 20
+        shell: bash
+        run: |
+          set -euo pipefail
+          node tests/helpers/hosted-manager-qa.mjs --expected-sha "$EXPECTED_SHA" --artifact-dir "$QA_ARTIFACT_DIR" 2>&1 | tee "$QA_ARTIFACT_DIR/supervisor.log"
+
+      - name: Upload hosted QA evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: hosted-manager-qa-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/jaw-hosted-qa-${{ github.run_id }}-${{ github.run_attempt }}/artifacts/
+          if-no-files-found: error
+          retention-days: 7

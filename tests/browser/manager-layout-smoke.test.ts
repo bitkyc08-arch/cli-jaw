@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { after, test, type TestContext } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { withManagerBrowserLock } from './manager-browser-test-lock';
@@ -39,7 +39,69 @@ const VIEWPORTS = [
     { width: 390, height: 844 },
 ] as const;
 
+type DocumentProof = { nonce: string; documentId: string; src: string };
+type Scenario = {
+    name: string; status: 'INCOMPLETE' | 'PASS' | 'FAIL'; error: string | null;
+    viewport: { width: number; height: number } | null; screenshot: string | null; trace: string | null;
+    contextClosed: boolean; pageErrors: string[]; requestFailures: Array<{ url: string; error: string }>;
+    cleanupErrors: string[]; observations: Record<string, unknown>;
+};
+const scenarioNames = [
+    'manager dashboard shell has measured layout coverage at critical viewports',
+    'manager preview iframe survives Workbench tab changes',
+    'manager preview header toggles and refreshes the iframe',
+    'manager sidebar shell resizes, persists, resets, and collapses',
+    'instance settings page has bounded layout and guarded keyboard close',
+];
+const evidence: {
+    version: number; result: 'INCOMPLETE' | 'PASS' | 'FAIL'; workerNonce: string; scenarios: Scenario[];
+    shellWidths: Array<{ width: number; height: number; metrics: LayoutMetrics; screenshot: string }>;
+    settingsWidths: Array<{ width: number; height: number; metrics: Record<string, number>; screenshot: string }>;
+    preview: { retention?: { before: DocumentProof; during: DocumentProof; afterBack: DocumentProof;
+        afterPreview: DocumentProof; tabs: Array<DocumentProof & { mode: string }> };
+        refresh?: { before: DocumentProof; after: DocumentProof } };
+} = { version: 1, result: 'INCOMPLETE', workerNonce: process.env.MANAGER_QA_WORKER_NONCE ?? '',
+    scenarios: [], shellWidths: [], settingsWidths: [], preview: {} };
 const browsers: Browser[] = [];
+function saveEvidence(): void {
+    if (!process.env.MANAGER_SCREENSHOT_DIR || !isAbsolute(SCREENSHOT_DIR)) return;
+    mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    writeFileSync(join(SCREENSHOT_DIR, 'layout-evidence.json'), JSON.stringify(evidence, null, 2));
+}
+function scenario(t: TestContext): Scenario {
+    const receipt = evidence.scenarios.find(row => row.name === t.name);
+    assert.ok(receipt, 'Every context must have an owning scenario'); return receipt;
+}
+function layoutTest(name: string, body: (t: TestContext) => Promise<void>): void {
+    test(name, async t => withManagerBrowserLock(async () => {
+        const receipt: Scenario = { name, status: 'INCOMPLETE', error: null, viewport: null, screenshot: null, trace: null,
+            contextClosed: false, pageErrors: [], requestFailures: [], cleanupErrors: [], observations: {} };
+        evidence.scenarios.push(receipt); saveEvidence();
+        try {
+            assert.ok(process.env.MANAGER_BROWSER_CDP_URL, 'Explicit owned CDP required');
+            assert.ok(process.env.MANAGER_DASHBOARD_URL, 'Explicit isolated Manager URL required');
+            assert.ok(process.env.MANAGER_SCREENSHOT_DIR && isAbsolute(SCREENSHOT_DIR), 'Absolute external artifact directory required');
+            assert.match(evidence.workerNonce, /^[0-9a-f-]{36}$/i, 'Explicit worker document nonce required');
+            await body(t);
+            receipt.status = 'PASS';
+        } catch (error) {
+            receipt.status = 'FAIL'; receipt.error = String(error); evidence.result = 'FAIL'; throw error;
+        } finally { saveEvidence(); }
+    }));
+}
+async function workerDocument(page: Page): Promise<DocumentProof> {
+    const frame = await page.locator('iframe.preview-frame').elementHandle();
+    assert.ok(frame, 'Real Preview iframe is mounted');
+    const content = await frame.contentFrame(); assert.ok(content, 'Preview frame has a document');
+    const marker = content.locator('main[data-qa-worker][data-qa-document-id]');
+    // Attached is deliberate: settings/Overview hide this same retained document.
+    await marker.waitFor({ state: 'attached' });
+    const nonce = await marker.getAttribute('data-qa-worker'), documentId = await marker.getAttribute('data-qa-document-id');
+    assert.equal(nonce, evidence.workerNonce, "Preview loaded this run's real worker HTML");
+    assert.match(documentId ?? '', /^[0-9a-f-]{36}$/i, 'Worker response document ID required');
+    const src = await frame.getAttribute('src'); assert.ok(src);
+    return { nonce: nonce!, documentId: documentId!, src };
+}
 
 function isDefaultMissingCdp(error: unknown): boolean {
     return !process.env.MANAGER_BROWSER_CDP_URL && String(error).includes('ECONNREFUSED');
@@ -60,9 +122,51 @@ async function pageForManager(t: TestContext): Promise<Page | null> {
         }
         browsers.push(browser);
     }
+    const receipt = scenario(t), index = scenarioNames.indexOf(t.name) + 1;
     const context = await browser.newContext();
-    t.after(() => context.close());
-    return context.newPage();
+    let page: Page | undefined;
+    let tracing = false;
+    t.after(async () => {
+        const cleanupErrors: string[] = [];
+        if (page) {
+            receipt.viewport = page.viewportSize();
+            const screenshot = `layout-${index}-final.png`;
+            try { await page.screenshot({ path: join(SCREENSHOT_DIR, screenshot), fullPage: false }); receipt.screenshot = screenshot; }
+            catch (error) { cleanupErrors.push(`screenshot: ${String(error)}`); }
+        }
+        if (tracing) {
+            const trace = `layout-${index}-trace.zip`;
+            try { await context.tracing.stop({ path: join(SCREENSHOT_DIR, trace) }); receipt.trace = trace; }
+            catch (error) { cleanupErrors.push(`trace: ${String(error)}`); }
+        }
+        try { await context.close(); receipt.contextClosed = true; }
+        catch (error) { cleanupErrors.push(`context: ${String(error)}`); }
+        receipt.cleanupErrors.push(...cleanupErrors);
+        const networkFailures = receipt.requestFailures.filter(request => request.error !== 'net::ERR_ABORTED');
+        if (receipt.pageErrors.length || networkFailures.length || cleanupErrors.length) {
+            receipt.status = 'FAIL'; evidence.result = 'FAIL';
+            receipt.error ??= 'Browser errors or context cleanup failed';
+        }
+        saveEvidence();
+        assert.deepEqual(receipt.pageErrors, [], 'No uncaught page errors');
+        assert.deepEqual(networkFailures, [], 'No non-abort network failures');
+        assert.deepEqual(cleanupErrors, [], 'Context evidence and teardown must succeed');
+    });
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: true }); tracing = true;
+    page = await context.newPage();
+    page.on('pageerror', error => receipt.pageErrors.push(error.message));
+    page.on('requestfailed', request => {
+        const error = request.failure()?.errorText ?? 'Unknown request failure';
+        // Keep deliberate reload/teardown aborts in the raw ledger; only non-abort
+        // failures fail transport checks. Loaded HTML is proved independently.
+        receipt.requestFailures.push({ url: request.url(), error });
+    });
+    return page;
+}
+
+async function settleLayout(page: Page): Promise<void> {
+    await page.waitForFunction(() => [...document.querySelectorAll('.manager-workspace, .manager-sidebar, .workbench, .settings-full-page')]
+        .every(el => el.getAnimations().every(animation => animation.playState !== 'running' && !animation.pending)));
 }
 
 async function selectFirstOnlineInstance(page: Page): Promise<void> {
@@ -73,11 +177,12 @@ async function selectFirstOnlineInstance(page: Page): Promise<void> {
         const data = await response.json() as { instances?: Array<{ port: number; ok: boolean }> };
         const selected = data.instances?.find(instance => instance.ok);
         if (!selected) throw new Error('No online instance available for preview smoke');
-        await fetch('/api/dashboard/registry', {
+        const saved = await fetch('/api/dashboard/registry', {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ ui: { sidebarMode: 'instances', selectedPort: selected.port, selectedTab: 'preview', instanceSettingsOpen: false } }),
         });
+        if (!saved.ok) throw new Error(`Registry selection failed: ${saved.status}`);
         return selected.port;
     });
     await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
@@ -123,10 +228,23 @@ async function measure(page: Page): Promise<LayoutMetrics> {
 }
 
 after(async () => {
-    await Promise.allSettled(browsers.map(browser => browser.close()));
+    try {
+        const closed = await Promise.allSettled(browsers.map(browser => browser.close()));
+        for (const result of closed) if (result.status === 'rejected') throw result.reason;
+        assert.deepEqual(evidence.scenarios.map(row => row.name), scenarioNames);
+        for (const row of evidence.scenarios) {
+            assert.equal(row.status, 'PASS'); assert.equal(row.contextClosed, true);
+            assert.ok(row.trace && row.screenshot); assert.deepEqual(row.cleanupErrors, []);
+        }
+        assert.deepEqual(evidence.shellWidths.map(row => [row.width, row.height]), VIEWPORTS.map(row => [row.width, row.height]));
+        assert.deepEqual(evidence.settingsWidths.map(row => [row.width, row.height]), [1440, 1280, 1024, 1023, 390].map(width => [width, 900]));
+        assert.ok(evidence.preview.retention && evidence.preview.refresh);
+        evidence.result = 'PASS';
+    } catch (error) { evidence.result = 'FAIL'; throw error; }
+    finally { saveEvidence(); }
 });
 
-test('manager dashboard shell has measured layout coverage at critical viewports', async (t) => await withManagerBrowserLock(async () => {
+layoutTest('manager dashboard shell has measured layout coverage at critical viewports', async (t) => {
     mkdirSync(SCREENSHOT_DIR, { recursive: true });
     const page = await pageForManager(t);
     if (!page) return;
@@ -141,6 +259,8 @@ test('manager dashboard shell has measured layout coverage at critical viewports
         });
 
         const metrics = await measure(page);
+        evidence.shellWidths.push({ ...viewport, metrics, screenshot: `manager-layout-smoke-${viewport.width}x${viewport.height}.png` });
+        saveEvidence();
         assert.ok(metrics.shell, `${viewport.width}x${viewport.height}: shell must render`);
         assert.ok(metrics.workspace, `${viewport.width}x${viewport.height}: workspace must render`);
         assert.ok(metrics.command, `${viewport.width}x${viewport.height}: command must render`);
@@ -169,9 +289,9 @@ test('manager dashboard shell has measured layout coverage at critical viewports
             assert.ok(Math.abs(metrics.mobileNav.width - viewport.width) <= 1, `${viewport.width}x${viewport.height}: mobile nav uses full width`);
         }
     }
-}));
+});
 
-test('manager preview iframe survives Workbench tab changes', async (t) => await withManagerBrowserLock(async () => {
+layoutTest('manager preview iframe survives Workbench tab changes', async (t) => {
     const page = await pageForManager(t);
     if (!page) return;
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -194,11 +314,13 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
         };
     });
 
+    const beforeDocument = await workerDocument(page);
     assert.equal(before.hostHidden, false, 'preview host should be visible on Preview tab');
     assert.equal(before.hasFrame, true, 'preview iframe should render for an online selected instance');
 
     await page.getByRole('button', { name: 'Instance settings', exact: true }).click();
 
+    await page.locator('.workbench-settings-page').waitFor({ state: 'visible' });
     const during = await page.evaluate(() => {
         const host = document.querySelector('[data-preview-host="persistent"]');
         const frame = document.querySelector('iframe.preview-frame');
@@ -209,11 +331,20 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
         };
     });
 
-    assert.equal(during.hostHidden, false, 'opening settings must leave Preview visible');
-    assert.equal(during.sameFrame, true, 'preview iframe must stay mounted beside settings');
+    const duringDocument = await workerDocument(page);
+    assert.deepEqual(duringDocument, beforeDocument, 'Settings retains the loaded worker document');
+    assert.equal(during.hostHidden, true, 'full-page settings hides the retained Preview host');
+    assert.equal(during.sameFrame, true, 'preview iframe must stay mounted while settings replaces the workspace');
     assert.equal(during.src, before.src, 'opening settings must keep the preview source');
 
-    await page.getByRole('button', { name: 'Close instance settings' }).click();
+    await page.getByRole('button', { name: 'Back to workspace', exact: true }).click();
+    await page.locator('.workbench-settings-page').waitFor({ state: 'detached' });
+    await page.waitForFunction(() => document.querySelector('#workbench-tab-overview')?.getAttribute('aria-selected') === 'true');
+    assert.equal(await page.locator('[data-preview-host]').evaluate(el => el.hasAttribute('hidden')), true,
+        'Back returns to Overview with Preview still hidden');
+    const afterBackDocument = await workerDocument(page);
+    assert.deepEqual(afterBackDocument, beforeDocument, 'Overview after Back retains the worker document');
+    await page.getByRole('tab', { name: 'Preview', exact: true }).click();
 
     const after = await page.evaluate(() => {
         const host = document.querySelector('[data-preview-host="persistent"]');
@@ -225,6 +356,10 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
         };
     });
 
+    const afterPreviewDocument = await workerDocument(page);
+    assert.deepEqual(afterPreviewDocument, beforeDocument);
+    const retention = { before: beforeDocument, during: duringDocument, afterBack: afterBackDocument, afterPreview: afterPreviewDocument, tabs: [] as Array<DocumentProof & { mode: string }> };
+    evidence.preview.retention = retention;
     assert.equal(after.hostHidden, false, 'preview host should show again on Preview tab');
     assert.equal(after.sameFrame, true, 'preview iframe must remain the same DOM node after returning');
     assert.equal(after.src, before.src, 'preview source should not change across tab-only navigation');
@@ -235,10 +370,12 @@ test('manager preview iframe survives Workbench tab changes', async (t) => await
             same: document.querySelector('iframe.preview-frame') === (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame,
         }));
         assert.equal(state.hidden, mode !== 'Preview'); assert.equal(state.same, true);
+        const document = await workerDocument(page); assert.deepEqual(document, beforeDocument);
+        retention.tabs.push({ mode, ...document }); saveEvidence();
     }
-}));
+});
 
-test('manager preview header toggles and refreshes the iframe', async (t) => await withManagerBrowserLock(async () => {
+layoutTest('manager preview header toggles and refreshes the iframe', async (t) => {
     const page = await pageForManager(t);
     if (!page) return;
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -252,6 +389,7 @@ test('manager preview header toggles and refreshes the iframe', async (t) => awa
     await page.getByRole('switch', { name: /Preview off/i }).click();
     await page.waitForSelector('iframe.preview-frame', { timeout: 5000 });
 
+    const beforeDocument = await workerDocument(page);
     const beforeRefresh = await page.evaluate(() => {
         const frame = document.querySelector('iframe.preview-frame');
         (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame = frame;
@@ -269,10 +407,14 @@ test('manager preview header toggles and refreshes the iframe', async (t) => awa
         return frame?.getAttribute('src') || null;
     });
 
+    const afterDocument = await workerDocument(page);
+    assert.notEqual(afterDocument.documentId, beforeDocument.documentId, 'Refresh loads a new worker HTML response');
+    assert.equal(afterDocument.src, beforeDocument.src);
+    evidence.preview.refresh = { before: beforeDocument, after: afterDocument }; saveEvidence();
     assert.equal(afterRefresh, beforeRefresh, 'refresh must reload the existing preview URL without changing target');
-}));
+});
 
-test('manager sidebar shell resizes, persists, resets, and collapses', async (t) => await withManagerBrowserLock(async () => {
+layoutTest('manager sidebar shell resizes, persists, resets, and collapses', async (t) => {
     const page = await pageForManager(t);
     if (!page) return;
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -339,46 +481,47 @@ test('manager sidebar shell resizes, persists, resets, and collapses', async (t)
     assert.equal(collapsed.width, 44, 'collapsed sidebar leaves the 44px rail');
     assert.equal(collapsed.cssVar, '44px', 'collapsed width comes from the hook constant');
     await page.keyboard.press('Meta+Shift+B');
-}));
+});
 
 
-test('instance settings panel has bounded layout and guarded keyboard close', async (t) => await withManagerBrowserLock(async () => {
+layoutTest('instance settings page has bounded layout and guarded keyboard close', async (t) => {
     const page = await pageForManager(t); if (!page) return;
-    let snapshot: import('../../public/manager/src/types').DashboardRegistryLoadResult | undefined;
-    await page.route('**/api/dashboard/registry', async route => {
-        if (!snapshot) {
-            snapshot = await (await route.fetch({ method: 'GET' })).json();
-            snapshot!.registry.ui.instanceSettingsOpen = false;
-        }
-        if (route.request().method() === 'PATCH') Object.assign(snapshot!.registry.ui, route.request().postDataJSON().ui);
-        snapshot!.status.ui = snapshot!.registry.ui;
-        await route.fulfill({ json: snapshot });
-    });
     await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' }); await selectFirstOnlineInstance(page);
     const toggle = page.getByRole('button', { name: 'Instance settings', exact: true });
     await toggle.click();
-    const panel = page.locator('aside.workbench-settings-panel');
+    const panel = page.locator('#workbench-instance-settings');
     await panel.waitFor({ state: 'visible' });
     assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
     assert.equal(await toggle.getAttribute('aria-controls'), await panel.getAttribute('id'));
-    assert.equal(await panel.getAttribute('aria-label'), 'Instance settings');
+    assert.equal(await panel.locator('.settings-full-page').getAttribute('aria-label'), 'Settings');
     assert.equal(await panel.getAttribute('aria-modal'), null);
     assert.equal(await panel.locator('.settings-shell-host').evaluate(el => getComputedStyle(el).containerType), 'inline-size');
     assert.equal(await page.getByRole('tab', { name: 'Settings', exact: true }).count(), 0);
     for (const width of [1440, 1280, 1024, 1023, 390]) {
         await page.setViewportSize({ width, height: 900 });
-        const metrics = await panel.evaluate(el => ({ width: el.getBoundingClientRect().width,
-            right: el.getBoundingClientRect().right, position: getComputedStyle(el).position,
-            documentWidth: document.documentElement.scrollWidth }));
-        const expected = width >= 1440 ? 480 : width >= 1024 ? 420 : Math.min(width * .92, 420);
-        assert.ok(Math.abs(metrics.width - expected) <= 1); assert.ok(metrics.right <= width + 1);
-        assert.equal(metrics.documentWidth, width); assert.equal(metrics.position === 'fixed', width < 1024);
+        await settleLayout(page);
+        const metrics = await panel.evaluate(el => {
+            const rect = el.getBoundingClientRect(), body = el.closest('.workbench-body')!.getBoundingClientRect();
+            const shell = el.querySelector('.settings-shell')!, main = el.querySelector('.settings-page-main')!;
+            return { width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom,
+                bodyWidth: body.width, bodyHeight: body.height, mainWidth: main.getBoundingClientRect().width,
+                navWidth: parseFloat(getComputedStyle(shell).gridTemplateColumns),
+                documentWidth: document.documentElement.scrollWidth };
+        });
+        mkdirSync(SCREENSHOT_DIR, { recursive: true });
+        await page.screenshot({ path: join(SCREENSHOT_DIR, `060_settings-page-${width}x900.png`) });
+        evidence.settingsWidths.push({ width, height: 900, metrics, screenshot: `060_settings-page-${width}x900.png` });
+        saveEvidence();
+        assert.ok(metrics.width > 0 && metrics.height > 0, 'Settings must occupy visible workspace');
+        assert.ok(Math.abs(metrics.width - metrics.bodyWidth) <= 1, 'Settings uses the workbench body width');
+        assert.ok(metrics.height <= metrics.bodyHeight + 1 && metrics.bottom <= 901, 'Settings remains inside the viewport');
+        assert.ok(metrics.right <= width + 1); assert.equal(metrics.documentWidth, width);
+        assert.ok(metrics.mainWidth <= 897, 'Settings content keeps its 896px cap');
+        assert.equal(metrics.navWidth, width >= 1024 ? 264 : 40, 'Settings navigation follows the full-page breakpoint');
         assert.equal(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
         await page.emulateMedia({ reducedMotion: 'reduce' });
         assert.equal(await panel.evaluate(el => getComputedStyle(el).transitionDuration), '0s');
         assert.equal(await page.locator('.workbench').evaluate(el => getComputedStyle(el).transitionDuration), '0s');
-        mkdirSync(SCREENSHOT_DIR, { recursive: true });
-        await page.screenshot({ path: join(SCREENSHOT_DIR, `060_settings-panel-${width}x900.png`) });
         await page.emulateMedia({ reducedMotion: 'no-preference' });
     }
     const display = panel.getByRole('button', { name: 'Display', exact: true });
@@ -390,14 +533,19 @@ test('instance settings panel has bounded layout and guarded keyboard close', as
     assert.equal(await panel.locator('.settings-sidebar [role=tab]').count(), 0);
     const field = panel.locator('#display-pasteCollapseLines');
     const initial = Number(await field.inputValue()); await field.fill(String(initial + 1));
-    await page.getByRole('button', { name: 'Close instance settings' }).focus();
+    await panel.getByRole('button', { name: 'Back to workspace', exact: true }).focus();
     page.once('dialog', dialog => dialog.dismiss()); await page.keyboard.press('Escape');
     assert.equal(await panel.count(), 1); assert.equal(await field.inputValue(), String(initial + 1));
+    scenario(t).observations['dirtyDismissed'] = true;
     page.once('dialog', dialog => dialog.accept()); await page.keyboard.press('Escape');
     await panel.waitFor({ state: 'detached' });
     assert.equal(await toggle.getAttribute('aria-pressed'), 'false');
+    await page.waitForFunction(() => document.querySelector('#workbench-tab-overview')?.getAttribute('aria-selected') === 'true');
     assert.equal(await toggle.evaluate(el => el === document.activeElement), true);
+    scenario(t).observations['acceptedBackOverview'] = true;
     await page.keyboard.press('Meta+,'); await panel.waitFor({ state: 'visible' });
+    scenario(t).observations['shortcutReopened'] = true;
     assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
     await page.keyboard.press('Meta+,'); await panel.waitFor({ state: 'detached' });
-}));
+    scenario(t).observations['shortcutClosed'] = true;
+});

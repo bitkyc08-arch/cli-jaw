@@ -130,7 +130,7 @@ test('retired saved runtime stays explicit in real Manager settings until user e
                     assert.equal(response?.headers()['x-jaw-manager-ui'], 'dist');
                     await page.locator('.dashboard-shell.manager-shell').waitFor({ state: 'visible' });
                     const selection = await page.request.patch(`${manifest.managerUrl}api/dashboard/registry`, { data: { ui: {
-                        selectedPort: manifest.workerPort, selectedTab: 'overview', sidebarMode: 'instances',
+                        selectedPort: manifest.workerPort, selectedTab: 'overview', sidebarMode: 'instances', instanceSettingsOpen: false,
                         sidebarCollapsed: false, activityDockCollapsed: true, locale: 'en',
                     } } });
                     assert.equal(selection.status(), 200);
@@ -140,8 +140,9 @@ test('retired saved runtime stays explicit in real Manager settings until user e
                         const body = await response.json();
                         return body.instances?.some((instance: { port: number; ok: boolean }) => instance.port === port && instance.ok);
                     }, manifest.workerPort);
-                    await page.getByRole('tablist', { name: 'Workbench modes' }).getByRole('tab', { name: 'Settings', exact: true }).click();
-                    await page.getByRole('navigation', { name: 'Settings categories' }).getByRole('tab', { name: 'Agent', exact: true }).click();
+                    await page.getByRole('button', { name: 'Instance settings', exact: true }).click();
+                    await page.locator('.workbench-settings-page').getByRole('navigation', { name: 'Settings categories' })
+                        .getByRole('button', { name: 'Agent', exact: true }).click();
                     const active = page.getByRole('combobox', { name: 'Active CLI: JWC (retired)', exact: true });
                     await active.waitFor({ state: 'visible' });
                     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
@@ -191,7 +192,9 @@ test('retired saved runtime stays explicit in real Manager settings until user e
                     // Explicit local discard; never Save or a transport mutation.
                     await page.getByRole('region', { name: 'Save changes' }).getByRole('button', { name: 'Discard', exact: true }).click();
                     await active.waitFor({ state: 'visible' });
+                    await page.getByRole('region', { name: 'Save changes', exact: true }).waitFor({ state: 'detached' });
                     assertReadOnly(await control(manifest, 'state'), browserWrites);
+                    await capture(page, `retired-${width}-discard`);
                 } catch (error) {
                     const screenshot = join(manifest.evidenceDir, `retired-${width}-failure.png`);
                     await page.screenshot({ path: screenshot, fullPage: false }).catch(() => undefined);

@@ -149,6 +149,24 @@ changes ──┬── test 1/4 … test 4/4   tsc + tests/run.mts --scope root
                      └──────────────► ci-aggregate   bash scripts/ci/aggregate-check.sh
 ```
 
+`Hosted Manager QA` is a separate manual-event job in this same workflow. Run
+`gh workflow run test.yml --ref dev` for the selected candidate, then match the
+run's `headSha` to that candidate and inspect the QA job itself. Push/PR runs skip
+this opt-in job; that skip is not browser verification. Existing required producer
+and aggregate rules are unchanged. The workflow's shared-ref concurrency can
+cancel an earlier run, so finish the push run before dispatching manual QA.
+
+The hosted job builds the backend/frontend with Node 24.17.0 and the locked
+Playwright Chromium, then `tests/helpers/hosted-manager-qa.mjs` owns isolated
+Manager/worker fixtures and browser processes. It runs native Code, retired
+settings and Manager layout files sequentially: seven named tests, including
+16 native Code scenarios, two retirement widths and five layout scenarios.
+Structured results reject skipped or missing cases; logs, screenshots, traces
+and process-exit receipts are uploaded even on failure. The layout fixture serves
+real worker HTML through the production Preview proxy. This proves deterministic
+Linux browser integration; it does not certify live provider authentication or
+packaged Electron behavior on other platforms.
+
 집계 규칙 (`scripts/ci/aggregate-check.sh`, 진리표는 `tests/unit/ci-aggregate-rules.test.ts`):
 
 | `changes` | `code` | producer 결과 | 판정 |

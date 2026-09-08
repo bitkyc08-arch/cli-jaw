@@ -7,7 +7,8 @@
  * The browser consumes that manifest and shuts down this owned server. Homes,
  * SQLite and evidence are retained for inspection, never automatically deleted.
  * Optional CODE_NATIVE_QA_MODE=retired-settings supplies read-only legacy worker
- * settings for the retirement browser suite; the default remains Code QA.
+ * settings for the retirement browser suite. manager-layout serves owned worker
+ * HTML through the real Manager Preview proxy; the default remains Code QA.
  */
 import { mock } from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -21,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const project = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const manifestPath = process.env.CODE_NATIVE_QA_MANIFEST;
 const mode = process.env.CODE_NATIVE_QA_MODE ?? 'code'; // Capture before isolated env replaces inherited values.
-if (!['code', 'retired-settings'].includes(mode)) throw new Error('Unsupported CODE_NATIVE_QA_MODE');
+if (!['code', 'retired-settings', 'manager-layout'].includes(mode)) throw new Error('Unsupported CODE_NATIVE_QA_MODE');
 if (!manifestPath || !isAbsolute(manifestPath) || existsSync(manifestPath)) {
     throw new Error('CODE_NATIVE_QA_MANIFEST must be a new absolute file');
 }
@@ -73,6 +74,8 @@ const token = randomUUID();
 const handles = [];
 const steps = [];
 const workerRequests = [];
+const workerHtmlLoads = [];
+const workerDocumentNonce = mode === 'manager-layout' ? randomUUID() : undefined;
 let workerRequestOverflow = false;
 let shuttingDown = false;
 const controls = new Map();
@@ -190,13 +193,14 @@ mock.module(built('src/code-mode/providers/catalog.js'), {
 
 const manifest = { version: 1, mode, token, pid: process.pid, root, workspace, managerUrl: policy.managerUrl,
     workerUrl: `http://127.0.0.1:${policy.workerPort}`, workerPort: policy.workerPort, previewPort: policy.previewPort,
-    evidenceDir: join(root, 'evidence'), localFileCallback: false };
+    evidenceDir: join(root, 'evidence'), localFileCallback: false,
+    ...(workerDocumentNonce ? { workerDocumentNonce } : {}) };
 function json(res, status, value) { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); }
 const worker = createServer((req, res) => {
     const url = new URL(req.url || '/', manifest.workerUrl);
     if (url.pathname.startsWith('/__qa/')) {
         if (req.headers['x-code-qa-token'] !== token) return json(res, 403, { error: 'wrong_qa_owner' });
-        if (req.method === 'GET' && url.pathname === '/__qa/state') return json(res, 200, { token, handles, steps, workerRequests, workerRequestOverflow });
+        if (req.method === 'GET' && url.pathname === '/__qa/state') return json(res, 200, { token, handles, steps, workerRequests, workerRequestOverflow, workerHtmlLoads });
         if (req.method === 'POST' && url.pathname === '/__qa/shutdown') {
             json(res, 200, { ok: true });
             setImmediate(() => process.emit('SIGTERM'));
@@ -213,11 +217,23 @@ const worker = createServer((req, res) => {
         }
         return json(res, 404, { error: 'unknown_qa_command' });
     }
-    if (mode === 'retired-settings') {
+    if (mode !== 'code') {
         if (workerRequests.length < 2048) workerRequests.push({ at: new Date().toISOString(), method: req.method, path: url.pathname });
         else workerRequestOverflow = true;
     }
     if (req.method !== 'GET') return json(res, 405, { error: 'fake_worker_read_only' });
+    if (mode === 'manager-layout' && (url.pathname === '/0' || url.pathname === '/')) {
+        const documentId = randomUUID();
+        if (workerHtmlLoads.length < 2048) workerHtmlLoads.push({
+            path: url.pathname, at: new Date().toISOString(), nonce: workerDocumentNonce, documentId,
+        });
+        else workerRequestOverflow = true;
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(`<!doctype html><html lang="en"><meta charset="utf-8"><title>Owned layout worker</title><body><main data-qa-worker="${workerDocumentNonce}" data-qa-document-id="${documentId}">Owned layout worker</main></body></html>`);
+        return;
+    }
+    if (mode === 'manager-layout' && url.pathname === '/favicon.ico') { res.writeHead(204); res.end(); return; }
+
     if (url.pathname === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
         res.write(': isolated worker connected\n\n');
@@ -231,6 +247,21 @@ const worker = createServer((req, res) => {
         '/api/status': { status: 'idle', busy: false }, '/api/sessions': { sessions: [] },
         '/api/messages': { messages: [] },
     };
+    if (mode === 'manager-layout') Object.assign(responses, {
+        '/api/settings': { ...responses['/api/settings'], permissions: 'auto', runtimeDefaultMigration: null,
+            activeOverrides: {}, perCli: { 'codex-app': { model: 'qa-codex-app', effort: 'medium' } },
+            presentation: { mode: 'activity' }, tui: { pasteCollapseLines: 2, pasteCollapseChars: 160,
+                keymapPreset: 'default', diffStyle: 'summary', themeSeed: 'jaw-default' } },
+        '/api/cli-registry': { ok: true, data: {
+            'codex-app': { label: 'Codex App', models: ['qa-codex-app'], efforts: ['medium', 'high'] },
+            claude: { label: 'Claude', models: ['qa-claude'], efforts: ['low', 'high'] },
+        } },
+        '/api/cli-status': Object.fromEntries(['codex-app', 'claude'].map(cli => [cli, {
+            available: true, capabilityReady: true, checkedCapability: 'print', probeState: 'fresh',
+        }])),
+        '/api/memory-files': { cli: 'codex-app', model: 'qa-codex-app' },
+        '/api/employees': { ok: true, data: [] },
+    });
     if (mode === 'retired-settings') Object.assign(responses, {
         '/api/settings': { ...responses['/api/settings'], cli: 'jwc', model: 'qa-retired-model', permissions: 'auto',
             runtimeDefaultMigration: null, activeOverrides: {},
@@ -260,21 +291,25 @@ const previewReservation = createPortReservation();
 function beginShutdown() {
     shuttingDown = true;
     for (const control of controls.values()) control.releaseCancel();
-    worker.closeAllConnections(); worker.close(); previewReservation.close();
+    worker.closeAllConnections(); worker.close();
+    if (previewReservation.listening) previewReservation.close();
 }
 process.prependOnceListener('SIGTERM', beginShutdown);
 process.prependOnceListener('SIGINT', beginShutdown);
 process.on('exit', exitCode => {
     const receipt = join(root, 'evidence', 'provider-events.json');
-    writeFileSync(`${receipt}.tmp`, JSON.stringify({ exitCode, shutdownRequested: shuttingDown, handles, steps, workerRequests, workerRequestOverflow }, null, 2));
+    writeFileSync(`${receipt}.tmp`, JSON.stringify({ exitCode, shutdownRequested: shuttingDown, handles, steps, workerRequests, workerRequestOverflow, workerHtmlLoads }, null, 2));
     renameSync(`${receipt}.tmp`, receipt);
 });
 try {
-    // Fail closed on occupied ports; never scan/adopt the occupant. P stays owned
-    // throughout this suite, which deliberately does not exercise preview proxy.
+    // Fail closed on occupied ports; never scan/adopt the occupant. Only layout
+    // releases P for the actual Manager proxy. Other modes retain their reservation.
     await listen(worker, policy.workerPort);
     await listen(managerReservation, policy.managerPort);
     await listen(previewReservation, policy.previewPort);
+    if (mode === 'manager-layout') {
+        await new Promise((yes, no) => previewReservation.close(error => error ? no(error) : yes()));
+    }
     await new Promise((yes, no) => managerReservation.close(error => error ? no(error) : yes()));
     await import(built('src/manager/server.js'));
     // Published only after imports succeed. Browser separately verifies live health,
@@ -283,7 +318,8 @@ try {
     console.log(`CODE_NATIVE_QA_MANIFEST=${manifestPath}`);
     console.log(`CODE_NATIVE_QA_EVIDENCE=${manifest.evidenceDir}`);
 } catch (error) {
-    beginShutdown(); managerReservation.close();
+    beginShutdown();
+    if (managerReservation.listening) managerReservation.close();
     console.error('[code-native-qa] startup failed', error);
     process.exit(1);
 }
