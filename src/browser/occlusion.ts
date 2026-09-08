@@ -26,6 +26,15 @@ export type HitResult = {
      * Undefined when no target was marked, which is not the same as false.
      */
     relatesToTarget?: boolean;
+    /**
+     * True when the walk stopped at a frame it could not see into.
+     *
+     * The element behind a cross-origin frame is unknowable from here, so the
+     * frame itself is reported as the hit — which looks exactly like a cover.
+     * Callers must treat this as "unknown", not as a blocker: the target may
+     * well be inside that frame.
+     */
+    opaqueFrame?: boolean;
 };
 
 export type OcclusionVerdict =
@@ -46,6 +55,12 @@ export function judgeHit(hit: HitResult | null): OcclusionVerdict {
     // block a legitimate click, and pretending to know is worse than saying
     // we do not.
     if (!hit) return { blocked: false, reason: 'unknown' };
+
+    // The walk stopped at a frame it could not see into. Whatever is behind it
+    // is unknowable, and a target inside that frame would look identical to a
+    // cover. Refusing on that evidence would block legitimate clicks into
+    // every cross-origin embed.
+    if (hit.opaqueFrame) return { blocked: false, reason: 'unknown' };
 
     if (hit.relatesToTarget === undefined) return { blocked: false, reason: 'unknown' };
     if (hit.relatesToTarget) return { blocked: false, reason: 'clear' };
@@ -118,6 +133,7 @@ export function hitTestInPage(arg: HitTestArg): HitResult | null {
     let x = arg.x;
     let y = arg.y;
     let crossedFrame = false;
+    let opaqueFrame = false;
     let hit: El = doc.elementFromPoint(x, y) as unknown as El;
 
     // Bounded: a frame chain should be shallow, and a cycle must not hang the page.
@@ -126,7 +142,7 @@ export function hitTestInPage(arg: HitTestArg): HitResult | null {
         if (target && (hit === target || reaches(target, hit))) break;
         let childDoc: Document | null = null;
         try { childDoc = hit.contentDocument ?? null; } catch { childDoc = null; }
-        if (!childDoc) break;
+        if (!childDoc) { opaqueFrame = true; break; }
         const rect = hit.getBoundingClientRect();
         // elementFromPoint in the child is relative to the child's own
         // viewport, so subtract the frame's position and its border.
@@ -147,6 +163,7 @@ export function hitTestInPage(arg: HitTestArg): HitResult | null {
     }
 
     const result: HitResult = { descriptor: describe(hit), ancestry, crossedFrame };
+    if (opaqueFrame) result.opaqueFrame = true;
     if (target) {
         // The hit is the target, inside it, or contains it. Clicking a
         // button's inner span is clicking the button. A label forwarding to
@@ -160,4 +177,3 @@ export function hitTestInPage(arg: HitTestArg): HitResult | null {
     }
     return result;
 }
-

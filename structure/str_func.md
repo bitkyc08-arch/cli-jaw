@@ -381,7 +381,7 @@ cli-jaw/
 │   │   ├── vision-input.ts   ← 미신뢰 target 정화(quote-run 붕괴, 제로폭/bidi 제거, surrogate-safe 절단) + stdout 상한 (80L)
 │   │   ├── grounding-candidate.ts ← grounding-candidate-v1 스키마 + brace 스캐너(중첩/stray-quote 복구) + 좌표 타당성/경계 검증 (282L)
 │   │   ├── image-size.ts     ← PNG/JPEG 헤더에서 캡처 픽셀 크기 판독(실패 시 null → fail-closed) (55L)
-│   │   ├── occlusion.ts      ← 클릭 지점 hit-test 소스 + 가림 판정(자손/label/presentational은 통과, 미확인은 fail-open) (163L)
+│   │   ├── occlusion.ts      ← 클릭 지점 hit-test 소스 + 가림 판정(자손/label/presentational은 통과, 미확인은 fail-open) (179L)
 │   │   ├── runtime-diagnostics.ts ← runtime diagnostics helper (121L)
 │   │   ├── runtime-owner.ts  ← browser runtime owner management (135L)
 │   │   ├── runtime-owner-store.ts ← runtime owner store (55L)

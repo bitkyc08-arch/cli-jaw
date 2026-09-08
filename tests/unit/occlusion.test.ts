@@ -167,3 +167,36 @@ test('OCC-013: an unreadable frame stops the descent instead of looping', () => 
     });
 });
 
+test('OCC-014: a cross-origin frame is unknown, not a blocker', () => {
+    // The element behind an opaque frame is unknowable from here, so the frame
+    // itself is reported as the hit — which looks exactly like a cover. The
+    // target may well be inside it, and refusing on that evidence would block
+    // legitimate clicks into every cross-origin embed.
+    const frame = el('iframe', { id: 'embed', contentDocument: null });
+    const button = el('button');
+    withDocument((x) => (x === 10 ? frame : button), () => {
+        const r = hitTestInPage({ x: 10, y: 10, targetPoint: { x: 50, y: 50 } });
+        assert.ok(r);
+        assert.equal(r.opaqueFrame, true, 'the walk must record that it could not see in');
+        assert.equal(r.relatesToTarget, false, 'and the frame is not the target');
+
+        const v = judgeHit(r);
+        assert.equal(v.blocked, false, 'but an unknowable interior must not block');
+        assert.equal(v.reason, 'unknown');
+    });
+});
+
+test('OCC-015: a readable frame is still judged normally', () => {
+    // The opaque-frame escape must not become a blanket exemption for frames.
+    const inner = el('div', { id: 'overlay' });
+    const child = { elementFromPoint: () => inner } as unknown as Document;
+    const frame = el('iframe', { id: 'ok', contentDocument: child });
+    const button = el('button');
+    withDocument((x) => (x === 10 ? frame : button), () => {
+        const r = hitTestInPage({ x: 10, y: 10, targetPoint: { x: 50, y: 50 } });
+        assert.ok(r);
+        assert.equal(r.opaqueFrame, undefined);
+        assert.equal(r.crossedFrame, true);
+        assert.equal(judgeHit(r).blocked, true, 'a visible cover inside a frame still blocks');
+    });
+});
