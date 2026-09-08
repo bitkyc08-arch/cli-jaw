@@ -30,26 +30,32 @@ export function checkRange(cwd, base, head, destination) {
     const oid = ref => git(cwd, ['rev-parse', '--verify', '--end-of-options', ref + '^{commit}']).trim();
     const headId = oid(head);
     const baseId = base ? oid(base) : null;
-    // A new ref has no old tip. Only exclude commits actually advertised by
-    // THIS destination; unrelated/private remote-tracking refs prove nothing.
-    let revArgs;
-    if (baseId) {
-        revArgs = [baseId + '..' + headId];
-    } else {
-        if (!destination) throw new Error('A destination is required to check a new remote ref');
-        const advertised = git(cwd, ['ls-remote', '--refs', '--', destination])
-            .split('\n').filter(Boolean).map(line => line.split(/\s+/)[0]);
-        if (advertised.some(sha => !/^[a-f0-9]{40,64}$/.test(sha))) throw new Error('Invalid destination refs');
-        const available = advertised.length ? execFileSync('git', ['cat-file', '--batch-check=%(objectname) %(objecttype)'], {
-            cwd, encoding: 'utf8', input: advertised.map(sha => sha + '^{commit}').join('\n') + '\n',
-            maxBuffer: 64 * 1024 * 1024,
-        }).split('\n').filter(line => /^[a-f0-9]{40,64} commit$/.test(line)).map(line => line.split(' ')[0]) : [];
-        revArgs = available.length ? [headId, '--not', ...available] : [headId];
-    }
+    // The guard is about NEW disclosure. A commit every ref of THIS destination
+    // already advertises is public there regardless of which branch receives it,
+    // so a fast-forward of preview/main onto commits that dev already published
+    // must not re-scan history that predates the private-record detachment.
+    // Only the destination's own refs count; unrelated/private remote-tracking
+    // refs prove nothing. A new ref has no old tip and needs the destination.
+    if (!baseId && !destination) throw new Error('A destination is required to check a new remote ref');
+    const available = destination ? advertisedCommits(cwd, destination) : [];
+    const exclude = [...(baseId ? [baseId] : []), ...available];
+    const revArgs = exclude.length ? [headId, '--not', ...exclude] : [headId];
     const commits = new Set([headId, ...git(cwd, ['rev-list', ...revArgs]).trim().split('\n').filter(Boolean)]);
     for (const commit of commits) {
         rejectPaths(git(cwd, ['ls-tree', '-r', '--name-only', '-z', commit]).split('\0').filter(Boolean), commit);
     }
+}
+
+/** Commits the destination remote currently advertises and this repository has. */
+function advertisedCommits(cwd, destination) {
+    const advertised = git(cwd, ['ls-remote', '--refs', '--', destination])
+        .split('\n').filter(Boolean).map(line => line.split(/\s+/)[0]);
+    if (advertised.some(sha => !/^[a-f0-9]{40,64}$/.test(sha))) throw new Error('Invalid destination refs');
+    if (!advertised.length) return [];
+    return execFileSync('git', ['cat-file', '--batch-check=%(objectname) %(objecttype)'], {
+        cwd, encoding: 'utf8', input: advertised.map(sha => sha + '^{commit}').join('\n') + '\n',
+        maxBuffer: 64 * 1024 * 1024,
+    }).split('\n').filter(line => /^[a-f0-9]{40,64} commit$/.test(line)).map(line => line.split(' ')[0]);
 }
 
 export function checkPush(cwd, input, destination) {
