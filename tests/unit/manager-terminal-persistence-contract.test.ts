@@ -55,7 +55,7 @@ test('TerminalPanel restores sessions before creating and never kills PTYs on un
     assert.ok(terminal.includes('hydrationCompleteRef'), 'TerminalPanel must gate create requests on hydration completion');
     assert.ok(terminal.includes('const result = await terminalBridge.list()'), 'TerminalPanel must hydrate from terminal:list before auto-create');
     assert.ok(terminal.includes('restoreSession'), 'TerminalPanel must restore listed sessions into tabs/runtimes');
-    assert.ok(terminal.includes('queuedNewSessionCountRef'), 'new terminal requests during hydration must be queued');
+    assert.ok(terminal.includes('queuedNewSessionsRef'), 'new terminal requests during hydration must be queued');
     assert.ok(terminal.includes("detail === 'flushTerminalShortcutQueue'"), 'TerminalPanel must consume deferred provider shortcut requests');
     assert.equal(cleanup.includes('bridge.kill'), false, 'TerminalPanel unmount cleanup must not kill live PTY sessions');
     assert.ok(closeSession.includes('void bridge.kill(id)'), 'explicit terminal tab close must still kill only that session');

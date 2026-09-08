@@ -23,6 +23,7 @@ type RuntimeTerminal = {
     fit: FitAddon;
     disposables: IDisposable[];
     opened: boolean;
+    presentationEpoch: number;
 };
 
 type TerminalPanelProps = {
@@ -39,7 +40,7 @@ const RESYNC_ERROR = 'Terminal events exceeded the recovery limit. Choose New te
 type SessionOperation = {
     kind: 'list' | 'create';
     generation: number;
-    focusIntent: number;
+    readonly focusIntent: number;
     tombstones: Set<string>;
     lost: boolean;
 };
@@ -120,6 +121,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
     const [activeId, setActiveId] = useState<string | null>(null);
     const [rovingId, setRovingId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [presentationError, setPresentationError] = useState<{ runtime: RuntimeTerminal; message: string } | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [isListing, setIsListing] = useState(false);
@@ -134,7 +136,10 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
     const activeIdRef = useRef<string | null>(null);
     const autoCreatedRef = useRef(false);
     const hydrationCompleteRef = useRef(false);
-    const queuedNewSessionCountRef = useRef(0);
+    const queuedNewSessionsRef = useRef<Array<{ readonly focusIntent: number }>>([]);
+    const pendingClosesRef = useRef(new Map<string, { generation: number }>());
+    const pendingRevealFocusRef = useRef<number | null>(null);
+    const programmaticFocusRef = useRef(false);
     const operationRef = useRef<SessionOperation | null>(null);
     const mountedRef = useRef(false);
     const generationRef = useRef(0);
@@ -173,8 +178,8 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         emptyTimerRef.current = window.setTimeout(() => {
             emptyTimerRef.current = undefined;
             if (!mountedRef.current || generation !== generationRef.current || epoch !== epochRef.current
-                || tabsRef.current.length || queuedNewSessionCountRef.current || operationRef.current
-                || errorRef.current) return;
+                || tabsRef.current.length || queuedNewSessionsRef.current.length || operationRef.current
+                || pendingClosesRef.current.size || errorRef.current) return;
             onEmptySessionsRef.current?.();
         }, 0);
     }, []);
@@ -187,30 +192,45 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         if (!node?.isConnected || !node.classList.contains('is-active') || node.getClientRects().length === 0) return null;
         return node;
     }, []);
+    const resizeTerminal = useCallback(async (id: string, cols: number, rows: number) => {
+        const runtime = runtimesRef.current.get(id);
+        if (!bridge || !runtime || !mountedRef.current) return;
+        const generation = generationRef.current;
+        const epoch = ++runtime.presentationEpoch;
+        const isCurrent = () => mountedRef.current && generation === generationRef.current
+            && runtimesRef.current.get(id) === runtime && runtime.presentationEpoch === epoch;
+        try {
+            await bridge.resize(id, cols, rows);
+            if (isCurrent()) setPresentationError(current => current?.runtime === runtime ? null : current);
+        } catch {
+            if (isCurrent()) setPresentationError({ runtime, message: 'Unable to resize terminal.' });
+        }
+    }, [bridge]);
     const fitTerminal = useCallback((id: string) => {
         const runtime = runtimesRef.current.get(id);
         if (!bridge || !runtime?.opened || !visibleSurface(id)) return;
         try {
             runtime.fit.fit();
-            const generation = generationRef.current;
-            void bridge.resize(id, runtime.term.cols, runtime.term.rows).catch(() => {
-                if (mountedRef.current && generation === generationRef.current) reportError('Unable to resize terminal.');
-            });
+            void resizeTerminal(id, runtime.term.cols, runtime.term.rows);
         } catch {
-            reportError('Unable to fit terminal to the panel.');
+            // Retire any resize emitted by fit before it threw. Its late success
+            // cannot clear this newer presentation failure.
+            runtime.presentationEpoch += 1;
+            setPresentationError({ runtime, message: 'Unable to fit terminal to the panel.' });
         }
-    }, [bridge, reportError, visibleSurface]);
+    }, [bridge, resizeTerminal, visibleSurface]);
     const focusSoon = useCallback((id: string, intent = focusIntentRef.current) => {
         if (intent !== focusIntentRef.current) return;
         if (focusTimerRef.current !== undefined) window.clearTimeout(focusTimerRef.current);
         const generation = generationRef.current;
-        const epoch = epochRef.current;
         focusTimerRef.current = window.setTimeout(() => {
             focusTimerRef.current = undefined;
-            if (generation !== generationRef.current || epoch !== epochRef.current
+            if (generation !== generationRef.current
                 || intent !== focusIntentRef.current || !visibleSurface(id)) return;
             fitTerminal(id);
-            runtimesRef.current.get(id)?.term.focus();
+            programmaticFocusRef.current = true;
+            try { runtimesRef.current.get(id)?.term.focus(); }
+            finally { programmaticFocusRef.current = false; }
         }, 0);
     }, [fitTerminal, visibleSurface]);
     const selectSession = useCallback((id: string) => {
@@ -228,6 +248,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             }
             try { runtime.term.dispose(); } catch { /* already disposed */ }
             runtimesRef.current.delete(id);
+            if (mountedRef.current) setPresentationError(current => current?.runtime === runtime ? null : current);
         }
         pendingOutputRef.current.delete(id);
     }, []);
@@ -245,13 +266,13 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             term.onData(data => {
                 void bridge.write(id, data);
             }),
-            term.onResize(({ cols, rows }) => { void bridge.resize(id, cols, rows); }),
+            term.onResize(({ cols, rows }) => { void resizeTerminal(id, cols, rows); }),
         ];
-        runtimesRef.current.set(id, { term, fit, disposables, opened: false });
+        runtimesRef.current.set(id, { term, fit, disposables, opened: false, presentationEpoch: 0 });
         const pending = pendingOutputRef.current.get(id);
         if (pending) term.write(pending);
         pendingOutputRef.current.delete(id);
-    }, [bridge]);
+    }, [bridge, resizeTerminal]);
     const restoreSession = useCallback((snapshot: TerminalSessionSnapshot): TermTab => {
         const existing = tabsRef.current.find(tab => tab.id === snapshot.id);
         if (existing && runtimesRef.current.has(snapshot.id)) return existing;
@@ -264,7 +285,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         operation.tombstones.clear();
         pendingOutputRef.current.clear();
         hydrationCompleteRef.current = false;
-        queuedNewSessionCountRef.current = 0;
+        queuedNewSessionsRef.current = [];
         reportError(RESYNC_ERROR);
     }, [reportError]);
     const recordExit = useCallback((id: string) => {
@@ -289,25 +310,29 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         if (next.length === 0) notifyEmptySessionsSoon();
     }, [disposeRuntime, focusSoon, invalidateFocus, notifyEmptySessionsSoon, setInventory]);
 
+    const ownsOperation = useCallback((operation: SessionOperation): boolean => (
+        mountedRef.current && generationRef.current === operation.generation && operationRef.current === operation
+    ), []);
+
     const flushQueuedNewSessions = useCallback(async () => {
         if (!bridge || !mountedRef.current || operationRef.current) return;
         const terminalBridge = bridge;
         const generation = generationRef.current;
         const isCurrent = () => mountedRef.current && generationRef.current === generation;
-        const begin = (kind: SessionOperation['kind']): SessionOperation => {
-            const operation = { kind, generation, focusIntent: focusIntentRef.current, tombstones: new Set<string>(), lost: false };
+        const begin = (kind: SessionOperation['kind'], focusIntent: number): SessionOperation => {
+            const operation = { kind, generation, focusIntent, tombstones: new Set<string>(), lost: false };
             operationRef.current = operation;
             epochRef.current += 1;
             return operation;
         };
         if (!hydrationCompleteRef.current) {
-            const operation = begin('list');
+            const operation = begin('list', focusIntentRef.current);
             setIsListing(true);
             try {
                 const result = await terminalBridge.list();
-                if (!isCurrent() || operationRef.current !== operation || operation.lost) return;
+                if (!ownsOperation(operation) || operation.lost) return;
                 if (!result.ok) throw new Error(result.error ?? 'Failed to restore terminal sessions');
-                const snapshots = (result.sessions ?? []).filter(snapshot => !operation.tombstones.has(snapshot.id));
+                const snapshots = (result.sessions ?? []).filter(snapshot => !operation.tombstones.has(snapshot.id) && !pendingClosesRef.current.has(snapshot.id));
                 const restoredTabs = snapshots.map(restoreSession);
                 for (const tab of tabsRef.current) if (!restoredTabs.some(restored => restored.id === tab.id)) disposeRuntime(tab.id);
                 const selected = restoredTabs.some(tab => tab.id === activeIdRef.current)
@@ -315,19 +340,22 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
                 setInventory(restoredTabs, selected);
                 hydrationCompleteRef.current = true;
                 reportError(null);
-                if (selected) focusSoon(selected, operation.focusIntent);
-                if (!restoredTabs.length && !queuedNewSessionCountRef.current && !autoCreatedRef.current) {
+                if (selected) {
+                    focusSoon(selected, pendingRevealFocusRef.current ?? operation.focusIntent);
+                    pendingRevealFocusRef.current = null;
+                }
+                if (!restoredTabs.length && !queuedNewSessionsRef.current.length && !autoCreatedRef.current) {
                     autoCreatedRef.current = true;
-                    if (operation.tombstones.size === 0) queuedNewSessionCountRef.current = 1;
+                    if (operation.tombstones.size === 0) queuedNewSessionsRef.current.push({ focusIntent: operation.focusIntent });
                 }
             } catch (err) {
-                if (!isCurrent() || operationRef.current !== operation || operation.lost) return;
-                queuedNewSessionCountRef.current = 0;
+                if (!ownsOperation(operation) || operation.lost) return;
+                queuedNewSessionsRef.current = [];
                 hydrationCompleteRef.current = false;
                 reportError(`Unable to restore terminal sessions. Choose New terminal to retry. ${err instanceof Error ? err.message : ''}`.trim());
             } finally {
                 operation.tombstones.clear();
-                if (isCurrent() && operationRef.current === operation) {
+                if (ownsOperation(operation)) {
                     operationRef.current = null;
                     pendingOutputRef.current.clear();
                     setIsListing(false);
@@ -335,28 +363,35 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             }
             if (!isCurrent() || !hydrationCompleteRef.current) return;
         }
-        while (isCurrent() && hydrationCompleteRef.current && queuedNewSessionCountRef.current > 0) {
-            queuedNewSessionCountRef.current -= 1;
-            const operation = begin('create');
+        while (isCurrent() && hydrationCompleteRef.current && queuedNewSessionsRef.current.length > 0) {
+            const request = queuedNewSessionsRef.current.shift()!;
+            const operation = begin('create', request.focusIntent);
             setIsCreating(true);
             try {
                 const result = await bridge.create({ cols: 80, rows: 24 });
-                if (!isCurrent() || operationRef.current !== operation || operation.lost) return;
+                if (!ownsOperation(operation) || operation.lost) return;
                 if (!result.ok || !result.id) throw new Error(result.error ?? 'Failed to start terminal session');
                 if (operation.tombstones.has(result.id)) continue;
                 createRuntime(result.id);
                 const tab: TermTab = { id: result.id, shell: result.shell ?? 'sh', cwd: result.cwd ?? '~', ordinal: ++ordinalRef.current };
                 reportError(null);
-                setInventory([...tabsRef.current, tab], result.id);
-                setRovingId(result.id);
-                focusSoon(result.id, operation.focusIntent);
+                const previousActive = activeIdRef.current;
+                const ownsSelection = operation.focusIntent === focusIntentRef.current;
+                setInventory([...tabsRef.current, tab], ownsSelection || !previousActive ? result.id : previousActive);
+                if (ownsSelection) {
+                    setRovingId(result.id);
+                    focusSoon(result.id, operation.focusIntent);
+                } else if (!previousActive && pendingRevealFocusRef.current !== null) {
+                    focusSoon(result.id, pendingRevealFocusRef.current);
+                }
+                pendingRevealFocusRef.current = null;
             } catch (err) {
-                if (!isCurrent() || operationRef.current !== operation || operation.lost) return;
-                queuedNewSessionCountRef.current = 0;
+                if (!ownsOperation(operation) || operation.lost) return;
+                queuedNewSessionsRef.current = [];
                 reportError(`Unable to start terminal. ${err instanceof Error ? err.message : 'Choose New terminal to retry.'}`);
             } finally {
                 operation.tombstones.clear();
-                if (isCurrent() && operationRef.current === operation) {
+                if (ownsOperation(operation)) {
                     operationRef.current = null;
                     pendingOutputRef.current.clear();
                     setIsCreating(false);
@@ -364,26 +399,27 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             }
         }
         if (isCurrent() && tabsRef.current.length === 0) notifyEmptySessionsSoon();
-    }, [bridge, createRuntime, disposeRuntime, focusSoon, notifyEmptySessionsSoon, reportError, restoreSession, setInventory]);
+    }, [bridge, createRuntime, disposeRuntime, focusSoon, notifyEmptySessionsSoon, ownsOperation, reportError, restoreSession, setInventory]);
     const requestNewSession = useCallback(() => {
         if (!mountedRef.current || !bridge) return;
         const inFlightCreate = operationRef.current?.kind === 'create' ? 1 : 0;
-        if (queuedNewSessionCountRef.current + inFlightCreate >= TERMINAL_REQUEST_LIMIT) {
+        if (queuedNewSessionsRef.current.length + inFlightCreate >= TERMINAL_REQUEST_LIMIT) {
             setNotice(TERMINAL_QUEUE_OVERFLOW);
             return;
         }
         // A lost snapshot must settle before an explicit resync can begin.
         if (operationRef.current?.lost) { reportError(RESYNC_ERROR); return; }
         epochRef.current += 1;
-        queuedNewSessionCountRef.current += 1;
+        // Capture user intent at admission, never when this request is dequeued.
+        queuedNewSessionsRef.current.push({ focusIntent: focusIntentRef.current });
         if (!operationRef.current) { reportError(null); setNotice(null); }
         void flushQueuedNewSessions();
     }, [bridge, flushQueuedNewSessions, reportError]);
     const focusActiveTerminal = useCallback(() => {
         invalidateFocus();
         if (activeIdRef.current) focusSoon(activeIdRef.current);
-        // Pending list/create may honor this explicit focus intent on completion.
-        if (operationRef.current) operationRef.current.focusIntent = focusIntentRef.current;
+        // Reveal owns a separate focus request; it cannot renew queued creates.
+        pendingRevealFocusRef.current = activeIdRef.current ? null : focusIntentRef.current;
     }, [focusSoon, invalidateFocus]);
     const drainPendingTerminalActions = useCallback(() => {
         const pending = takeTerminalShortcutQueue(window);
@@ -394,19 +430,29 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         if (pending.notice) setNotice(pending.notice);
     }, [focusActiveTerminal, requestNewSession]);
     const closeSession = useCallback((id: string) => {
-        if (!bridge || !tabsRef.current.some(tab => tab.id === id)) return;
-        const generation = generationRef.current;
-        void bridge.kill(id).catch(() => {
-            if (mountedRef.current && generation === generationRef.current) {
+        if (!bridge || !tabsRef.current.some(tab => tab.id === id) || pendingClosesRef.current.has(id)) return;
+        const token = { generation: generationRef.current };
+        pendingClosesRef.current.set(id, token);
+        epochRef.current += 1;
+        const settleClose = (failed: boolean) => {
+            if (!mountedRef.current || token.generation !== generationRef.current || pendingClosesRef.current.get(id) !== token) return;
+            pendingClosesRef.current.delete(id);
+            epochRef.current += 1;
+            if (failed) {
                 hydrationCompleteRef.current = false;
-                queuedNewSessionCountRef.current = 0;
+                queuedNewSessionsRef.current = [];
                 if (operationRef.current) loseOperation(operationRef.current);
                 reportError('Unable to close terminal. Choose New terminal to resync.');
             }
-        });
+            if (tabsRef.current.length === 0) notifyEmptySessionsSoon();
+        };
         recordExit(id);
         removeSession(id);
-    }, [bridge, loseOperation, recordExit, removeSession, reportError]);
+        // terminal:kill resolves void, including a missing session. This is an
+        // acknowledgement only, not proof of physical process exit.
+        try { void bridge.kill(id).then(() => settleClose(false), () => settleClose(true)); }
+        catch { settleClose(true); }
+    }, [bridge, loseOperation, notifyEmptySessionsSoon, recordExit, removeSession, reportError]);
 
     const handleTerminalDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
         if (!hasFolderPanelDragPayload(event.dataTransfer)) return;
@@ -440,6 +486,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
 
     useEffect(() => {
         mountedRef.current = true;
+        setPresentationError(null);
         generationRef.current += 1;
         hydrationCompleteRef.current = false;
         autoCreatedRef.current = false;
@@ -473,7 +520,9 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             if (emptyTimerRef.current !== undefined) window.clearTimeout(emptyTimerRef.current);
             emptyTimerRef.current = undefined;
             operationRef.current = null;
-            queuedNewSessionCountRef.current = 0;
+            queuedNewSessionsRef.current = [];
+            pendingClosesRef.current.clear();
+            pendingRevealFocusRef.current = null;
             pendingOutputRef.current.clear();
             for (const id of Array.from(runtimesRef.current.keys())) disposeRuntime(id);
         };
@@ -593,7 +642,10 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
                     <div key={tab.id} ref={node => attachHost(tab.id, node)} data-terminal-id={tab.id}
                         role="tabpanel" id={`terminal-output-${tab.ordinal}`} aria-labelledby={`terminal-tab-${tab.ordinal}`}
                         aria-hidden={tab.id !== activeId} className={`terminal-xterm-surface${tab.id === activeId ? ' is-active' : ''}`}
-                        onPointerDown={() => selectSession(tab.id)} onDragOver={handleTerminalDragOver} onDrop={handleTerminalDrop}>
+                        onPointerDown={() => selectSession(tab.id)}
+                        onFocusCapture={() => { if (!programmaticFocusRef.current) invalidateFocus(); }}
+                        onKeyDownCapture={invalidateFocus} onInputCapture={invalidateFocus}
+                        onDragOver={handleTerminalDragOver} onDrop={handleTerminalDrop}>
                         <textarea className="terminal-a11y-input" aria-label="Terminal automation input" autoCapitalize="off" autoComplete="off"
                             autoCorrect="off" spellCheck={false} tabIndex={tab.id === activeId ? 0 : -1} />
                     </div>
@@ -602,7 +654,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
                     <button type="button" disabled={isCreating} onClick={requestNewSession}>New terminal</button>
                 </div>}
             </div>
-            {(error || notice) && <div className="terminal-error" role="status">{[error, notice].filter(Boolean).join(' ')}</div>}
+            {(error || presentationError || notice) && <div className="terminal-error" role="status">{[error, presentationError?.message, notice].filter(Boolean).join(' ')}</div>}
         </div>
     );
 }

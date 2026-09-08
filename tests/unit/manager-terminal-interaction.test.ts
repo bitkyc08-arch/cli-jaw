@@ -104,7 +104,12 @@ class FakeTerminal {
         return entry;
     }
 }
-class FakeFitAddon { fit() {} }
+const fitAddons: FakeFitAddon[] = [];
+class FakeFitAddon {
+    fail = false;
+    constructor() { fitAddons.push(this); }
+    fit() { if (this.fail) throw new Error('fixture fit failed'); }
+}
 mock.module('@xterm/xterm', { namedExports: { Terminal: FakeTerminal } });
 mock.module('@xterm/addon-fit', { namedExports: { FitAddon: FakeFitAddon } });
 mock.module('../../public/manager/src/terminal/terminal-bridge.ts', { namedExports: { getTerminalBridge: () => currentBridge } });
@@ -191,6 +196,7 @@ async function mount(t: TestContext, options: { fixture?: ReturnType<typeof brid
     const f = options.fixture ?? bridgeFixture();
     currentBridge = f.bridge;
     terminals.length = 0;
+    fitAddons.length = 0;
     const container = document.createElement('div');
     container.className = 'bottom-panel';
     container.setAttribute('aria-hidden', 'false');
@@ -566,7 +572,9 @@ test('keyboard tab focus, collapse and detached surfaces invalidate deferred xte
     document.body.append(view.container);
     await shortcut('focusTerminal');
     await flushTimers();
-    assert.equal(terminals[2]?.focused, 1);
+    assert.equal(view.get('[role="tab"][aria-selected="true"]').textContent, '2: zsh');
+    assert.equal(terminals[1]?.focused, 1);
+    assert.equal(terminals[2]?.focused, 0, 'hidden creation cannot replace the existing selection');
 });
 
 function WorkspaceFixture({ lazy = false, active = 'terminal' }: { lazy?: boolean; active?: 'terminal' | 'browser' }) {
@@ -702,4 +710,194 @@ test('normal xterm input and dedicated IME input keep their independent bridge p
     input.dispatchEvent(new dom.window.CompositionEvent('compositionend'));
     await view.unmount();
     assert.equal(timeouts.size, 0); assert.equal(intervals.size, 0);
+});
+
+test('create admitted before newer selection/input appends without replacing active tab, roving tab or input focus', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    await flushTimers();
+    await view.click('.terminal-new-tab');
+    await act(async () => view.tabs()[0]!.click());
+    await flushTimers();
+    const input = terminals[0]!.input!;
+    input.value = 'unfinished input';
+    await act(async () => input.dispatchEvent(new dom.window.Event('input', { bubbles: true })));
+    await settle(view.f.creates[0], { ok: true, id: 'c' });
+    await flushTimers();
+    assert.equal(view.tabs().length, 3);
+    assert.equal(view.tabs()[0]!.getAttribute('aria-selected'), 'true');
+    assert.equal(view.tabs()[0]!.tabIndex, 0);
+    assert.equal(view.tabs()[2]!.tabIndex, -1);
+    assert.equal(document.activeElement, input);
+    assert.equal(input.value, 'unfinished input');
+    assert.equal(terminals[2]!.focused, 0);
+});
+
+test('two queued creates retain their admission tokens after keyboard revocation; only a later explicit request can select', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    await flushTimers();
+    await shortcut('newTerminalSession', 2);
+    const [a, b] = view.tabs(); assert.ok(a && b);
+    await act(async () => {
+        b.focus();
+        b.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true }));
+    });
+    for (const [index, id] of ['c', 'd'].entries()) {
+        await settle(view.f.creates[index], { ok: true, id });
+        await flushTimers();
+        assert.equal(document.activeElement, a);
+        assert.equal(a.tabIndex, 0);
+        assert.equal(b.getAttribute('aria-selected'), 'true');
+        assert.equal(view.tabs().filter(tab => tab.tabIndex === 0).length, 1);
+        assert.ok(terminals.slice(2).every(term => term.focused === 0));
+    }
+    assert.equal(view.f.creates.length, 2);
+    await shortcut('newTerminalSession');
+    await settle(view.f.creates[2], { ok: true, id: 'explicit-new' });
+    await flushTimers();
+    assert.equal(view.tabs()[4]!.getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, terminals[4]!.input);
+});
+
+test('event-driven resize failure then matching success clears presentation error and last natural exit still closes', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await flushTimers();
+    const calls: Array<{ id: string; cols: number; rows: number; result: ReturnType<typeof deferred<void>> }> = [];
+    view.f.bridge.resize = (id, cols, rows) => {
+        const result = deferred<void>(); calls.push({ id, cols, rows, result }); return result.promise;
+    };
+    await act(async () => terminals[0]!.resize!({ cols: 100, rows: 30 }));
+    assert.deepEqual({ id: calls[0]!.id, cols: calls[0]!.cols, rows: calls[0]!.rows }, { id: 'a', cols: 100, rows: 30 });
+    await act(async () => calls[0]!.result.reject(new Error('resize failed')));
+    assert.match(view.get('[role="status"]').textContent!, /Unable to resize/);
+    await act(async () => terminals[0]!.resize!({ cols: 110, rows: 35 }));
+    await settle(calls[1]!.result, undefined);
+    assert.equal(view.container.querySelector('[role="status"]'), null);
+    await emitExit(view.f, 'a'); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 1);
+});
+
+test('older resize success cannot clear a newer failure, and presentation success preserves admission error', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await flushTimers();
+    await view.click('.terminal-new-tab');
+    await settle(view.f.creates[0], { ok: false, error: 'admission denied' });
+    const calls: ReturnType<typeof deferred<void>>[] = [];
+    view.f.bridge.resize = () => { const result = deferred<void>(); calls.push(result); return result.promise; };
+    await act(async () => {
+        terminals[0]!.resize!({ cols: 100, rows: 30 });
+        terminals[0]!.resize!({ cols: 101, rows: 31 });
+    });
+    await act(async () => calls[1]!.reject(new Error('newer resize failed')));
+    await settle(calls[0], undefined);
+    assert.match(view.get('[role="status"]').textContent!, /admission denied/);
+    assert.match(view.get('[role="status"]').textContent!, /Unable to resize/);
+    await act(async () => terminals[0]!.resize!({ cols: 102, rows: 32 }));
+    await settle(calls[2], undefined);
+    assert.match(view.get('[role="status"]').textContent!, /admission denied/);
+    assert.doesNotMatch(view.get('[role="status"]').textContent!, /Unable to resize/);
+    await emitExit(view.f, 'a'); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0, 'admission recovery remains visible');
+});
+
+test('fit failure retires an older resize and clears only after a matching presentation success', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await flushTimers();
+    const calls: ReturnType<typeof deferred<void>>[] = [];
+    view.f.bridge.resize = () => { const result = deferred<void>(); calls.push(result); return result.promise; };
+    await act(async () => terminals[0]!.resize!({ cols: 100, rows: 30 }));
+    fitAddons[0]!.fail = true;
+    const resizePanel = async () => {
+        await act(async () => {
+            for (const observer of resizeObservers) observer.callback([], observer as unknown as ResizeObserver);
+        });
+    };
+    await resizePanel();
+    assert.match(view.get('[role="status"]').textContent!, /Unable to fit/);
+    await settle(calls[0], undefined);
+    assert.match(view.get('[role="status"]').textContent!, /Unable to fit/);
+    fitAddons[0]!.fail = false;
+    await resizePanel(); await settle(calls[1], undefined);
+    assert.equal(view.container.querySelector('[role="status"]'), null);
+    await emitExit(view.f, 'a'); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 1);
+});
+
+test('delayed kill rejection keeps last-session recovery mounted and explicit retry re-lists', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await flushTimers();
+    const ack = deferred<void>();
+    view.f.bridge.kill = id => { view.f.kills.push(id); return ack.promise; };
+    await view.click('[aria-label="Close 1: zsh session"]');
+    await flushTimers();
+    assert.equal(view.tabs().length, 0); assert.equal(view.empty.mock.callCount(), 0);
+    await act(async () => ack.reject(new Error('kill failed'))); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0);
+    assert.match(view.get('[role="status"]').textContent!, /Unable to close.*resync/);
+    assert.equal(view.container.getAttribute('aria-hidden'), 'false');
+    await view.click('.terminal-empty button');
+    assert.equal(view.f.lists.length, 2); assert.equal(view.f.creates.length, 0);
+    assert.deepEqual(view.f.kills, ['a']);
+});
+
+test('resolved void kill acknowledgement, including already-absent session, releases last-close exactly once', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    const ack = deferred<void>();
+    view.f.bridge.kill = id => { view.f.kills.push(id); return ack.promise; };
+    await view.click('[aria-label="Close 1: zsh session"]');
+    await emitExit(view.f, 'a'); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0, 'exit does not settle the pending IPC acknowledgement');
+    await settle(ack, undefined); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 1);
+    assert.deepEqual(view.f.kills, ['a']);
+    assert.equal(view.container.querySelector('[role="status"]'), null);
+});
+
+test('each pending close owns its acknowledgement and a newly created session survives late settlement', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    const a = deferred<void>(); const b = deferred<void>();
+    view.f.bridge.kill = id => { view.f.kills.push(id); return id === 'a' ? a.promise : b.promise; };
+    await view.click('[aria-label="Close 1: zsh session"]');
+    await view.click('[aria-label="Close 2: zsh session"]');
+    await settle(b, undefined); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0, 'a still owns a pending acknowledgement');
+    await shortcut('newTerminalSession');
+    await settle(view.f.creates[0], { ok: true, id: 'c' });
+    await settle(a, undefined); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0);
+    assert.equal(view.tabs().length, 1); assert.deepEqual(view.f.kills, ['a', 'b']);
+});
+
+test('explicit hide/unmount during pending kill does not issue another kill or consume late rejection', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    const ack = deferred<void>();
+    view.f.bridge.kill = id => { view.f.kills.push(id); return ack.promise; };
+    await view.click('[aria-label="Close 1: zsh session"]');
+    await view.click('.terminal-collapse-button');
+    assert.equal(view.container.getAttribute('aria-hidden'), 'true');
+    await view.unmount();
+    await act(async () => ack.reject(new Error('late kill failure'))); await flushTimers();
+    assert.equal(view.empty.mock.callCount(), 0); assert.deepEqual(view.f.kills, ['a']);
+});
+
+test('unrelated late append cannot cancel the newer selection focus waiting for its timer', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    await flushTimers();
+    await view.click('.terminal-new-tab');
+    await act(async () => view.tabs()[0]!.click());
+    await settle(view.f.creates[0], { ok: true, id: 'c' });
+    await flushTimers();
+    assert.equal(view.tabs()[0]!.getAttribute('aria-selected'), 'true');
+    assert.equal(view.tabs()[0]!.tabIndex, 0);
+    assert.equal(document.activeElement, terminals[0]!.input);
+    assert.equal(terminals[2]!.focused, 0);
 });
