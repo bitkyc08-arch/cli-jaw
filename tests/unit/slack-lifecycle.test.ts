@@ -453,11 +453,20 @@ test('l real lifecycle: late hello loses a replaced presence claim', async t => 
     const entry = join(import.meta.dirname!, '..', 'fixtures', 'slack-two-home-lifecycle.ts');
     const tsx = join(import.meta.dirname!, '..', '..', 'node_modules', '.bin', 'tsx');
     const children: ChildProcessWithoutNullStreams[] = [];
+    const exited = new Map<ChildProcessWithoutNullStreams, Promise<void>>();
+    const rmQuiet = (path: string) => {
+        // A child still winding down can recreate a lock file between the
+        // recursive listing and the rmdir (ENOTEMPTY on CI). Retry once after
+        // the children are gone; a leftover temp dir is not a test failure.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            try { rmSync(path, { recursive: true, force: true }); return; } catch { /* retry */ }
+        }
+    };
     t.after(() => {
-        for (const child of children) child.kill();
-        rmSync(sharedHome, { recursive: true, force: true });
-        rmSync(homeA, { recursive: true, force: true });
-        rmSync(homeB, { recursive: true, force: true });
+        for (const child of children) if (child.exitCode === null) child.kill();
+        rmQuiet(sharedHome);
+        rmQuiet(homeA);
+        rmQuiet(homeB);
     });
 
     const start = (childHome: string, port: string, initialHello: boolean) => {
@@ -472,6 +481,7 @@ test('l real lifecycle: late hello loses a replaced presence claim', async t => 
             stdio: ['pipe', 'pipe', 'pipe'],
         });
         children.push(child);
+        exited.set(child, new Promise<void>(resolve => child.once('exit', () => resolve())));
         let buffered = '';
         const waiters: Array<(value: Record<string, unknown>) => void> = [];
         child.stdout.setEncoding('utf8');
@@ -520,4 +530,11 @@ test('l real lifecycle: late hello loses a replaced presence claim', async t => 
 
     a.child.stdin.write('shutdown\n');
     b.child.stdin.write('shutdown\n');
+    // Both fixtures release their leases and exit on shutdown; wait for the
+    // reports and the process exits so cleanup never races a live child.
+    await a.next();
+    await b.next();
+    a.child.stdin.end();
+    b.child.stdin.end();
+    await Promise.all([exited.get(a.child), exited.get(b.child)]);
 });
