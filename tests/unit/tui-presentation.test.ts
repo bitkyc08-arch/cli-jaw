@@ -16,7 +16,7 @@ test('renderToolLine preserves one-line completed tool detail and folds multilin
     assert.doesNotMatch(multiLine, /second line/);
 });
 
-test('renderToolLine folds multiline detail in every state — headers never carry raw newlines (jawcode 036d1ab parity)', () => {
+test('renderToolLine folds multiline detail in every state and keeps headers on one row', () => {
     for (const state of ['pending', 'error'] as const) {
         const multiLine = renderToolLine('🔧', 'Bash', 'first line\nsecond line\nthird line', state);
         assert.doesNotMatch(multiLine, /\n/, `${state} header must be a single row`);

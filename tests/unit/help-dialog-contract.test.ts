@@ -167,10 +167,9 @@ test('HD-006: chat input uses one overlay help trigger for input and shortcuts',
 });
 
 test('HD-006b: every web slash command and alias has row-level info help mapping', () => {
-    // Phase 9-10 jawcode-parity stub commands are wired as web commands but have no
-    // dedicated help topic yet (intentional doc gap tracked for follow-up).
-    const PARITY_STUBS_WITHOUT_HELP = new Set(['fast', 'context', 'tools', 'retry', 'export', 'resume']);
-    const webCommands = COMMANDS.filter(cmd => !cmd.hidden && cmd.interfaces.includes('web') && !PARITY_STUBS_WITHOUT_HELP.has(cmd.name));
+    // These web commands have no dedicated help topic yet.
+    const COMMANDS_WITHOUT_HELP = new Set(['fast', 'context', 'tools', 'retry', 'export', 'resume']);
+    const webCommands = COMMANDS.filter(cmd => !cmd.hidden && cmd.interfaces.includes('web') && !COMMANDS_WITHOUT_HELP.has(cmd.name));
     for (const cmd of webCommands) {
         const topic = COMMAND_TOPIC_MAP[cmd.name];
         assert.ok(topic, `missing command info topic for /${cmd.name}`);

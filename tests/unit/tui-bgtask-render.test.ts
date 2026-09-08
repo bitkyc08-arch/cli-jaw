@@ -1,5 +1,4 @@
-// ─── jawcode-style bgtask rendering ──
-// Overlay rows mirror jawcode's background footer panel: `{icon} {kind} {label}
+// Background-task overlay rows use `{icon} {kind} {label}
 // · {hint}` with the unicode glyph set (✔ ✘ ⏹ ⚠ ⟳), attention-first sort,
 // formatDuration tiers, and a `!` attention suffix on the status-bar badge that
 // clears when the Ctrl+O panel opens.
@@ -24,7 +23,7 @@ function strip(s: string): string {
     return s.replace(/\x1b\[[0-9;]*m/g, '');
 }
 
-test('formatBgtaskDuration follows jawcode formatDuration tiers', () => {
+test('formatBgtaskDuration uses compact duration tiers', () => {
     assert.equal(formatBgtaskDuration(500), '500ms');
     assert.equal(formatBgtaskDuration(1500), '1.5s');
     assert.equal(formatBgtaskDuration(30 * 60_000 + 15_000), '30m15s');
@@ -45,7 +44,7 @@ test('sortBgtaskItems ranks attention first, then running, recent first within r
     assert.deepEqual(order, ['bg_failed', 'bg_cancelled', 'bg_new-running', 'bg_old-running', 'bg_old-complete']);
 });
 
-test('overlay rows use the jawcode glyph set and dot-separated hints', () => {
+test('overlay rows use status glyphs and dot-separated hints', () => {
     const items: BgtaskOverlayItem[] = [
         { id: 'bg_run12345', kind: 'shell', status: 'running', elapsed: '2m30s', sortKey: 4 },
         { id: 'bg_done1234', kind: 'web-ai', status: 'complete', elapsed: '', ago: '5m ago', sortKey: 3 },
@@ -75,7 +74,7 @@ test('empty overlay keeps the no-tasks line', () => {
     assert.ok(lines[0]!.includes('No background tasks'));
 });
 
-test('status-bar badge grows the jawcode attention suffix', () => {
+test('status-bar badge grows an attention suffix', () => {
     const base = { model: 'm', engine: 'codex', engineAccent: '\x1b[36m', state: 'idle', cwd: '/tmp', port: 1 };
     assert.ok(strip(renderStatusBar({ ...base, bgtask: 2 })).includes('⏳2'));
     assert.ok(strip(renderStatusBar({ ...base, bgtask: 2, bgtaskAttention: true })).includes('⏳2!'));

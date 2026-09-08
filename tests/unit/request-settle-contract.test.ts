@@ -11,7 +11,7 @@ import {
 } from '../../src/orchestrator/request-registry.ts';
 
 // #276 prerequisite. POST /api/message always returned a requestId, but that id
-// could not tell a caller when the request was DONE: a successful JWC steer
+// could not tell a caller when the request was DONE: an accepted mid-run steer
 // emits no completion event for the new id, the collect queue keeps only the
 // first id of N merged prompts, and several cancel/drop paths carried no id at
 // all. Adding a broadcast per completion site cannot prove exactly-once, so

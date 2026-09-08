@@ -52,7 +52,7 @@ test('fullscreen scrollback commit uses queue+render pattern with transactional 
     assert.ok(frameSource.includes('commitTargetRowsAreBlank'), 'flush defers on stale direct-write target rows');
 });
 
-test('fullscreen resize uses JWC-like clear before transcript and protects history afterward', () => {
+test('fullscreen resize clears before transcript repaint and protects history afterward', () => {
     const resizeStart = fullscreenSource.indexOf("process.stdout.on('resize'");
     const resizeEnd = fullscreenSource.indexOf("process.stdin.on('data'", resizeStart);
     const resizeBlock = fullscreenSource.slice(resizeStart, resizeEnd);

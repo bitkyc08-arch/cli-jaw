@@ -90,7 +90,7 @@ test('background task client uses Manager-local bgtask routes', async () => {
 });
 
 test('background task update normalizer accepts only bgtask_update frames', () => {
-    assert.equal(normalizeBackgroundTaskUpdate({ topic: 'jwc', event: 'code_update' }), null);
+    assert.equal(normalizeBackgroundTaskUpdate({ topic: 'code', event: 'code_update' }), null);
     assert.equal(normalizeBackgroundTaskUpdate({ topic: 'bgtask', event: 'ping' }), null);
 
     const update = normalizeBackgroundTaskUpdate({

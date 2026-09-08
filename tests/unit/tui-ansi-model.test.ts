@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { AnsiTerminalModel } from './helpers/ansi-terminal-model.ts';
 
 // Fidelity tests for the shared terminal model (260703 scrollback hardening).
-// Real-terminal semantics verified empirically against @xterm/headless in the
-// jawcode sibling repo: DECSTBM ignores bottom <= top, and 3J erases the saved
+// Real-terminal semantics verified empirically against @xterm/headless:
+// DECSTBM ignores bottom <= top, and 3J erases the saved
 // lines while 2J touches only the visible screen.
 
 test('DECSTBM ignores a 1-row region — CSI 1;1r + newline pushes nothing to scrollback', () => {

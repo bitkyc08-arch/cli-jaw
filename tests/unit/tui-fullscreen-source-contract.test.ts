@@ -73,7 +73,7 @@ test('scrollback commit lane is stable-prefix under the top-anchored geometry', 
     // retired bottom-anchored insert geometry, whose region scroll shifted
     // live rows under the diff. The top-anchored lane writes only into
     // model-blank fill rows, so the settled prefix commits while the tail
-    // streams (jawcode b0a3290 commit-on-completion) — finished blocks ride
+    // streams; finished blocks ride
     // up through the scrollback seam mid-turn.
     assert.doesNotMatch(source, /const allStable =/);
     assert.match(source, /hasTranscriptItems && !overlayOpen\s*\n?\s*\? viewport\.peekStableCommitRows\(transcriptHeight, stablePrefixIndex\)/);

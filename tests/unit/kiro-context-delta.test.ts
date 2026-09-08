@@ -43,6 +43,3 @@ test('ai-e Kiro resume follows the same current-turn-only rule', () => {
 
     assert.equal(prompt, 'next ai-e kiro turn');
 });
-
-// JWC's actual resident call-site contract is covered in
-// native-legacy-prompt-routing.test.ts with isolated module mocks.

@@ -1,6 +1,6 @@
 /**
- * 260704 — verbose render mode (jawcode 91bfb40/753ea63 parity port).
- * Session-scoped override: tool/thinking blocks settle expanded, no
+ * Verbose render mode is a session-scoped override: tool/thinking blocks
+ * settle expanded, with no
  * minimize-on-next-tool, fold toggles are commit-mode-only.
  */
 import { test, afterEach } from 'node:test';

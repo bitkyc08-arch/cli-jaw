@@ -316,7 +316,7 @@ test('user item with paste (display differs from submit)', () => {
     }
 });
 
-test('streaming thinking settles when answer text starts (jawcode 083.5 parity)', () => {
+test('streaming thinking settles when answer text starts', () => {
     const state = createTranscriptState();
     appendUserItem(state, 'hello', 'hello');
     appendThinkingTurnText(state, 'Working through the problem', 'main');
