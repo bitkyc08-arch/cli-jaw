@@ -484,7 +484,9 @@ function collectTsFiles(dir) {
 const actual = new Set();
 for (const file of ['server.ts', ...collectTsFiles('src')]) {
   const text = fs.readFileSync(file, 'utf8');
-  for (const match of text.matchAll(/broadcast\('([^']+)'/g)) {
+  // The first argument may sit on its own line when the call is wrapped
+  // (src/agent/events/helpers.ts), so allow whitespace after the paren.
+  for (const match of text.matchAll(/broadcast\(\s*'([^']+)'/g)) {
     actual.add(match[1]);
   }
 }
