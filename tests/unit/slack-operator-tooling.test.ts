@@ -238,17 +238,28 @@ test('doctor text and JSON identify a foreign owner without exposing token mater
             version: 1, claimId: 'd'.repeat(32), home: foreignHome, port: '4567',
             pid: process.pid, claimedAt: new Date().toISOString(), connected: true,
         }));
-        const run = spawnSync(repoTsx, [cliEntry, '--home', home, 'doctor', '--json'], {
-            cwd: repoRoot, encoding: 'utf8', timeout: 60_000,
-            env: { ...process.env, HOME: sharedHome, NO_COLOR: '1', SLACK_BOT_TOKEN: '', SLACK_APP_TOKEN: '' },
-        });
-        assert.ok(run.stdout, run.stderr);
-        const slack = JSON.parse(run.stdout).slack;
+        const runDoctor = (json: boolean) => spawnSync(
+            repoTsx,
+            [cliEntry, '--home', home, 'doctor', ...(json ? ['--json'] : [])],
+            {
+                cwd: repoRoot, encoding: 'utf8', timeout: 60_000,
+                env: { ...process.env, HOME: sharedHome, NO_COLOR: '1', SLACK_BOT_TOKEN: '', SLACK_APP_TOKEN: '' },
+            },
+        );
+        const jsonRun = runDoctor(true);
+        assert.ok(jsonRun.stdout, jsonRun.stderr);
+        const slack = JSON.parse(jsonRun.stdout).slack;
         assert.equal(slack.status, 'token_shared_other_home');
         assert.deepEqual(slack.tokenClaimOwner, { home: foreignHome, port: '4567' });
-        const rendered = `${run.stdout}\n${run.stderr}`;
-        assert.doesNotMatch(rendered, new RegExp(token));
-        assert.doesNotMatch(rendered, /[0-9a-f]{64}\.json/);
+        const textRun = runDoctor(false);
+        assert.match(textRun.stdout, new RegExp(`Slack app token is claimed by ${foreignHome} on :4567`));
+        for (const rendered of [
+            `${jsonRun.stdout}\n${jsonRun.stderr}`,
+            `${textRun.stdout}\n${textRun.stderr}`,
+        ]) {
+            assert.doesNotMatch(rendered, new RegExp(token));
+            assert.doesNotMatch(rendered, /[0-9a-f]{64}\.json/);
+        }
     } finally {
         rmSync(home, { recursive: true, force: true });
         rmSync(foreignHome, { recursive: true, force: true });
