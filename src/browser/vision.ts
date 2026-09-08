@@ -3,6 +3,7 @@
  * Phase 2: Codex provider only. Phase 3: + Gemini/Claude REST.
  */
 import { spawn } from 'child_process';
+import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot } from './actions.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 
@@ -110,10 +111,19 @@ function codexVision(screenshotPath: string, target: string): Promise<VisionCoor
 
         let stdout = '';
         let stderr = '';
-        child.stdout.on('data', d => { stdout = appendBounded(stdout, String(d)); });
-        child.stderr.on('data', d => { stderr = appendBounded(stderr, String(d), 64 * 1024); });
+        // Decode across chunk boundaries. `String(buffer)` decodes each chunk
+        // independently, so a multi-byte character split by the stream boundary
+        // becomes U+FFFD before anything else sees it — which mangles non-ASCII
+        // text in the model's `description`.
+        const outDecoder = new StringDecoder('utf8');
+        const errDecoder = new StringDecoder('utf8');
+        child.stdout.on('data', d => { stdout = appendBounded(stdout, outDecoder.write(d as Buffer)); });
+        child.stderr.on('data', d => { stderr = appendBounded(stderr, errDecoder.write(d as Buffer), 64 * 1024); });
 
         child.on('close', (code) => {
+            // Flush any trailing partial sequence before parsing.
+            stdout = appendBounded(stdout, outDecoder.end());
+            stderr = appendBounded(stderr, errDecoder.end(), 64 * 1024);
             if (code !== 0) {
                 return reject(new Error(`codex exec failed (code ${code}): ${stderr.slice(0, 200)}`));
             }
