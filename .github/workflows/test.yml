@@ -520,7 +520,6 @@ jobs:
       contents: read
     env:
       EXPECTED_SHA: ${{ github.sha }}
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/jaw-qa-browsers
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v5
@@ -534,6 +533,7 @@ jobs:
           evidence="$RUNNER_TEMP/jaw-hosted-qa-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/artifacts"
           mkdir -p "$evidence"
           echo "QA_ARTIFACT_DIR=$evidence" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_BROWSERS_PATH=$RUNNER_TEMP/jaw-qa-browsers" >> "$GITHUB_ENV"
           printf 'INCOMPLETE run=%s attempt=%s expected=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$EXPECTED_SHA" > "$evidence/preflight.log"
           actual="$(git rev-parse HEAD)"
           printf 'checkout=%s ref=%s\n' "$actual" "$GITHUB_REF" >> "$evidence/preflight.log"
