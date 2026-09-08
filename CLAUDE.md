@@ -15,6 +15,8 @@ Native Code interruption seals callbacks before persisting accepted buffered con
 - Never create private records inside this checkout, including `devlog`, `_plan`, `_fin`, or `.jwc` aliases at any depth. This overrides generic skill defaults. Do not include private record paths in public docs or source.
 - Before public pushes, check the index with `npm run check:private-boundary` and outgoing commit trees with `node scripts/check-private-boundary.mjs --range <remote-base> HEAD`; enable the checkout-local pre-push hook as described in [CONTRIBUTING.md](CONTRIBUTING.md#local-private-path-check). Review content separately. CI runs after upload and cannot prevent initial disclosure.
 
+- Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `structure/frontend.md`.
+
 ## Build & Deploy Contract
 
 - The running server executes compiled `dist/` (`jaw serve` → `dist/server.js`), never the TS sources. After changing `server.ts`/`src/**`/`bin/**`, run `npm run build` before telling anyone to restart; frontend changes additionally need `npm run build:frontend`. Full rules: `AGENTS.md` § Build & Deploy Contract.

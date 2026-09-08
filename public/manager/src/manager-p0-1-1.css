@@ -318,7 +318,7 @@
     font-size: 12px;
 }
 
-.manager-sidebar .instance-row-title span {
+.manager-sidebar .instance-row-title .instance-row-secondary {
     display: none;
 }
 
@@ -364,7 +364,7 @@
     display: inline;
 }
 
-.manager-sidebar .profile-instance-groups.is-profile-merged .instance-row-title span {
+.manager-sidebar .profile-instance-groups.is-profile-merged .instance-row-title .instance-row-secondary {
     display: block;
     max-width: 100%;
     overflow: hidden;

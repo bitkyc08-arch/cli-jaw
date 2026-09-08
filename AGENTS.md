@@ -193,6 +193,8 @@ Before any public push, run `npm run check:private-boundary` for the index and `
 
 ### Architecture Docs Sync
 
+- Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `structure/frontend.md`.
+
 - Linux `/api/file/open` acknowledges asynchronous `xdg-open` launch, not desktop application success. Keep detached/ignored-stdio dispatch and launch-error handling; never wait synchronously for the opener. See `structure/server_api.md`.
 
 - Sidecar builds use exclusive owned staging/source snapshots and retained failure evidence; preserve the existing compiled-asset/prune/native/no-JWC gates. Smoke executes a byte-matched copy outside checkout dependency ancestors with the target Node, strict process/IPC/listener/HTTP/close checks and evidence before cleanup. Never equate timeout/skipped with pass, relabel retained roots as deleted, adopt unknown output, or force-remove locks. Input relative contained symlinks are preserved verbatim; output fingerprinting is local provenance, not a signature. Final builder-filtered native UI remains separate. See `structure/infra.md`.

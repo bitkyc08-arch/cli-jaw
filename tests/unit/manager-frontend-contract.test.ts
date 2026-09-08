@@ -566,7 +566,7 @@ test('manager navigator does not exclude the selected instance from profile grou
     assert.equal(navigator.includes('InstanceRow'), false, 'InstanceNavigator must not render a second selected instance card');
 });
 
-test('manager profile rows keep Active/Running grouping while merging profile labels into rows', () => {
+test('manager profile rows keep Selected/Running grouping while merging profile labels into rows', () => {
     const groups = read('public/manager/src/components/InstanceGroups.tsx');
     const row = read('public/manager/src/components/InstanceRow.tsx');
     const components = read('public/manager/src/manager-components.css');
@@ -574,7 +574,7 @@ test('manager profile rows keep Active/Running grouping while merging profile la
 
     assert.equal(groups.includes("import { ProfileSection }"), false, 'profile groups must not render a separate profile header card');
     assert.ok(groups.includes('is-profile-merged'), 'profile instance groups must expose merged-row styling');
-    assert.ok(groups.includes("label: 'Active'"), 'profile merged sidebar must preserve the Active group header');
+    assert.ok(groups.includes("{ id: 'active', label: 'Selected'"), 'selected summary keeps the stable active group id');
     assert.ok(groups.includes("label: 'Running'"), 'profile merged sidebar must preserve the Running group header');
     assert.equal(groups.includes('selected.forEach(instance => used.add(instance.port))'), false, 'selected active/running rows must remain in their original Running group');
     assert.ok(groups.includes('profileMap.get(instance.profileId)'), 'profile context must be resolved per grouped instance row');
@@ -721,4 +721,35 @@ test('unified registry filters scopes, localizes navigation, and preserves Manag
     await act(async () => { developer.click(); await SETTINGS_REGISTRY.find(e => e.id === 'manager-developer')!.load(); });
     assert.ok(container.querySelector('.settings-page')?.textContent?.includes('Repo root priority'));
     assert.deepEqual(instanceWrites, []);
+});
+
+test('sidebar sibling layout preserves structural span display and named secondary metadata rules', () => {
+    const components = read('public/manager/src/manager-components.css');
+    const polish = read('public/manager/src/manager-polish.css');
+    const compact = read('public/manager/src/manager-p0-1-1.css');
+    assert.match(components, /\.instance-row-body\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto;/);
+    assert.match(components, /\.instance-row-main\s*\{[^}]*grid-template-columns:\s*12px minmax\(0, 1fr\);/);
+    assert.match(components, /\.instance-row-title\s*\{[^}]*display:\s*grid;/);
+    for (const name of ['title-line', 'status-line']) {
+        assert.match(components, new RegExp(`\\.instance-row-${name}\\s*\\{[^}]*display:\\s*flex;`));
+    }
+    for (const css of [components, polish, compact]) {
+        assert.doesNotMatch(css, /\.instance-row-title\s+span\s*[,\{]/, 'structural spans must not inherit secondary metadata display rules');
+    }
+    for (const css of [polish, compact]) {
+        assert.match(css, /\.instance-row-title \.instance-row-secondary\s*\{[^}]*display:\s*none;/);
+    }
+    assert.match(compact, /\.is-profile-merged \.instance-row-title \.instance-row-secondary\s*\{[^}]*display:\s*block;/);
+    assert.match(components, /\.quick-btn:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring\)/);
+    assert.match(components, /@media \(pointer: coarse\)\s*\{\s*\.instance-row \.instance-row-quick \.quick-btn:not\(:disabled\):not\(\.is-disabled\)\s*\{[^}]*opacity:\s*1;/);
+});
+
+
+test('sidebar quick-action reveal consistently excludes disabled buttons and links', () => {
+    const css = read('public/manager/src/manager-components.css');
+    for (const state of [':hover', ':focus-within', '.is-selected']) {
+        assert.ok(css.includes(`.instance-row${state} .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled)`));
+    }
+    assert.doesNotMatch(css, /\.quick-btn:not\(:disabled\)(?!:not\(\.is-disabled\))/);
+    assert.match(css, /\.quick-btn:disabled, \.quick-btn\.is-disabled\s*\{[^}]*pointer-events:\s*none;/);
 });

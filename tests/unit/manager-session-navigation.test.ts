@@ -227,7 +227,7 @@ test('Active and Running online row clicks preview exactly once; offline rows se
     await render();
     for (const [group, port] of [['active', 3457], ['running', 3457], ['running', 3458]] as const) {
         previews = []; selections = [];
-        await click(`#instance-group-body-${group} .instance-row-select[data-instance-port="${port}"]`);
+        await click(`.instance-group[aria-label="${group === 'active' ? 'Selected' : 'Running'} instances"] .instance-row-select[data-instance-port="${port}"]`);
         assert.deepEqual(previews, [port]); assert.deepEqual(selections, []);
     }
     previews = []; selections = [];

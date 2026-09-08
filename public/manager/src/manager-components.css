@@ -388,12 +388,18 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     font: inherit;
     background: transparent;
 }
-/* The compact sidebar polish hides every span inside .instance-row-title
-   (secondary metadata); the status line is primary and must stay visible. */
+/* Status text inherits the semantic status line color. */
 .manager-sidebar .instance-row-title .instance-row-status-line span {
     display: inline;
     color: inherit;
     font-size: 10px;
+}
+.instance-row-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+    min-width: 0;
 }
 .instance-row-select {
     width: 100%; min-height: 0; min-width: 0; display: grid; gap: 8px; border: 0;
@@ -427,7 +433,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     width: 100%;
     min-width: 0;
     display: grid;
-    grid-template-columns: 12px minmax(0, 1fr) auto;
+    grid-template-columns: 12px minmax(0, 1fr);
     align-items: start;
     gap: 8px;
 }
@@ -435,6 +441,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     margin-top: 3px;
 }
 .instance-row-quick {
+    align-self: start;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -445,9 +452,9 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     pointer-events: none;
     transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
 }
-.instance-row:hover .instance-row-quick .quick-btn:not(:disabled),
-.instance-row:focus-within .instance-row-quick .quick-btn:not(:disabled),
-.instance-row.is-selected .instance-row-quick .quick-btn:not(:disabled) {
+.instance-row:hover .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled),
+.instance-row:focus-within .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled),
+.instance-row.is-selected .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled) {
     opacity: 1;
     pointer-events: auto;
 }
@@ -466,6 +473,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     cursor: pointer;
     transition: color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
 }
+.quick-btn:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 .quick-btn:hover { color: var(--text-primary); background: var(--surface-raised); }
 .quick-btn.action-stop { border-color: color-mix(in srgb, var(--status-error) 30%, var(--border-subtle)); color: var(--status-error); }
 .quick-btn.action-stop:hover { background: color-mix(in srgb, var(--status-error) 8%, var(--bg-raised)); }
@@ -475,6 +483,13 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 .quick-btn.action-sessions[aria-expanded="true"] {
     color: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 40%, var(--border-subtle));
+}
+
+@media (pointer: coarse) {
+    .instance-row .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled) {
+        opacity: 1;
+        pointer-events: auto;
+    }
 }
 
 /* ─── Active-row session disclosure ─── */
@@ -607,11 +622,11 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     font-weight: 800;
     font-variant-numeric: tabular-nums;
 }
-.instance-row-title span, .instance-row-meta, .preview-empty, .preview-note, .detail-header span, .detail-empty {
+.instance-row-title .instance-row-secondary, .instance-row-meta, .preview-empty, .preview-note, .detail-header span, .detail-empty {
     color: var(--text-secondary);
     font-size: 12px;
 }
-.instance-row-title span, .instance-row-meta span {
+.instance-row-title .instance-row-secondary, .instance-row-meta span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

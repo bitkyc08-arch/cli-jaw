@@ -133,14 +133,14 @@ export function PanelResizer(props: PanelResizerProps) {
     }
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+        if (e.nativeEvent.isComposing || e.keyCode === 229 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
         const step = 10;
-        if (direction === 'horizontal') {
-            if (e.key === 'ArrowLeft') { e.preventDefault(); onDeltaRef.current(-step); }
-            else if (e.key === 'ArrowRight') { e.preventDefault(); onDeltaRef.current(step); }
-        } else {
-            if (e.key === 'ArrowUp') { e.preventDefault(); onDeltaRef.current(-step); }
-            else if (e.key === 'ArrowDown') { e.preventDefault(); onDeltaRef.current(step); }
-        }
+        const decreaseKey = direction === 'horizontal' ? 'ArrowLeft' : 'ArrowUp';
+        const increaseKey = direction === 'horizontal' ? 'ArrowRight' : 'ArrowDown';
+        if (e.key !== decreaseKey && e.key !== increaseKey) return;
+        e.preventDefault();
+        onDeltaRef.current(e.key === decreaseKey ? -step : step);
+        onEndRef.current?.();
     }
 
     return (
