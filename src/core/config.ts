@@ -66,6 +66,8 @@ export const SKILLS_REF_DIR = join(JAW_HOME, 'skills_ref');
 // ─── Server URLs ────────────────────────────────────
 export const DEFAULT_PORT = '3457';
 export const CDP_PORT_OFFSET = 5783;  // 9240 - 3457
+const FIRST_UNPRIVILEGED_PORT = 1024;
+const UNPRIVILEGED_PORT_COUNT = 65535 - FIRST_UNPRIVILEGED_PORT + 1;
 
 // Option D rollout: when set, /api/messages rebuilds a
 // finished message's tool cards from trace_events (durable, uncapped) instead of the
@@ -77,7 +79,9 @@ export function deriveCdpPort(serverPort?: number | string): number {
     const port = Number(serverPort || process.env["PORT"] || DEFAULT_PORT);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return 9240;
     const cdp = port + CDP_PORT_OFFSET;
-    return cdp > 65535 ? 9240 : cdp;
+    if (cdp <= 65535) return cdp;
+    return FIRST_UNPRIVILEGED_PORT
+        + ((port - FIRST_UNPRIVILEGED_PORT + CDP_PORT_OFFSET) % UNPRIVILEGED_PORT_COUNT);
 }
 
 export function getServerUrl(port?: string | number) {
