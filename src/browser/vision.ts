@@ -4,7 +4,8 @@
  */
 import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
-import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef } from './actions.js';
+import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef, hitTestPoint } from './actions.js';
+import { judgeHit } from './occlusion.js';
 import { reconcileVisionCandidate, assertFreshObservationBundle, type ReconcileResult } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
@@ -21,6 +22,8 @@ export interface VisionClickOptions {
     verifyBeforeClick?: boolean;
     /** Reconcile against element boxes before falling back to a coordinate. Default on. */
     reconcile?: boolean;
+    /** Refuse a click when something else would receive it. Default on. */
+    checkOcclusion?: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -259,6 +262,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // "fall back" would do the dangerous thing on purpose, and a click that
     // actuates and then throws would fire twice.
     let decision: ReconcileResult | null = null;
+    let boxRefs: Array<{ ref: string; role: string; name: string; box: { x: number; y: number; width: number; height: number } }> = [];
     if (opts.reconcile !== false) {
         try {
             const boxes = await elementBoxes(port, { interactive: true });
@@ -280,6 +284,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
                 candidate: { point: css, confidence: 1 },
                 bundle: { refs: boxes.refs },
             });
+            boxRefs = boxes.refs;
         } catch {
             // Capture or freshness failed. Reconciliation is an improvement,
             // not a precondition, so the coordinate path below still runs.
@@ -298,6 +303,38 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     }
 
     if (decision?.action === 'ref') {
+        // Ask what would receive a click here before dispatching one. A cookie
+        // banner or modal over the target otherwise takes the click silently
+        // and the call still reports success. Only a positively identified
+        // blocker refuses; an unusable hit test fails open, because an
+        // infrastructure failure must not block a legitimate click.
+        // Only when the point is genuinely ON the target. A snap-to-nearest
+        // match puts the click point up to 32px outside the box, so asking
+        // what is at that point would legitimately find something else and
+        // refuse exactly the cases reconciliation exists to rescue.
+        if (opts.checkOcclusion !== false && decision.reason === 'candidate_center_inside_ref_box') {
+            // Relatedness is decided in the page against the real node. The
+            // reconciled box's centre is a point known to be on the target, so
+            // the page can resolve the target itself rather than matching a
+            // name we would have to invent from an ARIA ref.
+            const box = boxRefs.find(r => r.ref === decision.ref)?.box;
+            const targetPoint = box
+                ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+                : undefined;
+            const hit = await hitTestPoint(port, css, targetPoint);
+            const verdict = judgeHit(hit);
+            if (verdict.blocked) {
+                return {
+                    success: false,
+                    reason: verdict.reason,
+                    code: 'COMPUTER_TARGET_COVERED',
+                    blocker: verdict.blocker,
+                    ref: decision.ref,
+                    candidate: css,
+                    provider: result.provider,
+                };
+            }
+        }
         await clickRef(port, decision.ref, { doubleClick: opts.doubleClick });
         let refSnap = null;
         try { refSnap = await snapshot(port, { interactive: true }); } catch { /* diagnostic only */ }

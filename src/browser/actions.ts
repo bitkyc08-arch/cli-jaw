@@ -3,6 +3,7 @@ import { JAW_HOME } from '../core/config.js';
 import { join } from 'path';
 import fs from 'fs';
 import { imageSize } from './image-size.js';
+import { hitTestInPage } from './occlusion.js';
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core';
 
 const SCREENSHOTS_DIR = join(JAW_HOME, 'screenshots');
@@ -235,6 +236,27 @@ async function refToLocator(page: Page, port: number, ref: string): Promise<Loca
     const node = nodes.find(n => n.ref === ref);
     if (!node) throw new Error(`ref ${ref} not found — re-run snapshot`);
     return page.getByRole(node.role as AriaRole, { name: node.name }).nth(node.occurrence || 0);
+}
+
+/**
+ * What would receive a click at a viewport point.
+ *
+ * Returns null when the check cannot run, which callers must treat as
+ * "unknown" rather than "clear".
+ */
+export async function hitTestPoint(
+    port: number,
+    point: { x: number; y: number },
+    targetPoint?: { x: number; y: number },
+): Promise<import('./occlusion.js').HitResult | null> {
+    try {
+        const page = await requireActivePage(port);
+        // A function, not a source string: Playwright only invokes the former.
+        const result = await page.evaluate(hitTestInPage, { ...point, ...(targetPoint ? { targetPoint } : {}) });
+        return (result ?? null) as import('./occlusion.js').HitResult | null;
+    } catch {
+        return null;
+    }
 }
 
 // ─── screenshot ────────────────────────────────
