@@ -95,8 +95,8 @@ export class Screen {
     private fullRedrawPending = false;
     private resizeRedrawPending = false;
     /**
-     * 260704 WP6b-v2 (port of jawcode 8baafbc) — the committed block is
-     * TOP-ANCHORED, glued to the scrollback seam at rows 1..B. This count IS
+     * The committed block is top-anchored at the scrollback seam on rows
+     * 1..B. This count is
      * the block geometry: content-only rows, never a blank above or inside.
      * The old bottom-anchored lane (block parked at the fill bottom under
      * blank rows, tracked via committedBottomRow) was retired upstream after
@@ -188,8 +188,8 @@ export class Screen {
             this.launchClearPending = false;
         }
 
-        // Flush pending scrollback commits — 260704 WP6b-v2 port (jawcode
-        // 8baafbc): the committed block is TOP-ANCHORED, glued to the
+        // Flush pending scrollback commits. The committed block is
+        // top-anchored at the
         // scrollback seam at rows 1..B. Commits either write DIRECTLY into the
         // blank fill row below the block (no scroll — blanks never move, so no
         // blank can ever cross the seam) or, once the block saturates the
@@ -269,8 +269,8 @@ export class Screen {
                 // scrollback (cursor-anchored shrink) — under the top-anchored
                 // geometry those are exactly the oldest committed rows, in
                 // order. ADOPT them instead of re-emitting a second copy
-                // (jawcode 8baafbc pixel adoption; duplication user repro
-                // 260704: partial `╭─ You` copies after window shrinks).
+                // (the observed failure was partial `╭─ You` copies after a
+                // window shrink).
                 // Width changes don't gate this: the push is a height effect
                 // (adversarial finding 1 — width+height shrink duplicated the
                 // block AND stamped trailing blanks). The NET height delta is
@@ -391,8 +391,8 @@ export class Screen {
 
     /**
      * 260703 F3 — DECSTBM ignores a 1-row region (`CSI 1;1r` is a silent
-     * no-op on real terminals; empirically verified against @xterm/headless
-     * in the jawcode sibling repo), so the LAST committed row could never be
+     * no-op on real terminals and @xterm/headless), so the last committed row
+     * could never be
      * scrolled out and the next diff overwrote it. Widen to [1..2] (count is
      * necessarily 1 — a 1-row region cannot owe more) and rotate the painted
      * mirror the same way the physical rows shift: row 2 moves up to row 1,

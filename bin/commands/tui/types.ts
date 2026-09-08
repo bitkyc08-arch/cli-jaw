@@ -75,7 +75,7 @@ export function formatFooter(
     const stateColored = state === 'idle' ? `${c.dim}${stateLabel}${c.reset}` : `${accent}${stateLabel}${c.reset}`;
     const elapsed = elapsedMs && elapsedMs > 0 ? `  ${c.dim}${(elapsedMs / 1000).toFixed(1)}s${c.reset}` : '';
     // Server-owned background tasks (bgtask) — magenta to stay distinct from the
-    // queue; `!` is the jawcode attention suffix (failed task, panel unopened).
+    // queue; `!` marks a failed task whose panel has not been opened.
     const bgtask = bgtaskCount && bgtaskCount > 0 ? `  ${c.magenta}\u23F3${bgtaskCount}${bgtaskAttention ? '!' : ''}${c.reset}`
         : bgtaskAttention ? `  ${c.magenta}\u23F3!${c.reset}` : '';
     const sep = `${c.dim} │ ${c.reset}`;
@@ -134,7 +134,7 @@ export interface TuiContext {
     streamState: 'idle' | 'responding' | 'tool';
     bgtaskCount: number;
     bgtaskTasks: Array<{ id: string; kind: string; startedAt: string | null }>;
-    /** jawcode attention latch: set when a bgtask ends failed/cancelled/orphaned,
+    /** Attention latch set when a bgtask ends failed/cancelled/orphaned;
      *  renders a `!` on the status-bar badge, cleared when Ctrl+O opens. */
     bgtaskAttention?: boolean;
     /** Last fetched overlay rows (incl. terminal tasks + ago hints) — the

@@ -398,10 +398,10 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 const changed = msg['changed'] as { id: string; kind: string; status: string } | null;
                 if (changed && changed.status !== 'running' && !ctx.isRaw) {
                     const ok = changed.status === 'complete';
-                    // jawcode attention latch \u2014 the status-bar badge grows a `!`
+                    // The status-bar badge grows a `!`
                     // until the user opens the Ctrl+O panel.
                     if (!ok) ctx.bgtaskAttention = true;
-                    // jawcode unicode glyph set: \u2714 complete \u00b7 \u23f9 cancelled \u00b7 \u2718 failed/orphaned
+                    // Status glyphs: \u2714 complete \u00b7 \u23f9 cancelled \u00b7 \u2718 failed/orphaned.
                     const mark = ok ? `${c.green}\u2714` : changed.status === 'cancelled' ? `${c.red}\u23f9` : `${c.red}\u2718`;
                     appendStatusItem(transcript, `bgtask ${changed.kind} ${changed.status} \u00b7 Ctrl+O`);
                     if (!isFullscreen(ctx)) {

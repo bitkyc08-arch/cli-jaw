@@ -421,13 +421,13 @@ export interface BgtaskOverlayItem {
     kind: string;
     status: string;
     elapsed: string;
-    /** "2m30s ago" hint for terminal rows (jawcode footer-panel style). */
+    /** "2m30s ago" hint for terminal rows. */
     ago?: string;
     /** Epoch ms used for the recent-first sort within a rank. */
     sortKey?: number;
 }
 
-/** jawcode utils/format.ts formatDuration semantics: 123ms \u00B7 1.5s \u00B7 30m15s \u00B7 2h30m \u00B7 3d2h. */
+/** Compact duration tiers: 123ms \u00B7 1.5s \u00B7 30m15s \u00B7 2h30m \u00B7 3d2h. */
 export function formatBgtaskDuration(ms: number): string {
     const SEC = 1000, MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
     if (ms < SEC) return `${Math.max(0, Math.round(ms))}ms`;
@@ -449,7 +449,7 @@ export function formatBgtaskDuration(ms: number): string {
 
 const BGTASK_ATTENTION_STATUSES = new Set(['failed', 'cancelled', 'orphaned']);
 
-/** jawcode background-row-model sort: attention rows first, then running,
+/** Sort attention rows first, then running,
  *  then the rest; most recent first within the same rank. */
 export function sortBgtaskItems(items: BgtaskOverlayItem[]): BgtaskOverlayItem[] {
     const rank = (it: BgtaskOverlayItem): number =>
@@ -471,7 +471,7 @@ const BGTASK_DEFAULT_COLORS: BgtaskOverlayColors = {
     warning: '\x1b[33m',
 };
 
-// jawcode footer-panel row style: `{icon} {kind} {label} \u00B7 {hint}` with the
+// Row style: `{icon} {kind} {label} \u00B7 {hint}` with the
 // unicode symbol preset (\u2714 \u2718 \u23F9 \u26A0 \u27F3) and ` \u00B7 ` separators; attention rows
 // (failed/orphaned) carry warning color and sort first.
 export function buildBgtaskInnerLines(
