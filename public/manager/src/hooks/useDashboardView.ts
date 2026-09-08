@@ -108,13 +108,13 @@ export function hydrateInstanceSettings(ui: Pick<DashboardRegistryUi, 'selectedT
 }
 
 type SettingsNavigation = {
-    view: Pick<ReturnType<typeof useDashboardView>, 'instanceSettingsOpen' | 'activeDetailTab' |
+    view: Pick<ReturnType<typeof useDashboardView>, 'instanceSettingsOpen' | 'activeDetailTab' | 'sidebarMode' |
         'setSelectedPort' | 'setInstanceSettingsOpen' | 'setSidebarMode' | 'setViewMode' | 'setDrawerOpen'>;
     selectedPort: number | null;
     settingsDirty: boolean;
     panelSettingsDirty: boolean;
-    setSettingsDirty: (dirty: boolean) => void;
-    clearPanelDirty: () => void;
+    dashboardSettingsDirty: boolean;
+    clearDirty: (entry: 'panel' | 'dashboard') => void;
     saveUi: (patch: Partial<DashboardRegistryUi>) => Promise<void>;
     confirmDiscard?: () => boolean;
 };
@@ -124,10 +124,22 @@ export function createInstanceSettingsNavigation(args: SettingsNavigation) {
         return !args.settingsDirty ||
             (args.confirmDiscard ?? (() => window.confirm('Discard unsaved Settings changes?')))();
     }
+    function guardSettingsTransition(target: Partial<{
+        sidebarMode: DashboardSidebarMode; selectedPort: number | null; instanceSettingsOpen: boolean;
+    }>): boolean {
+        const portChanged = target.selectedPort !== undefined && target.selectedPort !== selectedPort;
+        const leavingDashboard = view.sidebarMode === 'settings' && (target.sidebarMode ?? view.sidebarMode) !== 'settings';
+        const closingPanel = view.instanceSettingsOpen && !(target.instanceSettingsOpen ?? view.instanceSettingsOpen);
+        const departing = (['panel', 'dashboard'] as const).filter(entry =>
+            portChanged || (entry === 'panel' ? closingPanel : leavingDashboard));
+        const dirty = departing.some(entry => entry === 'panel' ? args.panelSettingsDirty : args.dashboardSettingsDirty);
+        if (dirty && !(args.confirmDiscard ?? (() => window.confirm('Discard unsaved Settings changes?')))()) return false;
+        for (const entry of departing) args.clearDirty(entry);
+        return true;
+    }
     function setInstanceSettingsOpen(open: boolean, port = selectedPort): void {
-        if ((port !== selectedPort || (!open && args.panelSettingsDirty)) && !canLeaveDirtySettings()) return;
-        if (port !== selectedPort) args.setSettingsDirty(false);
-        else if (!open) args.clearPanelDirty();
+        if (!guardSettingsTransition({ selectedPort: port, instanceSettingsOpen: open,
+            sidebarMode: open ? 'instances' : view.sidebarMode })) return;
         if (open) {
             view.setSelectedPort(port); view.setSidebarMode('instances');
             view.setViewMode('jaw'); view.setDrawerOpen(false);
@@ -137,7 +149,7 @@ export function createInstanceSettingsNavigation(args: SettingsNavigation) {
             selectedTab: view.activeDetailTab === 'settings' ? 'overview' : view.activeDetailTab,
             ...(open ? { selectedPort: port, sidebarMode: 'instances' as const } : {}) });
     }
-    return { canLeaveDirtySettings, setInstanceSettingsOpen };
+    return { canLeaveDirtySettings, guardSettingsTransition, setInstanceSettingsOpen };
 }
 
 // Both entry points may remain mounted: a clean hidden Shell cannot clear its peer.
@@ -157,5 +169,5 @@ export function useSettingsDirtyState() {
     const setSettingsDirty = useCallback((dirty: boolean) => {
         setEntries({ panel: dirty, dashboard: dirty });
     }, []);
-    return { settingsDirty: entries.panel || entries.dashboard, panelSettingsDirty: entries.panel, setSettingsDirty, onSettingsDirtyChange, onPanelSettingsDirtyChange };
+    return { settingsDirty: entries.panel || entries.dashboard, panelSettingsDirty: entries.panel, dashboardSettingsDirty: entries.dashboard, setSettingsDirty, onSettingsDirtyChange, onPanelSettingsDirtyChange };
 }

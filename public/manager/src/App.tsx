@@ -57,7 +57,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
     const [transitioningPort, setTransitioningPort] = useState<number | null>(null);
     const [transitionAction, setTransitionAction] = useState<DashboardLifecycleAction | null>(null);
     const [activeProfileIds, setActiveProfileIds] = useState<string[]>([]);
-    const { settingsDirty, panelSettingsDirty, setSettingsDirty, onSettingsDirtyChange, onPanelSettingsDirtyChange } = useSettingsDirtyState();
+    const { settingsDirty, panelSettingsDirty, dashboardSettingsDirty, setSettingsDirty, onSettingsDirtyChange, onPanelSettingsDirtyChange } = useSettingsDirtyState();
     const [notesDirtyPath, setNotesDirtyPath] = useState<string | null>(null);
     const [notesSidebarMode, setNotesSidebarMode] = useState<NotesSidebarMode>('files');
     const [notesSearchFocusToken, setNotesSearchFocusToken] = useState(0);
@@ -243,8 +243,8 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         setActiveProfileIds(next);
         void registry.save({ activeProfileFilter: next });
     }
-    const { canLeaveDirtySettings, setInstanceSettingsOpen } = createInstanceSettingsNavigation({
-        view, settingsDirty, panelSettingsDirty, setSettingsDirty, clearPanelDirty: () => onSettingsDirtyChange('panel', false), saveUi, selectedPort: selectedInstance?.port ?? null,
+    const { canLeaveDirtySettings, guardSettingsTransition, setInstanceSettingsOpen } = createInstanceSettingsNavigation({
+        view, settingsDirty, panelSettingsDirty, dashboardSettingsDirty, clearDirty: entry => onSettingsDirtyChange(entry, false), saveUi, selectedPort: selectedInstance?.port ?? null,
     });
 
     function handlePreview(instance: DashboardInstance, openDefaultSession = false): void {
@@ -299,11 +299,12 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
     }
 
     function handleSidebarModeChange(mode: DashboardSidebarMode): void {
+        const sidebarMode = normalizeSidebarModeForBuild(mode);
+        if (!guardSettingsTransition({ sidebarMode })) return;
         if (view.sidebarMode === 'instances' && mode !== 'instances' && view.activeDetailTab === 'preview') {
             const port = view.selectedPort;
             if (port != null) activityUnread.markPortSeen(port);
         }
-        const sidebarMode = normalizeSidebarModeForBuild(mode);
         view.setSidebarMode(sidebarMode); void saveUi({ sidebarMode });
     }
 
@@ -395,7 +396,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
             runManagerShortcut(action);
         });
         return unsubscribe;
-    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty]);
+    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty, dashboardSettingsDirty]);
 
     useEffect(() => {
         function onKeyDown(event: KeyboardEvent): void {
@@ -416,7 +417,7 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
         }
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.dashboardShortcutKeymap, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty]);
+    }, [filtered, selectedInstance, view.dashboardShortcutsEnabled, view.dashboardShortcutKeymap, view.sidebarMode, view.activeDetailTab, view.instanceSettingsOpen, settingsDirty, panelSettingsDirty, dashboardSettingsDirty]);
 
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
