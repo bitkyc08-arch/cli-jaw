@@ -483,6 +483,9 @@ test('l real lifecycle: late hello loses a replaced presence claim', async t => 
         children.push(child);
         exited.set(child, new Promise<void>(resolve => child.once('exit', () => resolve())));
         let buffered = '';
+        let stderrTail = '';
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', chunk => { stderrTail = (stderrTail + chunk).slice(-2000); });
         const waiters: Array<(value: Record<string, unknown>) => void> = [];
         child.stdout.setEncoding('utf8');
         child.stdout.on('data', chunk => {
@@ -495,7 +498,12 @@ test('l real lifecycle: late hello loses a replaced presence claim', async t => 
             }
         });
         const next = () => new Promise<Record<string, unknown>>((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error(`fixture timeout: ${buffered}`)), 10_000);
+            // A cold tsx boot of the whole server graph under module mocks takes
+            // several seconds on a loaded CI runner (preview run 34196670148 hit
+            // the 10s bound with nothing printed yet). The bound is a hang guard,
+            // not a performance assertion, so give CI the headroom it needs and
+            // include stderr so a real crash is readable.
+            const timer = setTimeout(() => reject(new Error(`fixture timeout: stdout=${JSON.stringify(buffered)} stderr=${JSON.stringify(stderrTail)}`)), process.env['CI'] ? 60_000 : 20_000);
             waiters.push(value => { clearTimeout(timer); resolve(value); });
         });
         return { child, next };
