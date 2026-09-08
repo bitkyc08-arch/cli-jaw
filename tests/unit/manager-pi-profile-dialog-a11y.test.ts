@@ -328,3 +328,42 @@ test('standalone closed SelectField Escape propagates untouched and keyboard/cli
     await act(async () => container.querySelectorAll<HTMLButtonElement>('[role="option"]')[1]!.click());
     assert.deepEqual(changes, ['b', 'a', 'b']); assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });
+
+
+test('SelectField More transfers focus before unmount so active-element Escape closes only its popup', bounded, async t => {
+    const container = document.createElement('div'); document.body.append(container);
+    const root = createRoot(container), changes: string[] = [];
+    let escaped = 0;
+    const observeEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') escaped++; };
+    // Observe an actual ancestor, outside React's delegated event root.
+    document.addEventListener('keydown', observeEscape);
+    t.after(async () => {
+        document.removeEventListener('keydown', observeEscape);
+        await act(async () => root.unmount()); container.remove();
+    });
+    await act(async () => root.render(createElement(SelectField, {
+        id: 'more-focus', label: 'Mode', value: 'a', collapsedAfter: 1,
+        options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }, { value: 'c', label: 'C' }],
+        onChange: next => changes.push(next),
+    })));
+    const trigger = container.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+    await act(async () => trigger.click());
+    const more = container.querySelector<HTMLButtonElement>('.settings-select-more');
+    assert.ok(more, 'The selected first option leaves More reachable');
+    more.focus(); assertFocus(more, 'Click must begin with focus on the button that will be removed');
+    await act(async () => more.click());
+    assert.equal(more.isConnected, false);
+    assert.equal(container.querySelector('.settings-select-more'), null);
+    assert.deepEqual([...container.querySelectorAll('[role="option"] span:first-child')].map(el => el.textContent), ['A', 'B', 'C']);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+    assertFocus(trigger, 'Expansion must transfer focus without test-side restoration');
+    assert.equal(trigger.getAttribute('aria-label'), 'Mode: A'); assert.deepEqual(changes, []);
+    const escapeTarget = document.activeElement;
+    assert.ok(escapeTarget instanceof dom.window.HTMLElement);
+    const escape = await key(escapeTarget, 'Escape');
+    assert.equal(escape.defaultPrevented, true);
+    assert.equal(container.querySelector('[role="listbox"]'), null);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false'); assertFocus(trigger);
+    assert.equal(escaped, 0, 'Popup Escape must not reach the enclosing document');
+    assert.equal(container.isConnected, true); assert.deepEqual(changes, []);
+});

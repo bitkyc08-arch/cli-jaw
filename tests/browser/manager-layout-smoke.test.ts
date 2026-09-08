@@ -370,8 +370,8 @@ layoutTest('manager preview iframe survives Workbench tab changes', async (t) =>
             same: document.querySelector('iframe.preview-frame') === (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame,
         }));
         assert.equal(state.hidden, mode !== 'Preview'); assert.equal(state.same, true);
-        const document = await workerDocument(page); assert.deepEqual(document, beforeDocument);
-        retention.tabs.push({ mode, ...document }); saveEvidence();
+        const documentProof = await workerDocument(page); assert.deepEqual(documentProof, beforeDocument);
+        retention.tabs.push({ mode, ...documentProof }); saveEvidence();
     }
 });
 

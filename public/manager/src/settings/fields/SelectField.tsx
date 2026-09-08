@@ -152,6 +152,7 @@ export function SelectField({ id, label, value, options, onChange, disabled, err
                             className="settings-select-more"
                             onClick={(e) => {
                                 e.stopPropagation();
+                                rootRef.current?.querySelector<HTMLButtonElement>('[role="combobox"]')?.focus();
                                 setMoreExpanded(true);
                             }}
                         >

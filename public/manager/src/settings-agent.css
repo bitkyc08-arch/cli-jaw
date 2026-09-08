@@ -106,3 +106,26 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Employee cells already occupy roster columns; the full-page two-column
+ * setting row must not impose another fixed-width control column inside them. */
+.settings-shell .settings-runtime-employee-grid {
+    min-width: 0;
+    align-items: start;
+}
+.settings-shell .settings-runtime-employee-grid > .settings-field {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+}
+.settings-shell .settings-runtime-employee-grid > .settings-field > :is(.settings-field-label, .settings-field-error, input, button) {
+    grid-column: 1;
+    grid-row: auto;
+}
+@container settings (max-width: 900px) {
+    .settings-shell .settings-runtime-employee-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

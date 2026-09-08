@@ -572,3 +572,7 @@ Dashboard, closing Instance settings or changing instance confirms only drafts
 that the transition discards. Retained pages preserve their drafts. Both keyboard
 and desktop shortcut subscriptions observe Dashboard dirty-state changes even
 when a retained Instance draft already keeps the aggregate dirty flag true.
+
+Employee forms keep each label above its control within the roster column, and
+collapse to one column in narrow settings containers. Expanding a select menu
+returns focus to its combobox so Escape dismisses the menu before page navigation.

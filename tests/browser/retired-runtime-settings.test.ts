@@ -9,7 +9,7 @@ import { existsSync, readFileSync, watch } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { test } from 'node:test';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Locator, type Page } from 'playwright-core';
 import { withManagerBrowserLock } from './manager-browser-test-lock';
 
 type Manifest = { version: number; mode: string; token: string; pid: number; root: string;
@@ -68,6 +68,41 @@ async function choices(page: Page, label: string): Promise<string[]> {
     assert.ok(labels.every(text => !/jwc|jawcode/i.test(text)), `${label}: retired runtime must not be selectable: ${JSON.stringify(labels)}`);
     assert.equal(await list.locator('[role="option"][aria-selected="true"]').count(), 0, 'Missing value must not select a substitute');
     return labels;
+}
+async function closeChoices(page: Page, label: string): Promise<void> {
+    // SelectField owns Escape. A failed close must be observed, not bypassed by
+    // an outside/forced click before testing another control.
+    await page.keyboard.press('Escape');
+    await page.getByRole('listbox', { name: label, exact: true }).waitFor({ state: 'hidden' });
+}
+async function fieldLayout(grid: Locator, labels: string[], stacked: boolean) {
+    const rows = await grid.evaluate(root => [...root.children].filter(field => field.classList.contains('settings-field')).map(field => {
+        const label = field.querySelector('.settings-field-label');
+        const control = field.querySelector(':scope > input, :scope > button[role="combobox"]');
+        if (!label || !control) throw new Error('Expected a labelled nested settings control');
+        const fieldBox = field.getBoundingClientRect(), labelBox = label.getBoundingClientRect(), controlBox = control.getBoundingClientRect();
+        return { label: label.textContent?.trim(),
+            field: { left: fieldBox.left, right: fieldBox.right },
+            labelBox: { left: labelBox.left, right: labelBox.right, bottom: labelBox.bottom },
+            control: { left: controlBox.left, right: controlBox.right, top: controlBox.top, bottom: controlBox.bottom,
+                width: controlBox.width, height: controlBox.height } };
+    }));
+    assert.deepEqual(rows.map(row => row.label), labels);
+    for (const row of rows) {
+        assert.ok(row.control.width > 0 && row.control.height > 0, `${row.label}: control has a visible layout`);
+        assert.ok(row.control.left >= row.field.left - 1 && row.control.right <= row.field.right + 1,
+            `${row.label}: control stays inside its own field`);
+        assert.ok(row.labelBox.left >= row.field.left - 1 && row.labelBox.right <= row.field.right + 1,
+            `${row.label}: label stays inside its own field`);
+        if (stacked) assert.ok(row.labelBox.bottom <= row.control.top + 1, `${row.label}: label is above its control`);
+    }
+    for (let i = 0; i < rows.length; i++) for (let j = i + 1; j < rows.length; j++) {
+        const a = rows[i]!.control, b = rows[j]!.control;
+        const overlapX = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        const overlapY = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        assert.ok(overlapX <= 1 || overlapY <= 1, `${rows[i]!.label}/${rows[j]!.label}: controls must not overlap`);
+    }
+    return rows;
 }
 async function shutdown(manifest: Manifest) {
     const receipt = join(manifest.evidenceDir, 'provider-events.json');
@@ -155,22 +190,24 @@ test('retired saved runtime stays explicit in real Manager settings until user e
                     await capture(page, `retired-${width}-active-runtime`);
                     const activeChoices = await choices(page, 'Active CLI');
                     await capture(page, `retired-${width}-available-choices`, activeChoices);
-                    await page.keyboard.press('Escape');
+                    await closeChoices(page, 'Active CLI');
 
                     const employee = page.getByRole('group', { name: 'Retired helper', exact: true });
                     await employee.scrollIntoViewIfNeeded();
                     await employee.getByRole('combobox', { name: 'CLI: JWC (retired)', exact: true }).waitFor({ state: 'visible' });
                     assert.equal(await employee.getByRole('combobox', { name: /^Model:/ }).isDisabled(), true);
+                    const employeeLayout = await fieldLayout(employee.locator('.settings-runtime-employee-grid'), ['Name', 'CLI', 'Model', 'Role'], true);
                     const employeeChoices = await choices(page, 'CLI');
-                    await page.keyboard.press('Escape');
-                    await capture(page, `retired-${width}-employee`, employeeChoices);
+                    await closeChoices(page, 'CLI');
+                    await capture(page, `retired-${width}-employee`, { choices: employeeChoices, fields: employeeLayout, escapeClosed: true });
                     await page.getByText('Flush runtime', { exact: true }).click();
                     const flush = page.getByRole('combobox', { name: 'Flush CLI: JWC (retired)', exact: true });
                     await flush.scrollIntoViewIfNeeded();
                     assert.equal(await page.getByRole('combobox', { name: /^Flush model:/ }).isDisabled(), true);
+                    const flushLayout = await fieldLayout(page.locator('.settings-agent-flush .settings-agent-runtime-grid'), ['Flush CLI', 'Flush model'], false);
                     const flushChoices = await choices(page, 'Flush CLI');
-                    await page.keyboard.press('Escape');
-                    await capture(page, `retired-${width}-flush`, flushChoices);
+                    await closeChoices(page, 'Flush CLI');
+                    await capture(page, `retired-${width}-flush`, { choices: flushChoices, fields: flushLayout, escapeClosed: true });
                     assertReadOnly(await control(manifest, 'state'), browserWrites);
 
                     await active.scrollIntoViewIfNeeded();
