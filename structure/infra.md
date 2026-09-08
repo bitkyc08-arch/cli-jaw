@@ -156,8 +156,11 @@ this opt-in job; that skip is not browser verification. Existing required produc
 and aggregate rules are unchanged. The workflow's shared-ref concurrency can
 cancel an earlier run, so finish the push run before dispatching manual QA.
 
-The hosted job builds the backend/frontend with Node 24.17.0 and the locked
-Playwright Chromium, then `tests/helpers/hosted-manager-qa.mjs` owns isolated
+The hosted job installs the locked Playwright Chromium under Node 24.18.0,
+which includes the stream compatibility fix for the older ZIP extractor. Browser
+provisioning has an eight-minute deadline. It switches to Node 24.17.0 before
+native ABI preparation, backend/frontend builds and QA, preserving the target
+runtime. Then `tests/helpers/hosted-manager-qa.mjs` owns isolated
 Manager/worker fixtures and browser processes. It runs native Code, retired
 settings and Manager layout files sequentially: seven named tests, including
 16 native Code scenarios, two retirement widths and five layout scenarios.

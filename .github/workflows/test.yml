@@ -541,13 +541,16 @@ jobs:
           test "$actual" = "$EXPECTED_SHA"
           test "$actual" = "$GITHUB_SHA"
 
-      - name: Setup QA Node
+      # Node 24.16/24.17 stalls older Playwright extract-zip after download.
+      # The stream compatibility fix ships in Node 24.18 (nodejs/node#63834).
+      - name: Setup browser installer Node
         uses: actions/setup-node@v5
         with:
-          node-version: 24.17.0
+          node-version: 24.18.0
           cache: npm
 
       - name: Provision locked browser dependencies
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
@@ -560,14 +563,22 @@ jobs:
             node node_modules/playwright-core/cli.js install --with-deps chromium
             sudo apt-get install -y fonts-noto-cjk
             fc-match :lang=ko
-            npm run ensure:native
           } 2>&1 | tee "$QA_ARTIFACT_DIR/provision.log"
+
+      # Only installation uses 24.18; compile, native ABI checks and QA retain
+      # the target sidecar runtime rather than silently changing certification.
+      - name: Setup QA runtime Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.17.0
 
       - name: Build exact candidate without global linking
         shell: bash
         run: |
           set -euo pipefail
           {
+            node --version
+            npm run ensure:native
             npm run build --ignore-scripts
             bash scripts/verify-dist-assets.sh
             npm run build:frontend --ignore-scripts
