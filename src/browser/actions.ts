@@ -3,7 +3,7 @@ import { JAW_HOME } from '../core/config.js';
 import { join } from 'path';
 import fs from 'fs';
 import { imageSize } from './image-size.js';
-import { HIT_TEST_SOURCE } from './occlusion.js';
+import { hitTestInPage } from './occlusion.js';
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core';
 
 const SCREENSHOTS_DIR = join(JAW_HOME, 'screenshots');
@@ -251,7 +251,8 @@ export async function hitTestPoint(
 ): Promise<import('./occlusion.js').HitResult | null> {
     try {
         const page = await requireActivePage(port);
-        const result = await page.evaluate(HIT_TEST_SOURCE, { ...point, ...(targetPoint ? { targetPoint } : {}) });
+        // A function, not a source string: Playwright only invokes the former.
+        const result = await page.evaluate(hitTestInPage, { ...point, ...(targetPoint ? { targetPoint } : {}) });
         return (result ?? null) as import('./occlusion.js').HitResult | null;
     } catch {
         return null;

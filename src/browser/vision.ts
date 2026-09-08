@@ -308,7 +308,11 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         // and the call still reports success. Only a positively identified
         // blocker refuses; an unusable hit test fails open, because an
         // infrastructure failure must not block a legitimate click.
-        if (opts.checkOcclusion !== false) {
+        // Only when the point is genuinely ON the target. A snap-to-nearest
+        // match puts the click point up to 32px outside the box, so asking
+        // what is at that point would legitimately find something else and
+        // refuse exactly the cases reconciliation exists to rescue.
+        if (opts.checkOcclusion !== false && decision.reason === 'candidate_center_inside_ref_box') {
             // Relatedness is decided in the page against the real node. The
             // reconciled box's centre is a point known to be on the target, so
             // the page can resolve the target itself rather than matching a

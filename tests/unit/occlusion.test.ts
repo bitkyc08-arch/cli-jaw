@@ -1,13 +1,20 @@
-// A coordinate click dispatches wherever the point lands. If a cookie banner
-// or modal covers the target, that element receives the click and the call
-// still reports success - the most common silent failure in coordinate
-// automation, because nothing in the response says the wrong thing was hit.
+// A coordinate click dispatches wherever the point lands. If a banner covers
+// the target, that element receives the click and the call still reports
+// success - the most common silent failure in coordinate automation.
 //
-// The DOM walk needs a live browser. These cases pin the decision rules and
-// the shape of the injected source, which is where the judgement calls live.
+// The previous version of this suite tested judgeHit against hand-built
+// HitResult objects and asserted the injected source was a function
+// EXPRESSION - which pinned the exact shape that made the whole check a
+// permanent no-op, because Playwright evaluates a string without calling it.
+// Eleven green tests over a mechanism that had never once executed.
+//
+// So these run the page function for real against a fake DOM. If it stops
+// returning a usable HitResult, that fails here.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { judgeHit, HIT_TEST_SOURCE, type HitResult } from '../../src/browser/occlusion.ts';
+import { judgeHit, hitTestInPage, type HitResult } from '../../src/browser/occlusion.ts';
+
+// ─── judgement rules ───────────────────────────
 
 const hit = (
     descriptor: string,
@@ -27,38 +34,31 @@ test('OCC-001: an unrelated element over the target is a blocker', () => {
 });
 
 test('OCC-002: an element related to the target is clear', () => {
-    // The page decides this against the real node: the hit is the target,
-    // inside it, or contains it. Clicking a button's inner span is clicking
-    // the button.
     const v = judgeHit(hit('span.label', { relatesToTarget: true }));
     assert.equal(v.blocked, false);
     assert.equal(v.reason, 'clear');
 });
 
 test('OCC-003: an unusable hit test fails OPEN', () => {
-    // A cross-origin frame or a page that navigated mid-check. An
-    // infrastructure failure must not block a legitimate click, and claiming
-    // to know is worse than admitting we do not.
+    // An infrastructure failure must not block a legitimate click, and
+    // claiming to know is worse than admitting we do not.
     const v = judgeHit(null);
     assert.equal(v.blocked, false);
     assert.equal(v.reason, 'unknown');
 });
 
 test('OCC-004: with no marked target the verdict is unknown, not clear', () => {
-    // A pure coordinate click into canvas has no reconciled ref. "No evidence
-    // of a problem" is not "evidence of no problem", and collapsing the two
-    // would let an unchecked click report as a verified one.
+    // "No evidence of a problem" is not "evidence of no problem". Collapsing
+    // the two would let an unchecked click report as a verified one.
     const v = judgeHit(hit('canvas#board'));
     assert.equal(v.blocked, false);
     assert.equal(v.reason, 'unknown');
 });
 
 test('OCC-005: identity is not a name-matching problem', () => {
-    // An earlier version compared the reconciled ref's ARIA role against the
-    // hit's DOM tag. A 'link' is an 'a', a 'textbox' is an 'input', and a
-    // 'button' is often a 'div' - every one of those compared unequal and
-    // blocked a click that would have worked. The page now answers with
-    // identity, so the descriptor's spelling is irrelevant to the verdict.
+    // An earlier version compared the ref's ARIA role against the hit's DOM
+    // tag: a 'link' is an 'a', a 'textbox' is an 'input', a 'button' is often
+    // a 'div'. All three compared unequal and blocked a working click.
     assert.equal(judgeHit(hit('a.nav', { relatesToTarget: true })).blocked, false);
     assert.equal(judgeHit(hit('input#q', { relatesToTarget: true })).blocked, false);
     assert.equal(judgeHit(hit('div.btn', { relatesToTarget: true })).blocked, false);
@@ -70,43 +70,100 @@ test('OCC-006: a point resolving into an iframe says so', () => {
     assert.match(v.blocked ? v.reason : '', /resolves into an iframe/);
 });
 
-test('OCC-007: the blocker is named so the caller can act on it', () => {
-    // "Something covered it" is not actionable. "div#cookie-wall covered it"
-    // tells an agent what to dismiss.
-    const v = judgeHit(hit('div#cookie-wall', { relatesToTarget: false }));
-    assert.equal(v.blocked && v.blocker, 'div#cookie-wall');
+// ─── the page function, actually executed ──────
+
+type FakeEl = Record<string, unknown>;
+
+function el(tag: string, props: Record<string, unknown> = {}): FakeEl {
+    const node: FakeEl = { tagName: tag.toUpperCase(), clientLeft: 0, clientTop: 0, ...props };
+    node['getBoundingClientRect'] = () => ({ left: 0, top: 0 });
+    node['closest'] = () => null;
+    node['contains'] = (n: unknown) => n === node;
+    return node;
+}
+
+/** Install a minimal document whose elementFromPoint answers from a map. */
+function withDocument(at: (x: number, y: number) => FakeEl | null, run: () => void): void {
+    const original = (globalThis as Record<string, unknown>)['document'];
+    (globalThis as Record<string, unknown>)['document'] = {
+        elementFromPoint: (x: number, y: number) => at(x, y),
+    };
+    try { run(); } finally { (globalThis as Record<string, unknown>)['document'] = original; }
+}
+
+test('OCC-007: the page function RUNS and returns a usable result', () => {
+    // The whole point of this file. A string form would have returned
+    // undefined here, silently.
+    withDocument(() => el('button', { id: 'go' }), () => {
+        const r = hitTestInPage({ x: 10, y: 10 });
+        assert.ok(r, 'the hit test must return something');
+        assert.equal(r.descriptor, 'button#go');
+        assert.equal(r.crossedFrame, false);
+        assert.equal(r.relatesToTarget, undefined, 'no target was marked');
+    });
 });
 
-test('OCC-008: the injected source is a self-contained function expression', () => {
-    // page.evaluate takes a function expression; a module reference would
-    // throw inside the page rather than at build time.
-    assert.match(HIT_TEST_SOURCE, /^\(arg\) => \{/);
-    assert.ok(HIT_TEST_SOURCE.trim().endsWith('}'));
-    assert.doesNotMatch(HIT_TEST_SOURCE, /\bimport\b|\brequire\(/);
+test('OCC-008: an element covering the target is reported as unrelated', () => {
+    const banner = el('div', { id: 'consent-banner' });
+    const button = el('button');
+    withDocument((x) => (x === 10 ? banner : button), () => {
+        const r = hitTestInPage({ x: 10, y: 10, targetPoint: { x: 50, y: 50 } });
+        assert.ok(r);
+        assert.equal(r.descriptor, 'div#consent-banner');
+        assert.equal(r.relatesToTarget, false);
+        const v = judgeHit(r);
+        assert.equal(v.blocked, true, 'and the verdict must actually block');
+        assert.equal(v.blocked && v.blocker, 'div#consent-banner');
+    });
 });
 
-test('OCC-009: the page-side walk crosses frames and shadow boundaries', () => {
-    assert.match(HIT_TEST_SOURCE, /IFRAME/);
-    assert.match(HIT_TEST_SOURCE, /crossedFrame/);
-    // Shadow roots are traversed through host, not only parentNode.
-    assert.match(HIT_TEST_SOURCE, /getRootNode/);
-    // The child frame's own viewport origin and border are subtracted.
-    assert.match(HIT_TEST_SOURCE, /rect\.left \+ hit\.clientLeft/);
-    assert.match(HIT_TEST_SOURCE, /rect\.top \+ hit\.clientTop/);
+test('OCC-009: hitting a child of the target is related', () => {
+    const button = el('button');
+    const span = el('span', { className: 'label', parentNode: button });
+    withDocument((x) => (x === 10 ? span : button), () => {
+        const r = hitTestInPage({ x: 10, y: 10, targetPoint: { x: 50, y: 50 } });
+        assert.ok(r);
+        assert.equal(r.relatesToTarget, true, 'clicking a button\u2019s inner span is clicking the button');
+        assert.deepEqual(r.ancestry, ['button']);
+        assert.equal(judgeHit(r).blocked, false);
+    });
 });
 
-test('OCC-010: every page-side walk is bounded', () => {
-    // A cyclic frame or a pathological tree must not hang the page.
-    assert.match(HIT_TEST_SOURCE, /depth < 16/);
-    assert.match(HIT_TEST_SOURCE, /guard < 24/);
-    assert.match(HIT_TEST_SOURCE, /guard < 200/);
+test('OCC-010: a shadow boundary is crossed through host', () => {
+    const host = el('my-widget');
+    const inner = el('button', { getRootNode: () => ({ host }) });
+    withDocument((x) => (x === 10 ? inner : host), () => {
+        const r = hitTestInPage({ x: 10, y: 10, targetPoint: { x: 50, y: 50 } });
+        assert.ok(r);
+        assert.equal(r.relatesToTarget, true, 'the host chain must be walked');
+    });
 });
 
-test('OCC-011: relatedness is resolved from a point on the target', () => {
-    // Not from a selector: an ARIA ref cannot be turned into one reliably.
-    assert.match(HIT_TEST_SOURCE, /arg\.targetPoint/);
-    assert.match(HIT_TEST_SOURCE, /elementFromPoint\(arg\.targetPoint\.x/);
-    // A label forwarding to the target counts as related.
-    assert.match(HIT_TEST_SOURCE, /lbl\.control === target/);
+test('OCC-011: a null hit yields null rather than throwing', () => {
+    withDocument(() => null, () => {
+        assert.equal(hitTestInPage({ x: 1, y: 1 }), null);
+    });
+});
+
+test('OCC-012: a cyclic parent chain cannot hang the walk', () => {
+    const a = el('div', { id: 'a' });
+    const b = el('div', { id: 'b', parentNode: a });
+    a['parentNode'] = b; // cycle
+    withDocument(() => b, () => {
+        const r = hitTestInPage({ x: 1, y: 1 });
+        assert.ok(r);
+        assert.ok(r.ancestry.length <= 24, 'ancestry must stay bounded');
+    });
+});
+
+test('OCC-013: an unreadable frame stops the descent instead of looping', () => {
+    const frame = el('iframe', { id: 'ad', contentDocument: null });
+    withDocument(() => frame, () => {
+        const r = hitTestInPage({ x: 1, y: 1, targetPoint: { x: 1, y: 1 } });
+        assert.ok(r);
+        assert.equal(r.descriptor, 'iframe#ad');
+        // The frame was hit-tested as the target too, so it relates to itself.
+        assert.equal(r.relatesToTarget, true);
+    });
 });
 
