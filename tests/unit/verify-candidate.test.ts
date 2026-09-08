@@ -38,17 +38,42 @@ test('VER-002: a candidate near an edge still gets a full-size crop', () => {
     assert.equal(bottomRight.y + bottomRight.height, 800);
 });
 
-test('VER-003: a viewport smaller than the crop clamps the crop', () => {
+test('VER-003: a viewport smaller than the crop shrinks it', () => {
+    // The only case that genuinely shrinks rather than shifts: there is
+    // nowhere to move a 280x200 rectangle inside a 100x80 viewport.
     const c = cropAroundPoint({ x: 50, y: 50 }, { width: 100, height: 80 });
     assert.deepEqual(c, { x: 0, y: 0, width: 100, height: 80 });
 });
 
-test('VER-004: an answer at the crop centre agrees', () => {
+test('VER-004: an answer at the candidate agrees', () => {
     const crop = { x: 500, y: 300, width: 280, height: 200 };
     const o = judgeVerification({ x: 140, y: 100 }, crop);
     assert.equal(o.agreed, true);
     assert.deepEqual(o.agreed && o.point, { x: 640, y: 400 }, 'and comes back in page coordinates');
     assert.equal(o.agreed && o.drift, 0);
+});
+
+test('VER-004c: an answer outside the crop cannot escape it', () => {
+    // Measuring drift from the candidate rather than the crop centre removed
+    // the implication that a permitted drift stays inside the crop. Near a
+    // shifted edge the candidate sits close to one side, so 45% from THERE
+    // runs off the far side — and the returned point is clicked directly.
+    const candidate = { x: 1275, y: 400 };
+    const crop = cropAroundPoint(candidate, viewport);
+    assert.deepEqual(crop, { x: 1000, y: 300, width: 280, height: 200 });
+
+    // 400 is past the 280-wide crop; unguarded this yielded page x=1400 on a
+    // 1280-wide viewport.
+    const escaped = judgeVerification({ x: 400, y: 100 }, crop, candidate);
+    assert.equal(escaped.agreed, false);
+    assert.match(escaped.agreed ? '' : escaped.reason, /outside the 280x200 verification crop/);
+
+    // The mirror case at the left edge produced a negative page coordinate.
+    const left = cropAroundPoint({ x: 5, y: 400 }, viewport);
+    assert.equal(judgeVerification({ x: -120, y: 100 }, left, { x: 5, y: 400 }).agreed, false);
+
+    // Exactly on the boundary is still inside the image the model saw.
+    assert.equal(judgeVerification({ x: 280, y: 200 }, { x: 0, y: 0, width: 280, height: 200 }, { x: 200, y: 150 }).agreed, true);
 });
 
 test('VER-004b: drift is measured from the CANDIDATE, not the crop centre', () => {
@@ -87,6 +112,15 @@ test('VER-006: an answer drifting to the crop edge disagrees', () => {
     const o = judgeVerification({ x: 275, y: 100 }, crop);
     assert.equal(o.agreed, false);
     assert.match(o.agreed ? '' : o.reason, /drifted \d+% from the original candidate/);
+});
+
+test('VER-006b: the drift threshold is inclusive at exactly the limit', () => {
+    // Unasserted, a change from > to >= would pass the suite silently.
+    const crop = { x: 0, y: 0, width: 200, height: 200 };
+    const atLimit = { x: 100 + VERIFY_DRIFT_LIMIT * 200, y: 100 };
+    const o = judgeVerification(atLimit, crop);
+    assert.equal(o.agreed, true, 'exactly at the limit agrees');
+    assert.equal(o.agreed && o.drift, VERIFY_DRIFT_LIMIT);
 });
 
 test('VER-007: a target absent from the crop disagrees', () => {

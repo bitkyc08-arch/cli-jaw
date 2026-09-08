@@ -248,7 +248,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // The re-run is against a CROP centred on the candidate, not the original
     // screenshot. Asking the same question of the same image could only fail
     // on non-determinism; changing the input is what lets the second answer
-    // disagree, and an answer drifting to the crop's edge is evidence the
+    // disagree, and an answer landing far from the original candidate is evidence the
     // first one was wrong.
     let verifiedPoint: { x: number; y: number } | null = null;
     if (opts.verifyBeforeClick) {
@@ -257,7 +257,13 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         }
         const crop = cropAroundPoint(css, viewportProbe.viewport);
         const cropShot = await screenshot(port, { clip: crop });
-        const cropDpr = typeof cropShot.dpr === 'number' && Number.isFinite(cropShot.dpr) ? cropShot.dpr : dpr;
+        // Fail closed on missing scale metadata rather than silently reusing a
+        // possibly-defaulted 1, which would double every local coordinate on a
+        // retina display. The main path already refuses to guess here.
+        if (typeof cropShot.dpr !== 'number' || !Number.isFinite(cropShot.dpr)) {
+            return { success: false, reason: 'verification capture reported no device pixel ratio', provider: result.provider };
+        }
+        const cropDpr = cropShot.dpr;
         const second = await extractCoordinates(cropShot.path, target, { provider: opts.provider || 'codex' });
         const local = second.found ? { x: second.x / cropDpr, y: second.y / cropDpr } : null;
         const outcome = judgeVerification(local, crop, css);
