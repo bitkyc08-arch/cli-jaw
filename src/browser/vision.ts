@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef, hitTestPoint } from './actions.js';
 import { judgeHit } from './occlusion.js';
+import { cropAroundPoint, judgeVerification } from './verify-candidate.js';
 import { reconcileVisionCandidate, assertFreshObservationBundle, type ReconcileResult } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
@@ -243,10 +244,30 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // 3b. Second opinion, if the caller asked for one. This runs BEFORE any
     // dispatch, including the ref path — a caller who opted into verification
     // must not get an unverified click just because reconciliation succeeded.
+    //
+    // The re-run is against a CROP centred on the candidate, not the original
+    // screenshot. Asking the same question of the same image could only fail
+    // on non-determinism; changing the input is what lets the second answer
+    // disagree, and an answer drifting to the crop's edge is evidence the
+    // first one was wrong.
+    let verifiedPoint: { x: number; y: number } | null = null;
     if (opts.verifyBeforeClick) {
-        const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' });
-        if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
+        if (!viewportProbe.viewport) {
+            return { success: false, reason: 'verification needs a viewport and none was available', provider: result.provider };
+        }
+        const crop = cropAroundPoint(css, viewportProbe.viewport);
+        const cropShot = await screenshot(port, { clip: crop });
+        const cropDpr = typeof cropShot.dpr === 'number' && Number.isFinite(cropShot.dpr) ? cropShot.dpr : dpr;
+        const second = await extractCoordinates(cropShot.path, target, { provider: opts.provider || 'codex' });
+        const local = second.found ? { x: second.x / cropDpr, y: second.y / cropDpr } : null;
+        const outcome = judgeVerification(local, crop);
+        if (!outcome.agreed) {
+            return { success: false, reason: outcome.reason, code: 'COMPUTER_VERIFY_DISAGREED', provider: result.provider };
+        }
+        // The second look replaces the first estimate rather than blessing it.
+        verifiedPoint = outcome.point;
     }
+    const clickPoint = verifiedPoint ?? css;
 
     // 3c. Reconcile against element geometry before falling back to a raw
     // coordinate. The browser already knows where its elements are, so a point
@@ -281,7 +302,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
                 },
             );
             decision = reconcileVisionCandidate({
-                candidate: { point: css, confidence: 1 },
+                candidate: { point: clickPoint, confidence: 1 },
                 bundle: { refs: boxes.refs },
             });
             boxRefs = boxes.refs;
@@ -297,7 +318,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             success: false,
             reason: decision.reason,
             code: decision.code,
-            candidate: css,
+            candidate: clickPoint,
             provider: result.provider,
         };
     }
@@ -321,7 +342,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             const targetPoint = box
                 ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
                 : undefined;
-            const hit = await hitTestPoint(port, css, targetPoint);
+            const hit = await hitTestPoint(port, clickPoint, targetPoint);
             const verdict = judgeHit(hit);
             if (verdict.blocked) {
                 return {
@@ -330,7 +351,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
                     code: 'COMPUTER_TARGET_COVERED',
                     blocker: verdict.blocker,
                     ref: decision.ref,
-                    candidate: css,
+                    candidate: clickPoint,
                     provider: result.provider,
                 };
             }
@@ -344,7 +365,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             ref: decision.ref,
             reason: decision.reason,
             // The coordinate that resolved to this ref, not a place we clicked.
-            resolvedFrom: css,
+            resolvedFrom: clickPoint,
             raw: { x: result.x, y: result.y },
             clip,
             dpr,
@@ -355,7 +376,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     }
 
     // 4. Click
-    await mouseClick(port, css.x, css.y, { doubleClick: opts.doubleClick });
+    await mouseClick(port, clickPoint.x, clickPoint.y, { doubleClick: opts.doubleClick });
 
     // 5. Verify (optional snapshot)
     let snap = null;
@@ -364,7 +385,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     return {
         success: true,
         via: 'coordinate' as const,
-        clicked: css,
+        clicked: clickPoint,
         raw: { x: result.x, y: result.y },
         clip,
         dpr,
