@@ -260,7 +260,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         const cropDpr = typeof cropShot.dpr === 'number' && Number.isFinite(cropShot.dpr) ? cropShot.dpr : dpr;
         const second = await extractCoordinates(cropShot.path, target, { provider: opts.provider || 'codex' });
         const local = second.found ? { x: second.x / cropDpr, y: second.y / cropDpr } : null;
-        const outcome = judgeVerification(local, crop);
+        const outcome = judgeVerification(local, crop, css);
         if (!outcome.agreed) {
             return { success: false, reason: outcome.reason, code: 'COMPUTER_VERIFY_DISAGREED', provider: result.provider };
         }

@@ -57,18 +57,28 @@ export type VerifyOutcome =
  * relative to the crop's own origin. The returned point is back in page
  * coordinates, so a caller that agrees can use it directly — the second look
  * replaces the first estimate rather than merely blessing it.
+ *
+ * Drift is measured from the ORIGINAL CANDIDATE, not from the crop centre.
+ * Those coincide in the middle of a viewport but not near an edge, where the
+ * crop clamps: a candidate 5px from the left sits 5px into its crop while the
+ * crop centre is 140px in. Measuring from the centre there would refuse a
+ * second answer that re-found the exact same point — the one case that should
+ * agree most strongly.
  */
 export function judgeVerification(
     localPoint: Point | null,
     crop: Rect,
+    candidate?: Point,
     driftLimit = VERIFY_DRIFT_LIMIT,
 ): VerifyOutcome {
     // The target is not in a crop centred on where we thought it was. That is
     // the first answer being wrong, which is exactly what this is for.
     if (!localPoint) return { agreed: false, reason: 'the target was not in the verification crop' };
 
-    const cx = crop.width / 2;
-    const cy = crop.height / 2;
+    // Fall back to the crop centre only when no candidate was supplied, which
+    // is the same point whenever the crop was not clamped.
+    const cx = candidate ? candidate.x - crop.x : crop.width / 2;
+    const cy = candidate ? candidate.y - crop.y : crop.height / 2;
     const dx = Math.abs(localPoint.x - cx) / crop.width;
     const dy = Math.abs(localPoint.y - cy) / crop.height;
     const drift = Math.max(dx, dy);
@@ -76,7 +86,7 @@ export function judgeVerification(
     if (drift > driftLimit) {
         return {
             agreed: false,
-            reason: `the second answer drifted ${Math.round(drift * 100)}% from the crop centre`,
+            reason: `the second answer drifted ${Math.round(drift * 100)}% from the original candidate`,
             drift,
         };
     }
@@ -87,4 +97,3 @@ export function judgeVerification(
         drift,
     };
 }
-

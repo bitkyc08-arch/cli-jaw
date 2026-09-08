@@ -51,6 +51,26 @@ test('VER-004: an answer at the crop centre agrees', () => {
     assert.equal(o.agreed && o.drift, 0);
 });
 
+test('VER-004b: drift is measured from the CANDIDATE, not the crop centre', () => {
+    // These coincide in the middle of a viewport but not near an edge, where
+    // the crop clamps. A candidate 5px from the left sits 5px into its crop
+    // while the crop centre is 140px in — measuring from the centre there
+    // refuses a second answer that re-found the exact same point, which is the
+    // case that should agree most strongly.
+    const candidate = { x: 5, y: 400 };
+    const crop = cropAroundPoint(candidate, viewport);
+    assert.equal(crop.x, 0, 'the crop is clamped against the left edge');
+
+    const samePoint = { x: candidate.x - crop.x, y: candidate.y - crop.y };
+    const o = judgeVerification(samePoint, crop, candidate);
+    assert.equal(o.agreed, true, 're-finding the same point must agree');
+    assert.equal(o.agreed && o.drift, 0);
+
+    // A genuinely different answer in that same clamped crop still disagrees.
+    const far = judgeVerification({ x: 200, y: 100 }, crop, candidate);
+    assert.equal(far.agreed, false);
+});
+
 test('VER-005: the second look REPLACES the first estimate', () => {
     // The old option kept the original coordinates no matter what the second
     // answer said. A verification that cannot move the click is decoration.
@@ -66,7 +86,7 @@ test('VER-006: an answer drifting to the crop edge disagrees', () => {
     const crop = { x: 0, y: 0, width: 280, height: 200 };
     const o = judgeVerification({ x: 275, y: 100 }, crop);
     assert.equal(o.agreed, false);
-    assert.match(o.agreed ? '' : o.reason, /drifted \d+% from the crop centre/);
+    assert.match(o.agreed ? '' : o.reason, /drifted \d+% from the original candidate/);
 });
 
 test('VER-007: a target absent from the crop disagrees', () => {
@@ -125,5 +145,5 @@ test('VER-010: a caller can tighten or loosen the threshold', () => {
     const crop = { x: 0, y: 0, width: 200, height: 200 };
     const point = { x: 170, y: 100 }; // 35% drift
     assert.equal(judgeVerification(point, crop).agreed, true);
-    assert.equal(judgeVerification(point, crop, 0.3).agreed, false);
+    assert.equal(judgeVerification(point, crop, undefined, 0.3).agreed, false);
 });
