@@ -26,7 +26,11 @@ test('P37-PROMPT-002: A1 has both CDP path and Computer Use path sections', () =
     const a1 = readA1();
     assert.match(a1, /CDP path/);
     assert.match(a1, /Computer Use path/);
-    assert.match(a1, /mcp__computer_use__/);
+    // The Computer Use tool surface is host-provided and version-dependent, so A1
+    // must not hard-code a tool name. It must instead tell the agent to establish
+    // the surface from what the host actually exposes.
+    assert.match(a1, /surface belongs to the host/);
+    assert.doesNotMatch(a1, /^\s*-\s*\*\*macOS:\*\*\s*`get_app_state/m);
 });
 
 test('P37-PROMPT-003: A1 names all Computer Use action classes', () => {
@@ -70,14 +74,14 @@ test('P37-PROMPT-008: control-system.md exists with Control-specific rules', () 
     const text = fs.readFileSync(CONTROL_SYS_PATH, 'utf8');
     assert.match(text, /You are `Control`/);
     assert.match(text, /path=cdp|path=computer-use/);
-    assert.match(text, /get_app_state/);
+    assert.match(text, /Computer Use tool surface belongs to the host/);
 });
 
-test('P37-PROMPT-009: Computer Use tool surface includes text selection', () => {
+test('P37-PROMPT-009: Computer Use guidance prefers explicit text selection over keyboard guesswork', () => {
     const a1 = readA1();
     const control = fs.readFileSync(CONTROL_SYS_PATH, 'utf8');
-    assert.match(a1, /select_text/);
-    assert.match(control, /select_text/);
+    assert.match(a1, /select text explicitly rather than by keyboard guesswork/);
+    assert.match(control, /select text explicitly rather than by keyboard guesswork/);
 });
 
 test('P40-PROMPT-010: A1 gates external realtime lookup through active search skill', () => {

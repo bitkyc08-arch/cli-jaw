@@ -140,7 +140,7 @@ Key rules:
    progress. `snapshot.workers` is running-only; completed progress is under
    `worker-progress.previous`.
 5. **`$computer-use` / Computer Use routing** — binding rule is anchor:desktop-control §0 below (codex self-serves; non-codex dispatches to a codex-family employee verbatim with the token; none → report precondition failure, never fall back to CDP).
-6. **Screenshot-first in dispatch body**: every UI-task dispatch must include — *"If unsure of state, call `get_app_state` (CU) or `cli-jaw browser snapshot` (CDP) before the next action. Never chain actions through uncertainty."*
+6. **Screenshot-first in dispatch body**: every UI-task dispatch must include — *"If unsure of state, re-read it (Computer Use state read, or `cli-jaw browser snapshot` on CDP) before the next action. Never chain actions through uncertainty."*
 
 ### Dispatch task authoring (the skeleton — employees are stateless; the task text is ALL they know)
 
@@ -170,13 +170,13 @@ Return: <exact shape you need back: verdict word (PASS/FAIL, DONE/NEEDS_FIX) +
 <!-- anchor:desktop-control -->
 ## Desktop / Browser Control (MANDATORY)
 
-> **Desktop (Computer Use) control runs on macOS and Windows**, with **different APIs** — see §B.0 before the first call. On Linux/WSL/Docker there is no Computer Use host: only the **CDP browser path**, and `mcp__computer_use__.*` must never be attempted there.
+> **Desktop (Computer Use) control runs on macOS and Windows.** The tool surface is host-provided and version-dependent — see §B.0 before the first call. On Linux/WSL/Docker there is no Computer Use host: only the **CDP browser path**.
 
 ### 0. 🎯 `$computer-use` — explicit user trigger token
 
 When the user's message contains **`$computer-use`**, skip intent routing entirely:
 
-- **Codex + host preconditions ready** → self-serve Computer Use tools. The first action is platform-dependent (§B.0): on macOS `get_app_state(app=...)`, on Windows `list_windows()` then `get_window_state({app, id})`.
+- **Codex + host preconditions ready** → self-serve Computer Use. The first action is whatever entry point your host's Computer Use surface documents (§B.0) — read that documentation before calling anything.
 - **Not codex** → use the dispatch template below. Control preferred; any codex-family employee acceptable.
 - **No codex-family employee** → report `precondition failed: no codex-family employee for $computer-use`. Never fall back to CDP.
 - `jaw-desktop-control` skill is already inlined into Control's system prompt — never paste absolute skill paths (`/Users/*/.codex/skills/...` etc.) into the task body.
@@ -194,8 +194,8 @@ $computer-use
 <user's original request, verbatim>
 
 Execution rules:
-- First action for a known app: mcp__computer_use__get_app_state(app="<relevant app>"). If the app is unclear, call mcp__computer_use__list_apps first.
-- If unsure of state (which tab, which index, did the click land), call get_app_state again BEFORE acting. Never chain actions through uncertainty.
+- First action: read your Computer Use surface's own documentation, then use its documented entry point to select the target app. Do not assume a tool name.
+- If unsure of state (which tab, which index, did the click land), re-read state BEFORE acting. Never chain actions through uncertainty.
 - Report precondition failures verbatim; never fall back to CDP.
 ```
 
@@ -230,22 +230,28 @@ Default browser work uses the Chrome CDP path above. The Electron Manager ALSO h
 
 ### B.0 Platform contract — read before the first Computer Use call
 
-macOS is **app-scoped**, Windows is **window-scoped**. Wrong-platform calls fail with `sky.get_app_state is not a function`, not a clean precondition error.
+**The Computer Use tool surface belongs to the host, not to cli-jaw, and it changes between versions.** Do not assume tool names from memory or from these instructions.
 
-- **macOS:** `get_app_state(app)` first; `list_apps()` when the app is unknown; `select_text` available.
-- **Windows:** `list_windows()` then `get_window_state({app, id})`, inside `node_repl`. **No `get_app_state`, no `select_text`.** `list_apps()` answers even with a dead pipe (not a health check), and an empty `list_windows()` means you are **not on the pipe** — a precondition failure, not "no windows open". The Codex desktop app must run in the logged-on session. The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
-- Windows detail (pipe, `config.toml`, SSH): `cli-jaw skill read jaw-desktop-control computer-use`.
+Establish the surface before the first call:
+
+1. Look at the tools actually exposed this session. Recent Codex builds provide a **CUA JavaScript session** (a `cua` object reached through a REPL tool) rather than individual MCP tools. Older builds exposed `mcp__computer_use__*` MCP tools directly.
+2. Whichever is present, **its own first call returns its documentation.** Read that result before continuing, and use only the APIs it describes.
+3. If neither is present, that is `precondition failed: no Computer Use surface`. Report it and stop — never substitute CDP.
+
+What stays true across surfaces: read state before acting, prefer an accessibility element index over raw coordinates, use coordinates only when the target is visible but absent from the element tree, and re-read state after anything that changes the UI.
+
+Platform shape differs. macOS Computer Use is app-scoped; Windows is window-scoped and needs the desktop app running in the logged-on session. An empty window list on Windows usually means the transport is not connected rather than that no windows are open — treat it as a precondition failure, not an empty result. The sandbox workaround `--dangerously-bypass-approvals-and-sandbox` disables **both** approvals and the sandbox; cli-jaw never adds it automatically.
 
 If a precondition fails, stop and report `precondition failed: <name>`. Never fall back to CDP silently.
 
-### B. Computer Use path — `mcp__computer_use__.*` (macOS + Windows, codex-only)
+### B. Computer Use path (macOS + Windows, codex-only)
 For desktop apps and non-DOM UI. Operates native UI through accessibility, keyboard, and pointer actions. Do not promise that a visible cursor overlay will appear.
 
 **Workflow:** state read (§B.0) → action → re-read state after UI/focus changes, stale warnings, or uncertainty → verify.
-- Prefer `element_index` actions when the target is in the accessibility tree.
-- Prefer `set_value(element_index, value)` over focus-only typing. Use `select_text(element_index, text, selection?)` for exact text selection or cursor placement inside a known text element. Use `type_text(text)` only after the latest state proves focus is in the intended field.
-- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` from screenshot coordinates.
-- `stale_warning` is a signal to re-read state, not a failure.
+- Prefer an accessibility element index over raw coordinates whenever the target is in the tree.
+- Prefer a targeted value-setting call over focus-only typing, and select text explicitly rather than by keyboard guesswork. Type into focus only when the latest state proves the cursor is in the intended field.
+- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use screenshot coordinates.
+- A staleness warning is a signal to re-read state, not a failure.
 - Cursor overlay visibility is **best-effort** — never claim "the cursor is visible" as a fact.
 - Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`, `scroll-action`, `drag-action`, `secondary-action`. Full examples and per-class guidance live in the `jaw-desktop-control` skill.
 
