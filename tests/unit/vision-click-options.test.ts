@@ -18,10 +18,12 @@ test('VCO-001: vision-click uses parseArgs positionals so option values do not e
     assert.doesNotMatch(block, /filter\(a => !a\.startsWith\('--'\)\)\.join\(' '\)/);
 });
 
-test('VCO-002: vision-click exposes guardrail options', () => {
-    for (const token of ['prepareStable', 'verifyBeforeClick', 'region', 'clip']) {
-        assert.match(visionSrc, new RegExp(token));
-    }
+test('VCO-002: vision-click exposes guardrail options on the CLI', () => {
+    // Only the CLI surface is asserted by name here. This test used to also
+    // check that the string 'verifyBeforeClick' appeared in vision.ts, which
+    // greenlit an option whose implementation re-asked the same question of
+    // the same image and discarded the answer. Presence of a name is not
+    // evidence of behaviour; verify-candidate.test.ts covers what it does.
     assert.match(cliSrc, /'prepare-stable'/);
     assert.match(cliSrc, /'verify-before-click'/);
 });

@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef, hitTestPoint } from './actions.js';
 import { judgeHit } from './occlusion.js';
+import { cropAroundPoint, judgeVerification, isObservationStale } from './verify-candidate.js';
 import { reconcileVisionCandidate, assertFreshObservationBundle, type ReconcileResult } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
@@ -189,6 +190,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     // 1. Screenshot (includes DPR)
     const viewportProbe = await screenshot(port, { json: true });
+    const observedAt = Date.now();
     const clip = opts.clip || resolveRegionClip(opts.region, viewportProbe.viewport);
     const ss = clip ? await screenshot(port, { clip, json: true }) : viewportProbe;
     const dpr = typeof ss.dpr === 'number' && Number.isFinite(ss.dpr) ? ss.dpr : 1;
@@ -243,9 +245,53 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // 3b. Second opinion, if the caller asked for one. This runs BEFORE any
     // dispatch, including the ref path — a caller who opted into verification
     // must not get an unverified click just because reconciliation succeeded.
+    //
+    // The re-run is against a CROP centred on the candidate, not the original
+    // screenshot. Asking the same question of the same image could only fail
+    // on non-determinism; changing the input is what lets the second answer
+    // disagree, and an answer landing far from the original candidate is evidence the
+    // first one was wrong.
+    let verifiedPoint: { x: number; y: number } | null = null;
     if (opts.verifyBeforeClick) {
-        const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' });
-        if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
+        if (!viewportProbe.viewport) {
+            return { success: false, reason: 'verification needs a viewport and none was available', provider: result.provider };
+        }
+        const crop = cropAroundPoint(css, viewportProbe.viewport);
+        const cropShot = await screenshot(port, { clip: crop });
+        // Fail closed on missing scale metadata rather than silently reusing a
+        // possibly-defaulted 1, which would double every local coordinate on a
+        // retina display. The main path already refuses to guess here.
+        if (typeof cropShot.dpr !== 'number' || !Number.isFinite(cropShot.dpr)) {
+            return { success: false, reason: 'verification capture reported no device pixel ratio', provider: result.provider };
+        }
+        const cropDpr = cropShot.dpr;
+        const second = await extractCoordinates(cropShot.path, target, { provider: opts.provider || 'codex' });
+        const local = second.found ? { x: second.x / cropDpr, y: second.y / cropDpr } : null;
+        const outcome = judgeVerification(local, crop, css);
+        if (!outcome.agreed) {
+            return { success: false, reason: outcome.reason, code: 'COMPUTER_VERIFY_DISAGREED', provider: result.provider };
+        }
+        // The second look replaces the first estimate rather than blessing it.
+        verifiedPoint = outcome.point;
+    }
+    const clickPoint = verifiedPoint ?? css;
+
+    // The coordinate describes the page as it was at capture. A model
+    // round-trip takes seconds and verification adds a second one, so by now
+    // the page may have scrolled or reflowed — neither of which the
+    // reconciliation freshness guard can see, since both leave the URL and
+    // target id unchanged.
+    //
+    // This does not detect movement. It bounds how long we are willing to
+    // assume there was none, and says so rather than clicking on an
+    // assumption that has quietly expired.
+    if (isObservationStale(observedAt, Date.now())) {
+        return {
+            success: false,
+            reason: 'the observation is too old to act on; re-run the lookup',
+            code: 'COMPUTER_OBSERVATION_EXPIRED',
+            provider: result.provider,
+        };
     }
 
     // 3c. Reconcile against element geometry before falling back to a raw
@@ -281,7 +327,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
                 },
             );
             decision = reconcileVisionCandidate({
-                candidate: { point: css, confidence: 1 },
+                candidate: { point: clickPoint, confidence: 1 },
                 bundle: { refs: boxes.refs },
             });
             boxRefs = boxes.refs;
@@ -297,7 +343,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             success: false,
             reason: decision.reason,
             code: decision.code,
-            candidate: css,
+            candidate: clickPoint,
             provider: result.provider,
         };
     }
@@ -321,7 +367,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             const targetPoint = box
                 ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
                 : undefined;
-            const hit = await hitTestPoint(port, css, targetPoint);
+            const hit = await hitTestPoint(port, clickPoint, targetPoint);
             const verdict = judgeHit(hit);
             if (verdict.blocked) {
                 return {
@@ -330,7 +376,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
                     code: 'COMPUTER_TARGET_COVERED',
                     blocker: verdict.blocker,
                     ref: decision.ref,
-                    candidate: css,
+                    candidate: clickPoint,
                     provider: result.provider,
                 };
             }
@@ -344,7 +390,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
             ref: decision.ref,
             reason: decision.reason,
             // The coordinate that resolved to this ref, not a place we clicked.
-            resolvedFrom: css,
+            resolvedFrom: clickPoint,
             raw: { x: result.x, y: result.y },
             clip,
             dpr,
@@ -355,7 +401,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     }
 
     // 4. Click
-    await mouseClick(port, css.x, css.y, { doubleClick: opts.doubleClick });
+    await mouseClick(port, clickPoint.x, clickPoint.y, { doubleClick: opts.doubleClick });
 
     // 5. Verify (optional snapshot)
     let snap = null;
@@ -364,7 +410,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     return {
         success: true,
         via: 'coordinate' as const,
-        clicked: css,
+        clicked: clickPoint,
         raw: { x: result.x, y: result.y },
         clip,
         dpr,
