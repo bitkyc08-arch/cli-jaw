@@ -529,6 +529,26 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
     }, [bridge, disposeRuntime, flushQueuedNewSessions, invalidateFocus, loseOperation, recordExit, removeSession]);
 
     useEffect(() => {
+        if (!bridge) return;
+        const revokeFocusOnDeparture = (event: Event) => {
+            if (!mountedRef.current) return;
+            const surface = findTerminalSurface(event.target);
+            if (event.type === 'focusin' && programmaticFocusRef.current && surface
+                && panelRef.current?.contains(surface) && terminalIdFromSurface(surface) === activeIdRef.current) return;
+            invalidateFocus();
+        };
+        // Every unguarded focus change revokes older IPC intent, including
+        // command/sidebar inputs and terminal header controls. New/Reveal
+        // activation can then claim its own intent without renewing the queue.
+        document.addEventListener('focusin', revokeFocusOnDeparture, true);
+        window.addEventListener('blur', revokeFocusOnDeparture);
+        return () => {
+            document.removeEventListener('focusin', revokeFocusOnDeparture, true);
+            window.removeEventListener('blur', revokeFocusOnDeparture);
+        };
+    }, [bridge, invalidateFocus]);
+
+    useEffect(() => {
         const media = window.matchMedia?.('(prefers-color-scheme: light)');
         const refresh = () => {
             const next = resolveTerminalTheme(document.documentElement.dataset['theme'], media?.matches ?? false);
@@ -618,7 +638,7 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
                             <button type="button" className="terminal-tab" role="tab" id={`terminal-tab-${tab.ordinal}`}
                                 aria-controls={`terminal-output-${tab.ordinal}`} aria-selected={tab.id === activeId}
                                 data-terminal-tab-id={tab.id} tabIndex={tab.id === (rovingId ?? activeId) ? 0 : -1}
-                                title={`${label(tab)} — ${tab.cwd}`} onFocus={invalidateFocus} onClick={() => selectSession(tab.id)}>
+                                title={`${label(tab)} — ${tab.cwd}`} onClick={() => selectSession(tab.id)}>
                                 {label(tab)}
                             </button>
                             <button type="button" className="terminal-tab-close" aria-label={`Close ${label(tab)} session`}
@@ -643,7 +663,6 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
                         role="tabpanel" id={`terminal-output-${tab.ordinal}`} aria-labelledby={`terminal-tab-${tab.ordinal}`}
                         aria-hidden={tab.id !== activeId} className={`terminal-xterm-surface${tab.id === activeId ? ' is-active' : ''}`}
                         onPointerDown={() => selectSession(tab.id)}
-                        onFocusCapture={() => { if (!programmaticFocusRef.current) invalidateFocus(); }}
                         onKeyDownCapture={invalidateFocus} onInputCapture={invalidateFocus}
                         onDragOver={handleTerminalDragOver} onDrop={handleTerminalDrop}>
                         <textarea className="terminal-a11y-input" aria-label="Terminal automation input" autoCapitalize="off" autoComplete="off"

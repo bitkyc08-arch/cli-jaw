@@ -901,3 +901,126 @@ test('unrelated late append cannot cancel the newer selection focus waiting for 
     assert.equal(document.activeElement, terminals[0]!.input);
     assert.equal(terminals[2]!.focused, 0);
 });
+
+test('pending list cannot steal command input focus; explicit Reveal afterward focuses the restored session only', async t => {
+    const view = await mount(t);
+    const outside = document.createElement('input');
+    outside.setAttribute('aria-label', 'Command input');
+    document.body.append(outside);
+    t.after(() => outside.remove());
+    await act(async () => outside.focus());
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    await flushTimers();
+    assert.equal(document.activeElement, outside);
+    assert.equal(view.tabs()[1]!.getAttribute('aria-selected'), 'true');
+    assert.ok(terminals.every(term => term.focused === 0));
+    await shortcut('focusTerminal'); await flushTimers();
+    assert.equal(document.activeElement, terminals[1]!.input);
+    assert.equal(view.f.lists.length, 1); assert.equal(view.f.creates.length, 0);
+    assert.deepEqual(view.f.kills, []); assert.equal(terminals.length, 2);
+});
+
+test('outside sidebar focus revokes both queued creates and later Reveal does not renew the remaining queue', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await flushTimers();
+    await shortcut('newTerminalSession', 2);
+    const outside = document.createElement('input');
+    outside.setAttribute('aria-label', 'Sidebar search');
+    document.body.append(outside);
+    t.after(() => outside.remove());
+    await act(async () => outside.focus());
+    await settle(view.f.creates[0], { ok: true, id: 'b' }); await flushTimers();
+    assert.equal(document.activeElement, outside);
+    assert.equal(view.tabs()[0]!.getAttribute('aria-selected'), 'true');
+    assert.equal(view.tabs()[0]!.tabIndex, 0);
+    await shortcut('focusTerminal'); await flushTimers();
+    assert.equal(document.activeElement, terminals[0]!.input);
+    await settle(view.f.creates[1], { ok: true, id: 'c' }); await flushTimers();
+    assert.equal(document.activeElement, terminals[0]!.input);
+    assert.equal(view.tabs()[0]!.getAttribute('aria-selected'), 'true');
+    assert.equal(view.tabs()[0]!.tabIndex, 0);
+    assert.ok(terminals.slice(1).every(term => term.focused === 0));
+    assert.equal(view.f.creates.length, 2); assert.equal(view.f.lists.length, 1);
+    assert.deepEqual(view.f.kills, []);
+});
+
+test('window blur revokes pending list/create intent and already-scheduled focus; later explicit Reveal remains available', async t => {
+    const view = await mount(t);
+    await shortcut('newTerminalSession');
+    await act(async () => window.dispatchEvent(new dom.window.Event('blur')));
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] });
+    await settle(view.f.creates[0], { ok: true, id: 'b' }); await flushTimers();
+    assert.equal(view.tabs()[0]!.getAttribute('aria-selected'), 'true');
+    assert.ok(terminals.every(term => term.focused === 0));
+    await shortcut('focusTerminal');
+    await act(async () => window.dispatchEvent(new dom.window.Event('blur')));
+    await flushTimers();
+    assert.ok(terminals.every(term => term.focused === 0));
+    await shortcut('focusTerminal'); await flushTimers();
+    assert.equal(document.activeElement, terminals[0]!.input);
+    assert.equal(view.f.creates.length, 1); assert.equal(view.f.lists.length, 1);
+    assert.deepEqual(view.f.kills, []);
+});
+
+test('header close focus during a pending create preserves that control and existing selection without closing anything', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a'), snapshot('b')] });
+    await flushTimers();
+    await shortcut('newTerminalSession');
+    const close = view.get('[aria-label="Close 1: zsh session"]');
+    await act(async () => close.focus());
+    await settle(view.f.creates[0], { ok: true, id: 'c' }); await flushTimers();
+    assert.equal(document.activeElement, close);
+    assert.equal(view.tabs()[1]!.getAttribute('aria-selected'), 'true');
+    assert.equal(view.tabs()[1]!.tabIndex, 0);
+    assert.equal(terminals[2]!.focused, 0);
+    assert.deepEqual(view.f.kills, []);
+});
+
+test('header New focus revokes restore focus, while its later activation owns the new session focus', async t => {
+    const view = await mount(t);
+    const button = view.get<HTMLButtonElement>('.terminal-new-tab');
+    await act(async () => button.focus());
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] }); await flushTimers();
+    assert.equal(document.activeElement, button);
+    assert.equal(terminals[0]!.focused, 0);
+    await act(async () => button.click());
+    await settle(view.f.creates[0], { ok: true, id: 'b' }); await flushTimers();
+    assert.equal(view.tabs()[1]!.getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, terminals[1]!.input);
+    assert.equal(view.f.creates.length, 1); assert.deepEqual(view.f.kills, []);
+});
+
+test('guarded programmatic xterm focus does not revoke another create accepted under the same intent', async t => {
+    const view = await mount(t);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('a')] }); await flushTimers();
+    await shortcut('newTerminalSession', 2);
+    await settle(view.f.creates[0], { ok: true, id: 'b' }); await flushTimers();
+    assert.equal(document.activeElement, terminals[1]!.input);
+    await settle(view.f.creates[1], { ok: true, id: 'c' }); await flushTimers();
+    assert.equal(view.tabs()[2]!.getAttribute('aria-selected'), 'true');
+    assert.equal(document.activeElement, terminals[2]!.input);
+    assert.equal(view.f.creates.length, 2); assert.equal(view.f.maxOutstanding, 1);
+});
+
+test('focus departure subscriptions are removed with matching listeners and capture mode on unmount', async t => {
+    const addDocument = t.mock.method(document, 'addEventListener');
+    const removeDocument = t.mock.method(document, 'removeEventListener');
+    const addWindow = t.mock.method(window, 'addEventListener');
+    const removeWindow = t.mock.method(window, 'removeEventListener');
+    const view = await mount(t);
+    const focusAdds = addDocument.mock.calls.filter(call => call.arguments[0] === 'focusin');
+    const blurAdds = addWindow.mock.calls.filter(call => call.arguments[0] === 'blur');
+    assert.equal(focusAdds.length, 1); assert.equal(blurAdds.length, 1);
+    assert.equal(focusAdds[0]!.arguments[2], true);
+    await view.unmount();
+    const focusRemoves = removeDocument.mock.calls.filter(call => call.arguments[0] === 'focusin');
+    const blurRemoves = removeWindow.mock.calls.filter(call => call.arguments[0] === 'blur');
+    assert.equal(focusRemoves.length, 1); assert.equal(blurRemoves.length, 1);
+    assert.equal(focusRemoves[0]!.arguments[1], focusAdds[0]!.arguments[1]);
+    assert.equal(focusRemoves[0]!.arguments[2], true);
+    assert.equal(blurRemoves[0]!.arguments[1], blurAdds[0]!.arguments[1]);
+    await settle(view.f.lists[0], { ok: true, sessions: [snapshot('late')] }); await flushTimers();
+    assert.equal(terminals.length, 0); assert.equal(view.f.creates.length, 0); assert.deepEqual(view.f.kills, []);
+});
