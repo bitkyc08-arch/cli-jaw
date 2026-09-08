@@ -98,6 +98,7 @@ let selfUserId: string | null = null;
 let slackInitLock = false;
 let activeClaimArbiter: ClaimArbiter | null = null;
 let claimRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+let sharedTokenOptOutLogged = false;
 /**
  * Request ids a live queued-reply listener is already waiting on. The
  * target-reply forwarder checks this so a result does not get posted twice: once
@@ -1407,7 +1408,10 @@ async function runSlackInit(ctx?: TransportInitContext): Promise<TransportStartO
     }
 
     const sharingAllowed = process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] === '1';
-    if (sharingAllowed) log.info('[slack] shared app-token ownership guard disabled by environment');
+    if (sharingAllowed && !sharedTokenOptOutLogged) {
+        sharedTokenOptOutLogged = true;
+        log.info('[slack] shared app-token ownership guard disabled by environment');
+    }
     if (!sharingAllowed) {
         const observed = inspectSlackTokenClaim({
             appToken: sc.appToken,

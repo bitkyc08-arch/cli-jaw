@@ -2,6 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { log } from '../../src/core/logger.ts';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
@@ -24,10 +25,11 @@ const state: {
     startThrows: boolean;
     claimConnected: boolean[];
     sockets: Array<{ emit(state: string): void }>;
+    emitConnectedOnStart: boolean;
 } = {
     started: 0, stopped: 0, authOk: true, inspectKind: 'none', acquireKind: 'acquired',
     acquired: 0, released: 0, inspected: 0, ready: 'connected', startThrows: false,
-    claimConnected: [], sockets: [],
+    claimConnected: [], sockets: [], emitConnectedOnStart: true,
 };
 
 mock.module('../../src/slack/token-claim.ts', {
@@ -100,7 +102,7 @@ mock.module('../../src/slack/socket.ts', {
             async start() {
                 state.started++;
                 if (state.startThrows) throw new Error('start failed');
-                if (state.ready === 'connected') this.options.onStateChange?.('connected');
+                if (state.ready === 'connected' && state.emitConnectedOnStart) this.options.onStateChange?.('connected');
             }
             async waitForReady() { return state.ready; }
             stop() { state.stopped++; this.options.onStateChange?.('disconnected'); }
@@ -130,6 +132,7 @@ function resetClaimState(): void {
     state.startThrows = false;
     state.claimConnected = [];
     state.sockets = [];
+    state.emitConnectedOnStart = true;
     delete process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'];
 }
 
@@ -375,15 +378,53 @@ test('j/p: disconnected and disabled terminal states release the owned lease onc
     }
 });
 
-test('k: environment opt-out skips both inspection and acquisition', async () => {
+test('k: environment opt-out logs once and skips ownership work across repeated init', async t => {
     resetClaimState(); process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] = '1';
+    const notices: unknown[][] = [];
+    const originalInfo = log.info.bind(log);
+    t.mock.method(log, 'info', (...args: unknown[]) => {
+        if (args[0] === '[slack] shared app-token ownership guard disabled by environment') notices.push(args);
+        originalInfo(...args);
+    });
     const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t', attachPort: '24575' });
     assert.deepEqual(await bot.initSlack(), { started: true });
+    assert.deepEqual(await bot.initSlack(), { started: true });
+    assert.equal(notices.length, 1);
     assert.equal(state.inspected, 0);
     assert.equal(state.acquired, 0);
     await bot.shutdownSlack();
     delete process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'];
 });
+
+for (const [label, emitConnectedOnStart] of [
+    ['init path first', false],
+    ['hello callback first', true],
+] as const) {
+    test(`apply-once creates one unref re-check timer when ${label}`, async t => {
+        resetClaimState();
+        state.acquireKind = 'foreign_live';
+        state.ready = 'connected';
+        state.emitConnectedOnStart = emitConnectedOnStart;
+        const originalSetTimeout = globalThis.setTimeout;
+        let timers = 0;
+        let unrefs = 0;
+        t.mock.method(globalThis, 'setTimeout', ((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+            if ((delay ?? 0) >= 90_000) {
+                timers++;
+                return { unref() { unrefs++; } } as unknown as ReturnType<typeof setTimeout>;
+            }
+            return originalSetTimeout(callback, delay, ...args);
+        }) as typeof setTimeout);
+        const bot = await loadBot({ enabled: true, botToken: 'xoxb-t', appToken: 'xapp-t', attachPort: '24575' });
+        assert.deepEqual(await bot.initSlack({ startEpoch: 91 }), {
+            started: false,
+            reason: 'token_shared_other_home',
+        });
+        assert.equal(timers, 1);
+        assert.equal(unrefs, 1);
+        await bot.shutdownSlack();
+    });
+}
 
 test('m/n: hello before waiter and concurrent init arbitration acquire once', async () => {
     resetClaimState();
