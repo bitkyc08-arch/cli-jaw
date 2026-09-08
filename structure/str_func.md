@@ -375,9 +375,9 @@ cli-jaw/
 │   ├── browser/              ← Chrome CDP 제어 + web-ai 자동화 + adaptive-fetch
 │   │   ├── connection.ts     ← Chrome 탐지/launch/CDP 연결 + readiness polling + retry + headless + runtime diagnostics/orphan cleanup + activePort/active-tab 상태 관리 (820L)
 │   │   ├── launch-policy.ts  ← browser start mode 정규화 + agent/debug/manual launch policy (51L)
-│   │   ├── actions.ts        ← snapshot/click/type/navigate/screenshot + browser primitive actions (516L)
+│   │   ├── actions.ts        ← snapshot/click/type/navigate/screenshot + browser primitive actions (526L)
 │   │   ├── primitives.ts     ← low-level CDP primitives (294L)
-│   │   ├── vision.ts         ← vision-click 파이프라인 + Codex provider(--ephemeral, stdin ignore) + guardrail options (243L)
+│   │   ├── vision.ts         ← vision-click 파이프라인 + Codex provider(--ephemeral, stdin ignore) + guardrail options (251L)
 │   │   ├── vision-input.ts   ← 미신뢰 target 정화(quote-run 붕괴, 제로폭/bidi 제거, surrogate-safe 절단) + stdout 상한 (80L)
 │   │   ├── runtime-diagnostics.ts ← runtime diagnostics helper (121L)
 │   │   ├── runtime-owner.ts  ← browser runtime owner management (135L)

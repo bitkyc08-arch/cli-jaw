@@ -6,7 +6,7 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot } from './actions.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
-import { parseCandidate, type GroundingCandidate } from './grounding-candidate.js';
+import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
 
 export { sanitizeTarget, appendBounded, MAX_TARGET_LENGTH, MAX_CODEX_STDOUT_BYTES } from './vision-input.js';
 export * from './grounding-candidate.js';
@@ -196,21 +196,29 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         return { success: false, reason: 'target not found', provider: result.provider };
     }
 
-    // 2b. Bound the answer in its own frame before converting it. The frame is
-    // the captured image: a clip's own size, otherwise the viewport scaled by
-    // device pixel ratio. Without this a hallucinated coordinate was converted
-    // and clicked at an arbitrary place on the page.
-    const frame = clip
-        ? { width: clip.width * dpr, height: clip.height * dpr }
-        : viewportProbe.viewport
-            ? { width: viewportProbe.viewport.width * dpr, height: viewportProbe.viewport.height * dpr }
-            : null;
-    if (frame && (result.x < 0 || result.y < 0 || result.x > frame.width || result.y > frame.height)) {
+    // 2b. Bound the answer in the frame it was actually given: the pixel size
+    // of the file the model saw. The requested clip is not a stand-in — it is
+    // trimmed to the viewport before capture, and it can arrive as an array
+    // whose `.width` is undefined. Comparing against `undefined` is always
+    // false, which is how a bound can look present and check nothing.
+    //
+    // This fails CLOSED. If the capture size cannot be read, the coordinate is
+    // unverifiable and the click does not happen.
+    const frame = ss.image ?? null;
+    if (!frame) {
         return {
             success: false,
-            reason: `point (${result.x}, ${result.y}) is outside the ${frame.width}x${frame.height} capture`,
+            reason: 'capture size unavailable, so the coordinate could not be bounds-checked',
             provider: result.provider,
         };
+    }
+    const checked = validateCandidate(
+        { schemaVersion: 'grounding-candidate-v1', found: true, kind: 'coordinate', bbox: null,
+          point: { x: result.x, y: result.y }, confidence: 1, riskFlags: [] },
+        frame,
+    );
+    if (!checked.found) {
+        return { success: false, reason: checked.reason ?? 'out of bounds', provider: result.provider };
     }
 
     // 3. DPR correction: image pixels → CSS pixels
