@@ -1,6 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 const home = mkdtempSync(join(homedir(), '.cljaw-test-'));
@@ -47,7 +48,7 @@ mock.module('../../src/slack/token-claim.ts', {
             let released = false;
             return { kind: 'acquired', lease: {
                 claim: { claimId: String(state.acquired) },
-                markConnected() {}, markDisconnected() {},
+                markConnected() { return 'ok' as const; }, markDisconnected() {},
                 release() { if (!released) { released = true; state.released++; } },
             } };
         },
@@ -402,4 +403,80 @@ test('q: stale generation callback cannot release the newer lease', async () => 
     old.emit('disconnected');
     assert.equal(state.released, releasedAfterReplacement);
     await bot.shutdownSlack();
+});
+
+test('l real lifecycle: late hello loses a replaced presence claim', async t => {
+    const sharedHome = mkdtempSync(join(homedir(), '.cljaw-shared-'));
+    const homeA = mkdtempSync(join(homedir(), '.cljaw-home-a-'));
+    const homeB = mkdtempSync(join(homedir(), '.cljaw-home-b-'));
+    const entry = join(import.meta.dirname!, '..', 'fixtures', 'slack-two-home-lifecycle.ts');
+    const tsx = join(import.meta.dirname!, '..', '..', 'node_modules', '.bin', 'tsx');
+    const children: ChildProcessWithoutNullStreams[] = [];
+    t.after(() => {
+        for (const child of children) child.kill();
+        rmSync(sharedHome, { recursive: true, force: true });
+        rmSync(homeA, { recursive: true, force: true });
+        rmSync(homeB, { recursive: true, force: true });
+    });
+
+    const start = (childHome: string, port: string, initialHello: boolean) => {
+        const child = spawn(tsx, ['--experimental-test-module-mocks', entry], {
+            env: {
+                ...process.env,
+                HOME: sharedHome,
+                CLI_JAW_HOME: childHome,
+                SLACK_FIXTURE_PORT: port,
+                SLACK_FIXTURE_INITIAL_HELLO: initialHello ? '1' : '0',
+            },
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        children.push(child);
+        let buffered = '';
+        const waiters: Array<(value: Record<string, unknown>) => void> = [];
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', chunk => {
+            buffered += chunk;
+            const lines = buffered.split('\n');
+            buffered = lines.pop()!;
+            for (const line of lines) {
+                if (!line.startsWith('FIXTURE ')) continue;
+                waiters.shift()?.(JSON.parse(line.slice(8)));
+            }
+        });
+        const next = () => new Promise<Record<string, unknown>>((resolve, reject) => {
+            const timer = setTimeout(() => reject(new Error(`fixture timeout: ${buffered}`)), 10_000);
+            waiters.push(value => { clearTimeout(timer); resolve(value); });
+        });
+        return { child, next };
+    };
+
+    const a = start(homeA, '4101', false);
+    const aReady = await a.next();
+    assert.deepEqual(aReady.outcome, { started: true });
+    assert.equal(aReady.running, true);
+
+    const b = start(homeB, '4102', true);
+    const bReady = await b.next();
+    assert.deepEqual(bReady.outcome, { started: true });
+    assert.equal(bReady.running, true);
+    const bClaimId = bReady.claimId;
+
+    a.child.stdin.write('hello\n');
+    const aAfterHello = await a.next();
+    b.child.stdin.write('status\n');
+    const bStatus = await b.next();
+    assert.equal(aAfterHello.stopped, 1);
+    assert.equal(aAfterHello.running, false);
+    assert.equal(bStatus.running, true);
+    assert.equal(bStatus.claimId, bClaimId);
+
+    const claimRoot = join(sharedHome, '.cli-jaw-shared', 'slack-claims');
+    const files = readdirSync(claimRoot).filter(file => file.endsWith('.json'));
+    assert.equal(files.length, 1);
+    const claim = JSON.parse(readFileSync(join(claimRoot, files[0]!), 'utf8'));
+    assert.equal(claim.claimId, bClaimId);
+    assert.equal(claim.home, realpathSync.native(homeB));
+
+    a.child.stdin.write('shutdown\n');
+    b.child.stdin.write('shutdown\n');
 });

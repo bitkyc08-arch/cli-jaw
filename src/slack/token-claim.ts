@@ -34,7 +34,7 @@ export type SlackTokenClaimInspection =
 
 export type SlackTokenClaimLease = {
     readonly claim: SlackTokenClaim;
-    markConnected(): void;
+    markConnected(): 'ok' | 'lost' | 'unavailable';
     markDisconnected(): void;
     release(): void;
 };
@@ -230,22 +230,29 @@ export function acquireSlackTokenClaim(options: SlackTokenClaimOptions): SlackTo
     const claimId = claim.claimId;
     let connected = claim.connected;
     let released = false;
-    const update = (nextConnected: boolean, refreshTimestamp: boolean): void => {
-        if (released) return;
-        connected = nextConnected;
+    const update = (
+        nextConnected: boolean,
+        refreshTimestamp: boolean,
+    ): 'ok' | 'lost' | 'unavailable' => {
+        if (released) return 'lost';
         try {
-            withClaimLock(path, () => {
+            const result = withClaimLock(path, () => {
                 const current = readClaim(path);
-                if (!current || current.claimId !== claimId) return;
+                if (!current || current.claimId !== claimId) return 'lost' as const;
                 claim = {
                     ...current,
                     connected: nextConnected,
                     claimedAt: refreshTimestamp ? now().toISOString() : current.claimedAt,
                 };
                 writeAtomic(path, claim);
+                return 'ok' as const;
             });
+            connected = result === 'ok' ? nextConnected : false;
+            return result;
         } catch {
             // Shared coordination is advisory. IO uncertainty must not stop Slack.
+            connected = false;
+            return 'unavailable';
         }
     };
     const timer = setInterval(() => {
@@ -257,7 +264,7 @@ export function acquireSlackTokenClaim(options: SlackTokenClaimOptions): SlackTo
         kind: 'acquired',
         lease: {
             get claim() { return claim; },
-            markConnected() { update(true, true); },
+            markConnected() { return update(true, true); },
             markDisconnected() { update(false, false); },
             release() {
                 if (released) return;

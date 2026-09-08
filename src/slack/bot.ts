@@ -303,8 +303,10 @@ function createClaimArbiter(options: {
     let foreignApplied = false;
     const acquireConnected = (): SlackTokenClaimAcquireResult => {
         if (lease) {
-            lease.markConnected();
-            return { kind: 'acquired', lease };
+            const heldLease = lease;
+            if (heldLease.markConnected() === 'ok') return { kind: 'acquired', lease: heldLease };
+            heldLease.release();
+            lease = null;
         }
         const result = acquireSlackTokenClaim({
             appToken: options.appToken,
