@@ -31,6 +31,7 @@ interface Operation {
     permissions: Map<string, CodePermissionRequest>;
     syncingPermissions: boolean;
     stopped: boolean;
+    callbacksClosed: boolean;
     settled: boolean;
     failure: CodeSessionError | null;
     persistenceFailure: boolean;
@@ -135,7 +136,7 @@ export class CodeSession {
     }
 
     private current(op: Operation, context?: RuntimeEventContext): boolean {
-        if (op.settled || op.stopped || op.failure || op.persistenceFailure) return false;
+        if (op.callbacksClosed || op.settled || op.stopped || op.failure || op.persistenceFailure) return false;
         if (this.binding !== op.binding || op.binding.retiring || op.binding.closed || op.binding.exited || op.binding.controller.signal.aborted) return false;
         if (context && (context.audience !== 'internal' || context.runId !== op.context.runId || context.sessionId !== op.context.sessionId
             || context.scope !== op.context.scope || context.turnId !== op.context.turnId
@@ -170,14 +171,36 @@ export class CodeSession {
         }
     }
 
-    private commitItem(op: Operation, item: CodeItem): CodeWireEvent | null {
+    private commitItem(op: Operation, item: CodeItem): { publish(): void } | null {
         if (!this.current(op)) return null;
         const result = this.write(op, () => this.options.store.commitItem(op.owner, item));
-        this.publish(result.events);
-        return result.events[0] ?? null;
+        return { publish: () => this.publish(result.events) };
+    }
+
+    private sealAndDrainAccepted(op: Operation): void {
+        op.callbacksClosed = true;
+        const binding = op.binding;
+        const owner = Object.freeze({ ...op.owner });
+        try {
+            const batch = op.normalizer?.sealAccepted() ?? [];
+            for (const item of batch) {
+                // Terminal persistence owns only this captured turn, even when
+                // Stop/disposal has already revoked native callback admission.
+                if (this.operation !== op || this.binding !== binding || op.settled || owner.turnId === null
+                    || op.persistenceFailure || this.persistenceError || op.failure?.code === 'transcript_limit') return;
+                const row = this.options.store.readRecord(owner.sessionId);
+                if (!row || row.sessionId !== owner.sessionId || row.epoch !== owner.epoch || row.turnId !== owner.turnId
+                    || row.archivedAt !== null || !['starting', 'streaming', 'stopping'].includes(row.status)) return;
+                const result = this.write(op, () => this.options.store.commitItem(owner, item));
+                this.publish(result.events);
+                // Reentrant publication can revoke ownership or fail storage;
+                // the next item must obtain its own fresh authority above.
+            }
+        } catch (error) { this.failPersistence(op, error); }
     }
 
     private interrupt(op: Operation): void {
+        this.sealAndDrainAccepted(op);
         op.wake();
         op.registry.cancelRun(op.context.runId);
         op.binding.retiring = true;
@@ -211,7 +234,7 @@ export class CodeSession {
         const op: Operation = {
             owner, context, binding, registry: this.registry,
             normalizer: null, permissions: new Map(), syncingPermissions: false,
-            stopped: false, settled: false, failure: null, persistenceFailure: false,
+            stopped: false, callbacksClosed: false, settled: false, failure: null, persistenceFailure: false,
             interrupted, wake, work: Promise.resolve(),
         };
         this.operation = op;
@@ -459,8 +482,10 @@ export class CodeSession {
 
     private async finish(op: Operation, outcome: RuntimeTurnOutcome | null): Promise<void> {
         if (op.settled) return;
+        if (op.stopped || op.failure || op.persistenceFailure) this.sealAndDrainAccepted(op);
         try {
-            // The normalizer owns the final flush, or releases pending work for stale/failed owners.
+            // Healthy completion still owns outcome normalization; interrupted
+            // turns have already sealed their accepted content above.
             op.normalizer?.finish(outcome ?? { status: op.stopped ? 'stopped' : 'error', finalText: null, partialText: '' });
         } catch (error) { this.failPersistence(op, error); }
         if (outcome?.status === 'error' && !op.failure) {
@@ -567,6 +592,7 @@ export class CodeSession {
         if (!op.stopped) {
             op.stopped = true;
             try {
+                this.sealAndDrainAccepted(op);
                 const result = this.write(op, () => this.options.store.setRuntimeState(op.owner, 'stopping'));
                 this.publish(result.events);
             } finally { this.interrupt(op); }
@@ -585,12 +611,13 @@ export class CodeSession {
         this.disposed = true;
         this.registry.setChangeObserver(undefined);
         const op = this.operation;
-        if (op && !op.settled) { op.stopped = true; this.interrupt(op); }
-        this.disposePromise = (async () => {
+        // Install the receipt before synchronous drain publication can dispose again.
+        this.disposePromise = Promise.resolve().then(async () => {
             if (op) await op.work;
             await Promise.all([...this.bindings].map(binding => this.cleanup(binding, true)));
             this.options.changed();
-        })().catch(() => console.warn('[code] dispose_failed'));
+        }).catch(() => console.warn('[code] dispose_failed'));
+        if (op && !op.settled) { op.stopped = true; this.interrupt(op); }
         return this.disposePromise;
     }
 }

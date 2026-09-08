@@ -20,7 +20,7 @@ type Entry = { item: CodeItem; context: RuntimeEventContext; fields: Map<Field, 
 
 export interface CodeTurnNormalizerOptions {
     context: CodeTurnContext;
-    commitItem(item: CodeItem): void;
+    commitItem(item: CodeItem): { publish(): void } | null;
     failPersistence(error: unknown): void;
     now?: () => number;
     maxFieldChars?: number;
@@ -130,6 +130,7 @@ export class CodeTurnNormalizer {
     private failed = false;
     private stale = false;
     private finished = false;
+    private sealed = false;
     private finishing = false;
     private capacityNoticed = false;
     private observedAssistant = false;
@@ -147,7 +148,7 @@ export class CodeTurnNormalizer {
     }
 
     private current(context: RuntimeEventContext): boolean {
-        if (this.failed || this.stale || this.finished || context.audience !== 'internal' || this.context.audience !== 'internal') return false;
+        if (this.sealed || this.failed || this.stale || this.finished || context.audience !== 'internal' || this.context.audience !== 'internal') return false;
         if (context.runId !== this.context.runId || context.sessionId !== this.context.sessionId
             || context.turnId !== this.context.turnId || context.scope !== this.context.scope) return false;
         if (context.parentItemId !== this.context.parentItemId) {
@@ -269,15 +270,7 @@ export class CodeTurnNormalizer {
         this.chars += raw.length + safe.length - oldCharge;
     }
 
-    private save(entry: Entry, force = false): void {
-        if (!this.current(entry.context)) return;
-        const control = !entry.committed || entry.item.kind === 'permission_request' || entry.item.kind === 'notice'
-            || entry.item.status !== entry.persisted?.status;
-        if (!force && !control && this.coalesceMs > 0 && [...entry.fields.values()].some(source => source.dirty)) {
-            entry.pending = true; entry.metadataOnly = false;
-            if ([...entry.fields.values()].some(source => source.retired)) this.capacity();
-            this.schedule(); return;
-        }
+    private materialize(entry: Entry): CodeItem {
         for (const [field, source] of entry.fields) {
             if (source.dirty) this.source(entry, field, source.raw, false, source.explicitStructured, true);
         }
@@ -298,6 +291,20 @@ export class CodeTurnNormalizer {
             reason: reasons.join(','),
         };
         else delete next.truncation;
+        return next;
+    }
+
+    private save(entry: Entry, force = false): void {
+        if (!this.current(entry.context)) return;
+        const control = !entry.committed || entry.item.kind === 'permission_request' || entry.item.kind === 'notice'
+            || entry.item.status !== entry.persisted?.status;
+        if (!force && !control && this.coalesceMs > 0 && [...entry.fields.values()].some(source => source.dirty)) {
+            entry.pending = true; entry.metadataOnly = false;
+            if ([...entry.fields.values()].some(source => source.retired)) this.capacity();
+            this.schedule(); return;
+        }
+        const next = this.materialize(entry);
+        const sources = [...entry.fields.values()];
         if (entry.persisted && sameItem(entry.persisted, next)) {
             entry.pending = false; this.clearIdleTimer(); return;
         }
@@ -311,12 +318,17 @@ export class CodeTurnNormalizer {
             this.schedule(); return;
         }
         next.updatedAt = this.now();
-        this.options.commitItem(structuredClone(next));
+        const receipt = this.options.commitItem(structuredClone(next));
+        if (!receipt) { this.stale = true; this.release(); return; }
         entry.item = next;
         entry.persisted = { ...next };
         entry.committed = true;
         entry.pending = false;
         this.clearIdleTimer();
+        // A synchronous subscriber may seal this turn; acknowledge the durable
+        // write first so that its item cannot enter the pending drain twice.
+        receipt.publish();
+        if (this.sealed || this.failed || this.stale || this.finished) return;
         if (sources.some(source => source.retired)) this.capacity();
     }
 
@@ -350,9 +362,11 @@ export class CodeTurnNormalizer {
         this.capacityNoticed = true;
         const at = this.now();
         // One reserved control item remains writable even when content capacity is exhausted.
-        this.options.commitItem({ itemId: this.id(this.context, 'notice', 'capacity', 'control'), turnId: this.context.turnId,
+        const receipt = this.options.commitItem({ itemId: this.id(this.context, 'notice', 'capacity', 'control'), turnId: this.context.turnId,
             kind: 'notice', status: 'done', text: 'Code transcript capacity reached; some content was truncated.',
             truncation: { storedChars: 0, sourceChars: 0, reason: 'capacity' }, createdAt: at, updatedAt: at });
+        if (!receipt) { this.stale = true; this.release(); return; }
+        receipt.publish();
     }
 
     private text(context: RuntimeEventContext, kind: 'message' | 'reasoning', ref: string, value: string,
@@ -464,6 +478,32 @@ export class CodeTurnNormalizer {
             for (const source of entry.fields.values()) { this.chars -= source.raw.length; source.raw = ''; }
         }
         this.flush(context, true);
+    }
+
+    /** Revoke callbacks and detach accepted buffers without granting write authority. */
+    sealAccepted(): readonly CodeItem[] {
+        if (this.sealed) return [];
+        this.sealed = true;
+        if (this.timer !== undefined) clearTimeout(this.timer);
+        this.timer = undefined;
+        try {
+            if (this.failed || this.stale || this.finished) return [];
+            return this.guarded(() => {
+                const batch: CodeItem[] = [];
+                for (const entry of this.items.values()) {
+                    if (!entry.committed || !['assistant_message', 'reasoning', 'tool_call'].includes(entry.item.kind)
+                        || (!entry.pending && ![...entry.fields.values()].some(source => source.dirty))) continue;
+                    const item = this.materialize(entry);
+                    if (entry.persisted && sameItem(entry.persisted, item)) continue;
+                    item.updatedAt = this.now();
+                    batch.push(structuredClone(item));
+                }
+                return batch;
+            });
+        } finally {
+            this.release();
+            this.items.clear();
+        }
     }
 
     finish(outcome: RuntimeTurnOutcome): void {

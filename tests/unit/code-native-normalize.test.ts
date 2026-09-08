@@ -32,7 +32,10 @@ function fixture(options: Partial<CodeTurnNormalizerOptions> = {}) {
         audience: 'internal', epoch: 7, isCurrent: () => current };
     const writes: CodeItem[] = [], items = new Map<string, CodeItem>(), failures: unknown[] = [];
     const normalizer = new CodeTurnNormalizer({ context, now: () => ++time,
-        commitItem: item => { writes.push(structuredClone(item)); items.set(item.itemId, structuredClone(item)); },
+        commitItem: item => {
+            writes.push(structuredClone(item)); items.set(item.itemId, structuredClone(item));
+            return { publish() {} };
+        },
         failPersistence: error => { failures.push(error); }, ...options });
     const observer = normalizer.observer(context);
     const rows = (kind?: CodeItem['kind']) => [...items.values()].filter(item => !kind || item.kind === kind);
@@ -222,6 +225,7 @@ test('a parent cannot be resolved reentrantly before its first commit returns', 
     const observations: Array<string | null> = [];
     const f = fixture({ commitItem() {
         observations.push(normalizer!.resolveParent(f.context, 'parent'));
+        return { publish() {} };
     } });
     normalizer = f.normalizer;
     f.observer.tool('parent', { name: 'Agent' }, {});
@@ -358,6 +362,7 @@ test('recorder allocates distinct sequences even when persistence reenters recor
     let nestedSequence: number | undefined;
     const f = fixture({ commitItem() {
         nestedSequence = f.normalizer.record(f.context, { kind: 'usage' })?.seq;
+        return { publish() {} };
     } });
     const outer = f.normalizer.record(f.context, approval);
     assert.equal(outer?.seq, 1); assert.equal(nestedSequence, 2);
@@ -422,7 +427,7 @@ for (const stage of ['text', 'tool', 'close', 'record', 'finish', 'child'] as co
     const error = new Error('injected persistence failure');
     let armed = false, writes = 0;
     const failures: unknown[] = [];
-    const f = fixture({ commitItem() { writes++; if (armed) throw error; }, failPersistence: error => { failures.push(error); } });
+    const f = fixture({ commitItem() { writes++; if (armed) throw error; return { publish() {} }; }, failPersistence: error => { failures.push(error); } });
     let observer = f.observer;
     if (stage === 'child') {
         observer.tool('parent', {}, {});
@@ -723,7 +728,7 @@ for (const fence of ['stale-callback', 'stale-timer', 'failure', 'finish'] as co
     const cleared = t.mock.method(globalThis, 'clearTimeout');
     let writes = 0, fail = false;
     const failures: unknown[] = [];
-    const f = fixture({ coalesceMs: 50, commitItem() { if (fail) throw new Error('write failed'); writes++; },
+    const f = fixture({ coalesceMs: 50, commitItem() { if (fail) throw new Error('write failed'); writes++; return { publish() {} }; },
         failPersistence: error => { failures.push(error); } });
     f.observer.text('message', 'm', 'one', 'append', 'commentary');
     f.observer.text('message', 'm', ' two', 'append', 'commentary');
@@ -741,7 +746,7 @@ test('timer write exceptions latch once without becoming uncaught or allowing na
     t.mock.timers.enable({ apis: ['setTimeout'] });
     const original = new Error('timed persistence failure');
     let writes = 0, failures = 0;
-    const f = fixture({ coalesceMs: 50, commitItem() { if (++writes > 1) throw original; },
+    const f = fixture({ coalesceMs: 50, commitItem() { if (++writes > 1) throw original; return { publish() {} }; },
         failPersistence(error) { assert.equal(error, original); failures++; throw new Error('cleanup failed too'); } });
     f.observer.text('message', 'm', 'one', 'append', 'commentary');
     f.observer.text('message', 'm', ' two', 'append', 'commentary');
@@ -873,3 +878,98 @@ test('tilde and unlabeled incomplete bodies remain redacted when raw capacity re
         assert.match(f.rows('assistant_message')[0]!.truncation!.reason, /field_limit/);
     }
 });
+
+test('RT01: publication observes the acknowledged write before reentrant sealing', () => {
+    let batch: readonly CodeItem[] | undefined;
+    const published: string[] = [];
+    const f = fixture({ commitItem(item) {
+        return { publish() {
+            published.push(item.text ?? '');
+            batch = f.normalizer.sealAccepted();
+            f.observer.text('message', 'late', 'not accepted', 'replace', 'final');
+        } };
+    } });
+    f.observer.text('message', 'first', 'A', 'replace', 'final');
+    assert.deepEqual(published, ['A']);
+    assert.deepEqual(batch, [], 'the published first item was already committed');
+    assert.deepEqual(f.normalizer.sealAccepted(), []);
+    assert.equal(f.normalizer.record(f.context, approval), null);
+});
+
+test('RT01: seal detaches redacted pending content once and closes every callback before currentness', t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let ownerReads = 0;
+    const f = fixture({ coalesceMs: 50, context: {
+        runId: 'run', sessionId: 'session', turnId: 'turn', scope: 'code:session', audience: 'internal', epoch: 7,
+        isCurrent() { ownerReads++; return true; },
+    } });
+    f.observer.text('message', 'answer', 'A', 'replace', 'commentary');
+    f.observer.text('message', 'answer', 'B', 'append', 'final');
+    f.observer.tool('json', { name: 'Read', output: '{"password":"', outputStructured: true }, {});
+    f.observer.tool('json', { delta: 'canary-value","ok":true}', outputStructured: true }, {});
+    const before = f.writes.length;
+    ownerReads = 0;
+    const batch = f.normalizer.sealAccepted();
+    const retained = structuredClone(batch);
+    assert.equal(batch.length, 2);
+    assert.equal(batch[0]?.text, 'AB');
+    assert.equal(batch[0]?.phase, 'final');
+    assert.equal(batch[0]?.status, 'running');
+    assert.deepEqual(JSON.parse(batch[1]!.tool!.output!), { password: '[REDACTED]', ok: true });
+    assert.equal(JSON.stringify(batch).includes('canary-value'), false);
+    // A new observer's context predicate must not be consulted after the seal.
+    const late = f.normalizer.observer({ ...f.context, runId: 'late' });
+    f.observer.text('message', 'answer', 'C', 'append', 'final');
+    late.tool('other', { output: 'late' }, {});
+    f.observer.close(end);
+    f.normalizer.finish({ ...done, finalText: 'late fallback' });
+    assert.equal(f.normalizer.resolveParent(f.context, 'json'), null);
+    assert.equal(f.normalizer.record(f.context, approval), null);
+    t.mock.timers.tick(1000);
+    assert.deepEqual(batch, retained);
+    assert.deepEqual(f.normalizer.sealAccepted(), []);
+    assert.equal(f.writes.length, before, 'sealing itself never persists or publishes');
+    assert.equal(ownerReads, 0);
+});
+
+test('RT01: terminal capture preserves empty replacement and retired metadata-only updates', () => {
+    const f = fixture({ coalesceMs: 50, maxFieldChars: 8 });
+    f.observer.text('message', 'empty', 'old', 'replace', 'unknown');
+    f.observer.text('message', 'empty', '', 'replace', 'final');
+    f.observer.text('reasoning', 'large', '123456789', 'replace', 'unknown');
+    f.observer.text('reasoning', 'large', 'more', 'append', 'unknown');
+    const batch = f.normalizer.sealAccepted();
+    assert.equal(batch.length, 2);
+    assert.equal(batch[0]?.text, '');
+    assert.equal(batch[0]?.phase, 'final');
+    assert.equal(batch[1]?.text, '12345678');
+    assert.equal(batch[1]?.truncation?.sourceChars, 13);
+    assert.equal(batch[1]?.truncation?.reason, 'field_limit');
+});
+
+for (const reason of ['stale', 'failed', 'denied'] as const) {
+    test(`RT01: ${reason} buffers cannot be reclaimed by the terminal drain`, t => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let reject = false, writes = 0, published = 0;
+        const f = fixture({ coalesceMs: 50, commitItem() {
+            writes++;
+            if (reject && reason === 'failed') throw new Error('disk failure');
+            if (reject) return null;
+            return { publish() { published++; } };
+        } });
+        f.observer.text('message', 'm', 'A', 'replace', 'unknown');
+        f.observer.text('message', 'm', 'B', 'append', 'unknown');
+        if (reason === 'stale') { f.stale(); t.mock.timers.tick(50); }
+        else {
+            reject = true;
+            if (reason === 'failed') assert.throws(() => f.observer.tool('fault', {}, {}), /disk failure/);
+            else f.observer.tool('fault', {}, {});
+        }
+        assert.deepEqual(f.normalizer.sealAccepted(), []);
+        f.normalizer.finish({ ...done, finalText: 'late success' });
+        t.mock.timers.tick(1000);
+        assert.equal(writes, reason === 'stale' ? 1 : 2);
+        assert.equal(published, 1);
+        assert.equal(f.failures.length, reason === 'failed' ? 1 : 0);
+    });
+}

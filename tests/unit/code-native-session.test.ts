@@ -3,6 +3,7 @@ import { test, type TestContext } from 'node:test';
 import { setImmediate as yieldEventLoop } from 'node:timers/promises';
 import Database from 'better-sqlite3';
 import { CodeSessionManager, CodeServiceError } from '../../src/code-mode/manager.js';
+import { CodeSession } from '../../src/code-mode/session.js';
 import { CodeStore, CodeStoreError, type CodeStoreLimits } from '../../src/code-mode/store.js';
 import type { CodeOpenOptions, CodeProvider, CodeProviderSession, CodeRuntimeResource } from '../../src/code-mode/provider.js';
 import type { RuntimeEventContext } from '../../src/agent/runtime/events.js';
@@ -1255,4 +1256,291 @@ test('shared defaults admit four residents and idle eviction at 30000ms releases
     f.manager.prompt(fifth.sessionId, prompt);
     await provider.opened(4);
     assert.equal(provider.calls.length, 5);
+});
+
+async function streamingFixture(t: TestContext, config: Parameters<typeof fixture>[1] = {}) {
+    const f = fixture(t, config);
+    const row = f.create();
+    const { receipt } = f.manager.prompt(row.sessionId, prompt);
+    const options = await f.providers['codex-app'].opened();
+    const handle = f.providers['codex-app'].handles[0]!;
+    await handle.sent.promise;
+    const context = options.getTurnContext();
+    return { ...f, row, receipt, options, handle, context, observer: options.transcript(context) };
+}
+
+for (const ending of ['cancel', 'exit', 'rejection', 'dispose', 'native-stop', 'native-error'] as const) {
+    test(`RT01: ${ending} retains accepted AB before settlement and rejects late C`, async t => {
+        t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1000 });
+        const f = await streamingFixture(t);
+        f.observer.text('message', 'answer', 'A', 'replace', 'final');
+        f.observer.text('message', 'answer', 'B', 'append', 'final');
+        const before = f.store.snapshot(f.row.sessionId).items.find(item => item.kind === 'assistant_message')!;
+        assert.equal(before.text, 'A');
+        t.mock.timers.tick(49);
+        if (ending === 'cancel') await f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+        if (ending === 'dispose') await f.manager.dispose();
+        if (ending === 'exit') f.options.onExit(new Error('native exit'));
+        if (ending === 'rejection') f.handle.outcome.reject(new Error('native send failed'));
+        if (ending === 'native-stop' || ending === 'native-error') {
+            f.handle.outcome.resolve({ status: ending === 'native-stop' ? 'stopped' : 'error', finalText: null, partialText: 'AB' });
+        }
+        await f.terminal(f.row.sessionId, 1);
+        const snapshot = f.store.snapshot(f.row.sessionId);
+        const item = snapshot.items.find(entry => entry.itemId === before.itemId)!;
+        const failed = ['exit', 'rejection', 'native-error'].includes(ending);
+        assert.equal(item.text, 'AB');
+        assert.equal(item.firstSequence, before.firstSequence);
+        assert.equal(item.status, failed ? 'error' : 'cancelled');
+        assert.equal(f.store.readTurn(f.row.sessionId, prompt.clientTurnKey)?.status, failed ? 'failed' : 'cancelled');
+        const terminalKind = failed ? 'turn_failed' : 'turn_cancelled';
+        assert.equal(f.events.filter(event => event.item?.kind === terminalKind).length, 1);
+        assert.equal(f.events.some(event => event.item?.kind === 'turn_completed'), false);
+        let replayText = '';
+        for (const event of f.store.readEvents(f.row.sessionId).events) {
+            if (event.item?.itemId === item.itemId) replayText = event.item.text ?? '';
+            if (event.update?.itemId === item.itemId) replayText += event.update.appendText ?? '';
+        }
+        assert.equal(replayText, 'AB');
+        assert.equal(f.store.history(f.row.sessionId).items.find(entry => entry.itemId === item.itemId)?.text, 'AB');
+        const sequence = snapshot.sequence;
+        f.observer.text('message', 'answer', 'C', 'append', 'final');
+        f.observer.close({ kind: 'turn-end', status: 'done', finalText: 'ABC' });
+        f.options.onNativeCursor('late-cursor', f.context);
+        assert.equal(f.options.record(f.context, { kind: 'usage', inputTokens: 1 }), null);
+        t.mock.timers.tick(1000);
+        assert.equal(f.store.snapshot(f.row.sessionId).sequence, sequence);
+        assert.equal(f.store.readRecord(f.row.sessionId)?.nativeCursor, 'private-native-cursor');
+        assert.equal(f.handle.closes, 1);
+    });
+}
+
+test('RT01: Stop drains reasoning, child/tool content and empty replacements without changing finished tools', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = await streamingFixture(t);
+    f.observer.tool('parent', { name: 'Agent' }, {});
+    const parent = f.options.resolveTranscriptParent(f.context, 'parent');
+    assert.ok(parent);
+    const child = f.options.transcript({ ...f.context, parentItemId: parent });
+    child.text('message', 'child', 'child', 'replace', 'unknown');
+    child.text('message', 'child', ' suffix', 'append', 'unknown');
+    f.observer.text('reasoning', 'thought', 'think', 'replace', 'unknown');
+    f.observer.text('reasoning', 'thought', ' more', 'append', 'unknown');
+    f.observer.tool('running', { name: 'Read', output: 'out' }, {});
+    f.observer.tool('running', { delta: 'put' }, {});
+    f.observer.tool('finished', { name: 'done-tool', status: 'done', output: 'done' }, {});
+    f.observer.text('message', 'empty', 'old', 'replace', 'unknown');
+    f.observer.text('message', 'empty', '', 'replace', 'final');
+    await f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+    const items = f.store.snapshot(f.row.sessionId).items;
+    const childItem = items.find(item => item.parentItemId === parent)!;
+    assert.equal(childItem.text, 'child suffix'); assert.equal(childItem.status, 'cancelled');
+    assert.equal(items.find(item => item.kind === 'reasoning')?.text, 'think more');
+    assert.equal(items.find(item => item.tool?.name === 'Read')?.tool?.output, 'output');
+    assert.equal(items.find(item => item.tool?.name === 'Read')?.status, 'cancelled');
+    assert.equal(items.find(item => item.tool?.name === 'done-tool')?.status, 'done');
+    const empty = items.find(item => item.kind === 'assistant_message' && !item.parentItemId)!;
+    assert.equal(empty.text, ''); assert.equal(empty.phase, 'final');
+    assert.equal(items.filter(item => item.kind === 'assistant_message').length, 2);
+});
+
+test('RT01: drain and stopping publication cannot admit callbacks, grants or a timer flush', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let inspect: ((event: CodeWireEvent) => void) | undefined;
+    const f = await streamingFixture(t, { publish: event => inspect?.(event) });
+    const request = approval(f.options);
+    f.observer.text('message', 'first', 'A', 'replace', 'final');
+    f.observer.text('message', 'first', 'B', 'append', 'final');
+    f.observer.text('message', 'second', 'X', 'replace', 'final');
+    f.observer.text('message', 'second', 'Y', 'append', 'final');
+    const observations: Array<{ stage: string; current: boolean; record: unknown; request: unknown; permission: string }> = [];
+    inspect = event => {
+        const stage = event.update?.appendText === 'B' ? 'drain' : event.session?.status === 'stopping' ? 'stopping' : '';
+        if (!stage) return;
+        f.observer.text('message', 'first', 'LATE', 'append', 'final');
+        f.observer.tool('late-tool', { output: 'LATE' }, {});
+        f.observer.close({ kind: 'turn-end', status: 'done', finalText: 'LATE' });
+        f.options.onNativeCursor('late-cursor', f.context);
+        let permission = 'accepted';
+        try { f.manager.answerPermission(request.requestId, { sessionId: f.row.sessionId,
+            turnId: f.receipt.turnId, epoch: 1, optionId: 'allow' }); }
+        catch (error) { permission = error instanceof CodeStoreError ? error.code : 'unexpected'; }
+        observations.push({ stage, current: f.context.isCurrent(),
+            record: f.options.record(f.context, { kind: 'usage', inputTokens: 1 }),
+            request: f.options.record(f.context, { kind: 'request', requestId: 'late-request',
+                requestType: 'approval', view: request.view }), permission });
+        t.mock.timers.tick(100);
+    };
+    await f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+    inspect = undefined;
+    assert.deepEqual(observations, ['drain', 'stopping'].map(stage => ({ stage,
+        current: false, record: null, request: null, permission: 'request_not_current' })));
+    assert.deepEqual(await request.answer, { optionId: null });
+    const snapshot = f.store.snapshot(f.row.sessionId);
+    assert.deepEqual(snapshot.items.filter(item => item.kind === 'assistant_message').map(item => item.text), ['AB', 'XY']);
+    assert.equal(JSON.stringify(snapshot).includes('LATE'), false);
+    assert.equal(f.store.readRecord(f.row.sessionId)?.nativeCursor, 'private-native-cursor');
+});
+
+for (const trigger of ['timer', 'native-final'] as const) {
+    test(`RT01: reentrant Stop during ${trigger} publication drains only the remaining pending items`, async t => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let inspect: ((event: CodeWireEvent) => void) | undefined;
+        const f = await streamingFixture(t, { publish: event => inspect?.(event) });
+        for (const [ref, first, suffix] of [['first', 'A', 'B'], ['second', 'X', 'Y']] as const) {
+            f.observer.text('message', ref, first, 'replace', 'final');
+            f.observer.text('message', ref, suffix, 'append', 'final');
+        }
+        let cancellation: Promise<unknown> | undefined;
+        inspect = event => {
+            if (event.update?.appendText !== 'B') return;
+            inspect = undefined;
+            cancellation = f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+        };
+        if (trigger === 'timer') t.mock.timers.tick(50);
+        else f.handle.outcome.resolve({ ...done, finalText: 'ABXY' });
+        await f.terminal(f.row.sessionId, 1);
+        assert.ok(cancellation); await cancellation;
+        const snapshot = f.store.snapshot(f.row.sessionId);
+        assert.deepEqual(snapshot.items.filter(item => item.kind === 'assistant_message').map(item => item.text), ['AB', 'XY']);
+        for (const suffix of ['B', 'Y']) assert.equal(f.events.filter(event => event.update?.appendText === suffix).length, 1);
+        assert.equal(f.events.some(event => event.update && event.update.appendText === undefined
+            && event.update.appendToolOutput === undefined && event.update.status === undefined && event.update.phase === undefined), false);
+        assert.equal(f.events.filter(event => event.item?.kind === 'turn_cancelled').length, 1);
+        assert.equal(f.events.some(event => event.item?.kind === 'turn_completed'), false);
+        const sequence = snapshot.sequence; t.mock.timers.tick(1000);
+        assert.equal(f.store.snapshot(f.row.sessionId).sequence, sequence);
+    });
+}
+
+test('RT01: each drain item rechecks DB ownership after reentrant recovery and successor admission', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let revoke: ((event: CodeWireEvent) => void) | undefined;
+    const f = await streamingFixture(t, { publish: event => revoke?.(event) });
+    for (const [ref, first, suffix] of [['first', 'A', 'B'], ['second', 'X', 'Y']] as const) {
+        f.observer.text('message', ref, first, 'replace', 'final');
+        f.observer.text('message', ref, suffix, 'append', 'final');
+    }
+    // Deliberate store-owner revocation, not an HTTP takeover of a busy session.
+    const otherStore = new CodeStore(f.db);
+    let successor: string | undefined;
+    revoke = event => {
+        if (event.update?.appendText !== 'B') return;
+        revoke = undefined;
+        otherStore.recoverInterrupted();
+        successor = otherStore.admitTurn({ sessionId: f.row.sessionId, text: 'new owner', clientTurnKey: 'successor' }).receipt.turnId;
+    };
+    await assert.rejects(f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 }), errorCode('stale_owner'));
+    await f.manager.dispose();
+    assert.ok(successor);
+    assert.equal(f.store.readRecord(f.row.sessionId)?.turnId, successor);
+    const items = f.store.snapshot(f.row.sessionId).items.filter(item => item.kind === 'assistant_message');
+    assert.deepEqual(items.map(item => item.text), ['AB', 'X']);
+    assert.equal(f.events.some(event => event.update?.appendText === 'Y'), false);
+    assert.equal(f.store.readTurn(f.row.sessionId, 'successor')?.status, 'accepted');
+});
+
+for (const fault of ['first-write', 'later-write', 'later-read'] as const) {
+    test(`RT01: ${fault} failure stops the detached batch without retrying content`, async t => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        let inject: ((event: CodeWireEvent) => void) | undefined;
+        const f = await streamingFixture(t, { publish: event => inject?.(event) });
+        for (const [ref, first, suffix] of [['first', 'A', 'B'], ['second', 'X', 'Y']] as const) {
+            f.observer.text('message', ref, first, 'replace', 'final');
+            f.observer.text('message', ref, suffix, 'append', 'final');
+        }
+        const rejectAppend = () => f.db.exec(`CREATE TEMP TRIGGER fail_drain BEFORE INSERT ON code_events
+            WHEN json_extract(NEW.event_json, '$.update.appendText') IS NOT NULL
+            BEGIN SELECT RAISE(ABORT, 'drain storage failure'); END`);
+        const read = f.store.readRecord.bind(f.store);
+        const commit = f.store.commitItem.bind(f.store);
+        const attempts = t.mock.method(f.store, 'commitItem', (...args: Parameters<CodeStore['commitItem']>) => commit(...args));
+        let failRead = false, failures = 0;
+        const faultRead = t.mock.method(f.store, 'readRecord', (id: string) => {
+            if (failRead) { failRead = false; failures++; throw new Error('owner read failed'); }
+            return read(id);
+        });
+        if (fault === 'first-write') rejectAppend();
+        else inject = event => {
+            if (event.update?.appendText !== 'B') return;
+            inject = undefined;
+            if (fault === 'later-write') rejectAppend(); else failRead = true;
+        };
+        await f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+        faultRead.mock.restore();
+        assert.equal(attempts.mock.callCount(), fault === 'later-write' ? 2 : 1);
+        attempts.mock.restore();
+        const snapshot = f.store.snapshot(f.row.sessionId);
+        assert.equal(snapshot.session.status, 'failed');
+        assert.equal(snapshot.session.error?.code, 'persistence_failed');
+        assert.deepEqual(snapshot.items.filter(item => item.kind === 'assistant_message').map(item => item.text),
+            fault === 'first-write' ? ['A', 'X'] : ['AB', 'X']);
+        if (fault === 'later-read') assert.equal(failures, 1);
+        assert.equal(f.events.some(event => event.item?.kind === 'turn_completed'), false);
+        assert.equal(f.handle.closes, 1);
+        const sequence = snapshot.sequence; t.mock.timers.tick(1000);
+        assert.equal(f.store.snapshot(f.row.sessionId).sequence, sequence);
+    });
+}
+
+for (const budget of ['event', 'turn'] as const) {
+    test(`RT01: drain ${budget} quota failure uses no terminal reserve for pending content`, async t => {
+        t.mock.timers.enable({ apis: ['setTimeout'] });
+        const f = await streamingFixture(t, { storeLimits: budget === 'event'
+            ? { maxEventBytes: 4096, maxTurnEventBytes: 65536 }
+            : { maxEventBytes: 16384, maxTurnEventBytes: 8192 } });
+        f.observer.text('message', 'large', 'A', 'replace', 'final');
+        f.observer.text('message', 'large', 'z'.repeat(12000), 'replace', 'final');
+        f.observer.text('message', 'remaining', 'X', 'replace', 'final');
+        f.observer.text('message', 'remaining', 'Y', 'append', 'final');
+        const commit = f.store.commitItem.bind(f.store);
+        const writes = t.mock.method(f.store, 'commitItem', (...args: Parameters<CodeStore['commitItem']>) => commit(...args));
+        await f.manager.cancel(f.row.sessionId, { turnId: f.receipt.turnId, epoch: 1 });
+        assert.equal(writes.mock.callCount(), 1, 'failed pending content is never retried by interrupt/finish');
+        writes.mock.restore();
+        const failed = f.store.snapshot(f.row.sessionId);
+        assert.equal(failed.session.error?.code, 'transcript_limit');
+        assert.equal(f.store.readTurn(f.row.sessionId, prompt.clientTurnKey)?.status, 'failed');
+        assert.deepEqual(failed.items.filter(item => item.kind === 'assistant_message').map(item => item.text), ['A', 'X']);
+        assert.equal(f.events.filter(event => event.item?.kind === 'turn_failed').length, 1);
+        f.manager.prompt(f.row.sessionId, { text: 'small follow-up', clientTurnKey: 'after-drain-quota' });
+        const options = await f.providers['codex-app'].opened(1);
+        const next = f.providers['codex-app'].handles[1]!;
+        await next.sent.promise;
+        assert.equal(options.nativeCursor, 'private-native-cursor');
+        f.observer.text('message', 'large', 'LATE', 'append', 'final');
+        next.outcome.resolve(done);
+        await f.terminal(f.row.sessionId, 2);
+        assert.equal(f.store.readTurn(f.row.sessionId, 'after-drain-quota')?.status, 'completed');
+        assert.equal(JSON.stringify(f.store.snapshot(f.row.sessionId)).includes('LATE'), false);
+    });
+}
+
+test('RT01: session dispose caches its promise before a drain subscriber disposes again', async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(t);
+    const row = f.create();
+    const admitted = f.store.admitTurn({ sessionId: row.sessionId, ...prompt });
+    let reentrant: Promise<void> | undefined;
+    const session = new CodeSession({ sessionId: row.sessionId, store: f.store, provider: f.providers['codex-app'],
+        now: Date.now, changed() {}, publish(event) {
+            if (event.update?.appendText === 'B') reentrant = session.dispose();
+        } });
+    t.after(() => session.dispose());
+    session.start(f.store.readRecord(row.sessionId)!, prompt.text);
+    const options = await f.providers['codex-app'].opened();
+    const handle = f.providers['codex-app'].handles[0]!;
+    await handle.sent.promise;
+    const observer = options.transcript(options.getTurnContext());
+    const permission = approval(options);
+    observer.text('message', 'answer', 'A', 'replace', 'final');
+    observer.text('message', 'answer', 'B', 'append', 'final');
+    const disposal = session.dispose();
+    assert.equal(reentrant, disposal);
+    await disposal;
+    assert.deepEqual(await permission.answer, { optionId: null });
+    assert.equal(f.store.snapshot(row.sessionId).items.find(item => item.kind === 'assistant_message')?.text, 'AB');
+    assert.equal(f.store.readTurn(row.sessionId, prompt.clientTurnKey)?.turnId, admitted.receipt.turnId);
+    assert.equal(f.store.readTurn(row.sessionId, prompt.clientTurnKey)?.status, 'cancelled');
+    assert.equal(handle.closes, 1);
 });
