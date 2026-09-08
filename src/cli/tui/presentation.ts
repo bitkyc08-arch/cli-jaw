@@ -36,7 +36,7 @@ export function renderToolLine(_icon: string, label: string, detail: string, sta
         : firstDetail ? `: ${firstDetail}` : '';
     // Header rows always use the folded hint (first line … +K lines) — raw
     // multi-line detail in a header becomes one unbounded logical row (the
-    // frame flattens newlines to spaces). jawcode 036d1ab preview-cap parity;
+    // frame flattens newlines to spaces);
     // expanded blocks print their detail rows separately in renderToolBlock.
     const stateIcon = state === 'done' ? paint('diff.add', '✔') : state === 'error' ? paint('status.error', '✖') : paint('accent', '⏳');
     const depth = Math.max(0, Math.floor(opts?.depth ?? 0));
@@ -144,7 +144,7 @@ export function renderStatusBar(segments: {
     state: string;
     elapsed?: string | undefined;
     bgtask?: number | undefined;
-    /** jawcode attention latch — appends `!` to the bgtask badge. */
+    /** Attention latch that appends `!` to the bgtask badge. */
     bgtaskAttention?: boolean | undefined;
     gitBranch?: string | undefined;
     cwd?: string | undefined;
@@ -167,7 +167,7 @@ export function renderStatusBar(segments: {
     parts.push(style.strong(`${icon} ${segments.engine}`));
     parts.push(segments.state === 'idle' ? style.soft(segments.state) : style.strong(segments.state));
     if (segments.elapsed) parts.push(style.soft(segments.elapsed));
-    // jawcode compact-badge attention suffix: `⏳2!` until the panel is opened.
+    // The compact badge carries `!` until the panel is opened.
     if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}${segments.bgtaskAttention ? '!' : ''}`));
     else if (segments.bgtaskAttention) parts.push(style.strong('⏳!'));
     if (segments.orchPhase) parts.push(style.strong(`📋${segments.orchPhase.toUpperCase()}`));

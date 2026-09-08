@@ -180,7 +180,7 @@ function bgtaskElapsed(startedAt: string | null): string {
     return formatBgtaskDuration(Math.max(0, Date.now() - start));
 }
 
-/** "2m30s ago" hint for terminal rows (jawcode footer-panel style). */
+/** "2m30s ago" hint for terminal rows. */
 function bgtaskAgo(completedAt: string | null | undefined): string {
     const done = parseBgtaskTs(completedAt);
     if (!Number.isFinite(done)) return '';
@@ -194,7 +194,7 @@ export async function openBgtaskOverlay(ctx: TuiContext): Promise<void> {
     const ov = ctx.store.overlay;
     ov.bgtaskOpen = true;
     closeAutocompleteForCtx(ctx);
-    // jawcode attention latch: opening the panel means the user saw the failure —
+    // Opening the panel acknowledges that the user saw the failure;
     // drop the `!` badge from the status bar.
     if (ctx.bgtaskAttention) {
         ctx.bgtaskAttention = false;

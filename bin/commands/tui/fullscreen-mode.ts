@@ -105,7 +105,7 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
                 return appendStreamingCursor(agentLabel ? [`${gutter}${agentLabel.trimEnd()}`] : [], width);
             }
             const header = agentLabel ? `${gutter}${agentLabel}\n` : '';
-            // Thinking block detection — jawcode collapses thinking to 1 line when not streaming
+            // Settled thinking blocks collapse to one line after streaming ends.
             const thinkMatch = !item.streaming && item.text.startsWith('<think');
             if (thinkMatch) {
                 const thinkLines = item.text.split('\n').length;
@@ -127,7 +127,7 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
                 const detailWidth = Math.max(10, width - visualWidth(detailPrefix) - visualWidth(c.reset));
                 const wrappedRows = wrapPlainLines(item.text, detailWidth).slice(-6);
                 const detailRows = wrappedRows.length > 0 ? wrappedRows : [''];
-                // jawcode parity: the live thinking tail has no cursor glyph —
+                // The live thinking tail has no cursor glyph;
                 // the single stream cursor belongs to the assistant answer tail.
                 return [
                     ...labelRows,
@@ -499,8 +499,7 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const stablePrefixIndex = hasTranscriptItems
             ? computeStablePrefixIndex(ctx.store.transcript.items) : 0;
 
-        // 260704 WP6b-v2: commit the STABLE PREFIX as it forms (jawcode
-        // b0a3290 commit-on-completion), so finished blocks ride up through
+        // Commit the stable prefix as it forms so finished blocks ride up through
         // the scrollback seam mid-turn instead of squeezing inside a
         // fixed-height window. Safe under the top-anchored commit lane: the
         // flush writes only into model-blank fill rows (the diff pass never
@@ -626,7 +625,7 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
             if (handleActivityHistoryKey(ctx, action, token, { columns: process.stdout.columns || 80, height: regions.transcript.height })) continue;
             if (action === 'ctrl-o') {
                 // Committed items' pixels are frozen in native scrollback —
-                // scope the toggle to the uncommitted tail (jawcode parity).
+                // scope the toggle to the uncommitted tail.
                 // 260703 CJ-WP3: consume the key only when something actually
                 // toggled AND no overlay is open; otherwise FALL THROUGH to
                 // handleKeyInput so the bgtask-overlay binding (shadowed here
@@ -637,7 +636,7 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
                 if (nonBgtaskOverlayOpen) continue; // consumed: input-handler's help branch
                 // dismisses-without-return and would double-open bgtask (B-verify).
                 // Verbose render mode: toggleToolExpansion returns false (fold
-                // toggles are commit-mode-only, jawcode 753ea63 parity), so
+                // toggles are commit-mode-only), so
                 // ctrl+o falls through to the bgtask-overlay binding below.
                 if (!ctx.store.overlay.bgtaskOpen
                     && toggleLatestActivity(ctx.store.transcript.items, viewport.currentFrontier().itemIndex)) {

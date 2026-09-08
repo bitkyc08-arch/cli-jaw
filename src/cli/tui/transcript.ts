@@ -85,8 +85,8 @@ export function startAssistantItem(state: TranscriptState, agentId?: string): vo
     state.items.push(item);
 }
 
-/** 260704 — session-scoped verbose render mode (jawcode 91bfb40/753ea63
- *  parity): every tool/thinking block renders permanently expanded — no
+/** Session-scoped verbose render mode: every tool/thinking block renders
+ *  permanently expanded — no
  *  minimize when the next tool starts, and the fold toggles become
  *  commit-mode-only. Runtime override set at launch (--verbose), not
  *  persisted. */
@@ -168,7 +168,7 @@ export function settleActivityFallbackPreviews(state: TranscriptState, key: stri
     return printed;
 }
 
-// jawcode parity (083.5): a live thinking tail settles into its collapsed
+// A live thinking tail settles into its collapsed
 // summary the moment the stream moves past it — i.e. when answer text starts.
 // stepRef-driven thinking rows have their own tool-event lifecycle and are
 // finalized by commitThinkingItemOnce instead.
@@ -301,7 +301,7 @@ export function assistantTextSinceLastUser(state: TranscriptState): string {
     return chunks.join('');
 }
 
-// jawcode parity (083.1/083.3 segment split): a tool event interrupts the
+// A tool event interrupts the
 // answer segment — the streaming assistant tail settles (loses its cursor)
 // and any answer text after the tools starts a new assistant item.
 export function settleAssistantForTool(state: TranscriptState, agentId?: string): boolean {
@@ -503,8 +503,8 @@ export function collapsePreviousTools(state: TranscriptState): void {
 
 // fromIndex: items before it are committed to native scrollback — their
 // pixels are frozen, so toggling them would only desync the live cell
-// heights from what the terminal actually shows (jawcode parity: committed
-// components are ineligible for the live expansion toggle).
+// heights from what the terminal actually shows. Committed components are
+// ineligible for the live expansion toggle.
 export function toggleToolExpansion(state: TranscriptState, fromIndex = 0): boolean {
     if (verboseRenderMode) return false;
     const expandableItems = state.items

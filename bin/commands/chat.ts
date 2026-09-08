@@ -240,7 +240,7 @@ ctx.footer = formatFooter(ctx.label, ctx.accent, 'idle');
 ctx.promptPrefix = `  ${ctx.accent}\u276F${c.reset} `;
 
 if (values.verbose) {
-    // --verbose: session-scoped render-mode override (jawcode 91bfb40 parity, not persisted).
+    // --verbose is a session-scoped render-mode override; it is not persisted.
     setVerboseRenderMode(true);
     ctx.store.transcript.liveToolsExpanded = true;
 }

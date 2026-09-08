@@ -104,8 +104,7 @@ export class AnsiTerminalModel {
         const top = Math.max(0, Math.min(this.rows - 1, params[0] - 1));
         const bottom = Math.max(0, Math.min(this.rows - 1, params[1] - 1));
         // DECSTBM requires bottom > top: real terminals silently IGNORE a
-        // 1-row (or inverted) region — empirically verified against
-        // @xterm/headless in the jawcode sibling repo (CSI 1;1r is a no-op,
+        // 1-row (or inverted) region. @xterm/headless also treats CSI 1;1r as a no-op;
         // the \r\n just moves the cursor and nothing enters scrollback).
         // Accepting it here masked exactly that product bug.
         if (bottom <= top) return;

@@ -148,7 +148,7 @@ checks.push(() => run('installer risk tests', npx, [
   'tests/unit/postinstall-strict-tools.test.ts',
   'tests/unit/wsl-installer-doctor.test.ts',
   'tests/unit/wsl-installer-exec.test.ts',
-  'tests/unit/jwc-command-contract.test.ts',
+  'tests/unit/retired-runtime-command-contract.test.ts',
   'tests/unit/retired-runtime-package.test.ts',
 ]));
 
