@@ -22,6 +22,76 @@ function rejectPaths(paths, label) {
 
 export function checkIndex(cwd) {
     rejectPaths(git(cwd, ['ls-files', '-z']).split('\0').filter(Boolean), 'index');
+    reportSubmodules(cwd, { enforce: submoduleEnforcement() });
+}
+
+/**
+ * Submodule contents are OUT of the enforced gate for now, because the current
+ * `skills_ref` tip carries private records that predate this check and removing
+ * them is a separate change in a separate repository. Enforcing here first
+ * would only break the build without deleting anything.
+ *
+ * Set `JAW_PRIVATE_BOUNDARY_SUBMODULES=enforce` to fail on them; the default
+ * warns so the finding is visible on every run and cannot be forgotten.
+ */
+function submoduleEnforcement() {
+    return String(process.env['JAW_PRIVATE_BOUNDARY_SUBMODULES'] || '').toLowerCase() === 'enforce';
+}
+
+export function reportSubmodules(cwd, { enforce = false } = {}) {
+    const findings = [];
+    for (const { path, cwd: subCwd } of submodules(cwd)) {
+        if (!subCwd) {
+            findings.push({ path, absent: true, files: [] });
+            continue;
+        }
+        const files = git(subCwd, ['ls-files', '-z']).split('\0').filter(Boolean)
+            .map(f => path + '/' + f).filter(isPrivatePath);
+        if (files.length) findings.push({ path, absent: false, files });
+    }
+    for (const finding of findings) {
+        if (finding.absent) {
+            console.warn('[private-boundary] submodule ' + finding.path + ' is not checked out; its contents were NOT scanned');
+            continue;
+        }
+        const label = 'submodule ' + finding.path + ': ' + finding.files.length + ' private path(s)';
+        if (enforce) throw new Error(label + ':\n' + finding.files.join('\n'));
+        console.warn('[private-boundary] WARN ' + label + ' — ' + finding.files.slice(0, 3).join(', ') +
+            (finding.files.length > 3 ? ', …' : ''));
+    }
+    return findings;
+}
+
+/**
+ * Submodules are gitlinks: `ls-files` and `ls-tree` stop at the pointer and
+ * never enumerate their contents, so a private path committed inside a
+ * submodule is invisible to a check that only walks the superproject. Publish
+ * the submodule and the record ships with it.
+ *
+ * Returns each submodule's path plus a working-tree cwd when one is checked
+ * out. An absent working tree is reported rather than skipped silently.
+ */
+function submodules(cwd) {
+    let raw = '';
+    try {
+        raw = git(cwd, ['config', '--file', '.gitmodules', '--get-regexp', String.raw`^submodule\..*\.path$`]);
+    } catch {
+        return []; // no .gitmodules, or no submodule entries in it
+    }
+    const out = [];
+    for (const line of raw.trim().split('\n').filter(Boolean)) {
+        const path = line.slice(line.indexOf(' ') + 1).trim();
+        if (!path || path.startsWith('/') || path.split('/').includes('..')) continue;
+        const subCwd = resolve(cwd, path);
+        let usable = false;
+        try {
+            usable = git(subCwd, ['rev-parse', '--is-inside-work-tree']).trim() === 'true';
+        } catch {
+            usable = false;
+        }
+        out.push({ path, cwd: usable ? subCwd : null });
+    }
+    return out;
 }
 
 export function checkRange(cwd, base, head, destination) {
