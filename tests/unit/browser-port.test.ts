@@ -8,6 +8,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join } from 'node:path';
+import { deriveCdpPort } from '../../src/core/config.ts';
 
 // ─── Source-level verification ───────────────────────
 const connectionSrc = readSource(
@@ -94,5 +95,27 @@ describe('Browser Port Routing (#49)', () => {
         const hasDeriveCdpPortImport = importLines.some(l => l.includes('deriveCdpPort'));
         assert.equal(hasDeriveCdpPortImport, false,
             'deriveCdpPort should not be imported in routes — getActivePort handles it');
+    });
+
+    it('BP-010: deriveCdpPort preserves the existing non-overflow mapping', () => {
+        assert.equal(deriveCdpPort(3457), 9240);
+        assert.equal(deriveCdpPort(59752), 65535);
+    });
+
+    it('BP-011: overflow wraps injectively through unprivileged ports', () => {
+        const inputs = [59753, 59754, 60000, 65534, 65535];
+        const outputs = inputs.map(deriveCdpPort);
+        assert.equal(new Set(outputs).size, inputs.length);
+        for (let i = 0; i < inputs.length; i++) {
+            assert.ok(outputs[i]! >= 1024 && outputs[i]! <= 65535);
+            assert.notEqual(outputs[i], inputs[i]);
+        }
+        assert.deepEqual(outputs.slice(0, 2), [1024, 1025]);
+    });
+
+    it('BP-012: invalid input retains the legacy safe default', () => {
+        assert.equal(deriveCdpPort(0), 9240);
+        assert.equal(deriveCdpPort(65536), 9240);
+        assert.equal(deriveCdpPort('not-a-port'), 9240);
     });
 });

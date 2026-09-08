@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { slackChannelScope } from '../../src/slack/scope-status.js';
+import { slackTokenClaimPath } from '../../src/slack/token-claim.js';
 
 const repoRoot = join(import.meta.dirname, '..', '..');
 const read = (rel: string) => readFileSync(join(repoRoot, rel), 'utf8');
@@ -91,7 +92,7 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     const doctor = read('bin/commands/doctor.ts');
     assert.match(doctor, /function buildSlackStatus\(\)/);
     assert.match(doctor, /slack: buildSlackStatus\(\),/, 'the JSON output has no slack member');
-    for (const status of ['missing_bot_token', 'missing_app_token']) {
+    for (const status of ['missing_bot_token', 'missing_app_token', 'token_shared_other_home']) {
         assert.match(doctor, new RegExp(status), `status ladder is missing ${status}`);
     }
     // Shape parity with Discord so JSON consumers can treat channels uniformly.
@@ -99,6 +100,8 @@ test('doctor --json emits a slack status object with the full ladder', () => {
     for (const field of ['enabled', 'channelConsistent', 'runtimeReady', 'degradedReasons']) {
         assert.match(block, new RegExp(field), `buildSlackStatus omits ${field}`);
     }
+    assert.match(block, /tokenClaimOwner: \{ home: tokenClaim\.claim\.home, port: tokenClaim\.claim\.port \}/);
+    assert.doesNotMatch(block, /tokenClaimOwner:[^\n]*(appToken|sha256|claimId)/);
 });
 
 // An empty allowlist means "every conversation" — the shipped default. doctor
@@ -214,6 +217,54 @@ test('doctor --json reports the allowlist width the gate enforces', () => {
     assert.equal(malformed.runtimeReady, false);
     // The denial sentinel is not a conversation and must not be printed as one.
     assert.deepEqual(malformed.channelIds, []);
+});
+
+test('doctor text and JSON identify a foreign owner without exposing token material', () => {
+    const repoTsx = join(repoRoot, 'node_modules', '.bin', 'tsx');
+    const cliEntry = join(repoRoot, 'bin', 'cli-jaw.ts');
+    const home = mkdtempSync(join(tmpdir(), 'jaw-doctor-owner-'));
+    const foreignHome = mkdtempSync(join(tmpdir(), 'jaw-doctor-foreign-'));
+    const sharedHome = mkdtempSync(join(tmpdir(), 'jaw-doctor-shared-'));
+    const token = 'xapp-doctor-owner-secret';
+    try {
+        writeFileSync(join(home, 'settings.json'), JSON.stringify({
+            port: '3457',
+            slack: { enabled: true, botToken: 'xoxb-fixture', appToken: token, teamId: 'T1', channelIds: [] },
+        }));
+        const claimRoot = join(sharedHome, '.cli-jaw-shared', 'slack-claims');
+        const claimPath = slackTokenClaimPath(token, claimRoot);
+        mkdirSync(dirname(claimPath), { recursive: true });
+        writeFileSync(claimPath, JSON.stringify({
+            version: 1, claimId: 'd'.repeat(32), home: foreignHome, port: '4567',
+            pid: process.pid, claimedAt: new Date().toISOString(), connected: true,
+        }));
+        const runDoctor = (json: boolean) => spawnSync(
+            repoTsx,
+            [cliEntry, '--home', home, 'doctor', ...(json ? ['--json'] : [])],
+            {
+                cwd: repoRoot, encoding: 'utf8', timeout: 60_000,
+                env: { ...process.env, HOME: sharedHome, NO_COLOR: '1', SLACK_BOT_TOKEN: '', SLACK_APP_TOKEN: '' },
+            },
+        );
+        const jsonRun = runDoctor(true);
+        assert.ok(jsonRun.stdout, jsonRun.stderr);
+        const slack = JSON.parse(jsonRun.stdout).slack;
+        assert.equal(slack.status, 'token_shared_other_home');
+        assert.deepEqual(slack.tokenClaimOwner, { home: foreignHome, port: '4567' });
+        const textRun = runDoctor(false);
+        assert.match(textRun.stdout, new RegExp(`Slack app token is claimed by ${foreignHome} on :4567`));
+        for (const rendered of [
+            `${jsonRun.stdout}\n${jsonRun.stderr}`,
+            `${textRun.stdout}\n${textRun.stderr}`,
+        ]) {
+            assert.doesNotMatch(rendered, new RegExp(token));
+            assert.doesNotMatch(rendered, /[0-9a-f]{64}\.json/);
+        }
+    } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(foreignHome, { recursive: true, force: true });
+        rmSync(sharedHome, { recursive: true, force: true });
+    }
 });
 
 // ─── source-of-truth docs ───────────────────────────

@@ -251,7 +251,7 @@ are persisted or displayed through trace helpers.
 | `orchestrator/worker-progress.ts` | 58L | worker progress safe-summary sanitizer + snapshot types |
 | `orchestrator/worker-monitor.ts` | 58L | stall/disconnect/timeout monitor |
 | `orchestrator/sanitize.ts` | 52L | `stripInterviewTracker()` — interview tracker/perspective tags from visible text |
-| `orchestrator/scope.ts` | 17L | scope stub — 항상 `'default'` 반환 |
+| `orchestrator/scope.ts` | 86L | remote binding key + channel gate + local session scope + captured execution binding; legacy `findActiveScope()`만 `'default'` 반환 |
 
 ### `pipeline.ts` 실제 흐름
 

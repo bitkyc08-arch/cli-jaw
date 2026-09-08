@@ -56,6 +56,32 @@ test('manager transport chips parse health.channels', () => {
     assert.ok(managerTransportChipLabels(snapshot.discord).includes('Configured') || managerTransportChipLabels(snapshot.discord).includes('Not configured'));
 });
 
+test('slack ownership notice disables inbound while preserving outbound capability', async () => {
+    const { settings } = await import('../../src/core/config.js');
+    const runtime = await import('../../src/messaging/runtime.js');
+    const previousSlack = settings.slack;
+    try {
+        runtime.__resetTransportRegistryForTests();
+        settings.slack = { enabled: true, botToken: 'xoxb-test', appToken: 'xapp-test', channelIds: [] };
+        let epoch = 0;
+        runtime.registerTransport('slack', {
+            init: async ctx => { epoch = ctx!.startEpoch; return runtime.transportStarted; },
+            shutdown: async () => {},
+        });
+        await runtime.startMessagingTransport('slack');
+        runtime.revokeMessagingTransport('slack', 'token_shared_other_home', epoch);
+        assert.deepEqual(getTransportCapability('slack'), {
+            configured: true,
+            activeInbound: false,
+            sendCapable: true,
+            reason: 'token_shared_other_home',
+        });
+    } finally {
+        runtime.__resetTransportRegistryForTests();
+        settings.slack = previousSlack;
+    }
+});
+
 test('shared settings channel pages expose live transport capability', () => {
     assert.match(read('public/index.html'), /id="settingsPage" class="settings-page"[\s\S]*?src="dist\/settings\/index.html"/);
     for (const channel of ['telegram', 'discord', 'slack']) {

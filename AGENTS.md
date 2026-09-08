@@ -193,6 +193,8 @@ Before any public push, run `npm run check:private-boundary` for the index and `
 
 ### Architecture Docs Sync
 
+- Slack Socket Mode app-token ownership is coordinated across homes by a connected, fresh, live-PID claim; uncertainty fails open, conflicts disable inbound only, and the runtime notice/activation epoch must remain generation-bound. See `structure/telegram.md` and `structure/server_api.md`.
+
 - Manager sidebar selection and Sessions/Stop/Open use separate interactive targets. Keep list navigation scoped to the focused row selector, stable session-disclosure links, and preferred width separate from viewport clamping. Pointer and keyboard resize completion persist the latest value; see `structure/frontend.md`.
 - Manager terminal presentation preserves backend PTY ownership across hide/unmount. Keep hydration-first bounded creation, explicit recovery, stable tab identity and focus ownership separate from native Code API sessions; theme updates must not recreate shells. See `structure/frontend.md`.
 

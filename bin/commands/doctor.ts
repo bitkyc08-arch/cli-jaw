@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
 import { slackChannelScope } from '../../src/slack/scope-status.js';
+import { inspectSlackTokenClaim } from '../../src/slack/token-claim.js';
 import { sendFileAllowedRoots } from '../../src/security/path-guards.js';
 import { checkPsExecutionPolicy, inspectInstallIntegrity, formatRecoveryCommands } from '../../src/core/install-integrity.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
@@ -462,6 +463,17 @@ check('Slack', () => {
     // the Web API works, but no inbound events can arrive.
     if (!appToken) throw new Error('WARN: app-level token missing — outbound only, no inbound events (jaw slack setup)');
     if (!appToken.startsWith('xapp-')) throw new Error('app token should start with xapp-');
+    if (process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] !== '1') {
+        const owner = inspectSlackTokenClaim({
+            appToken,
+            home: JAW_HOME,
+            port: String(loadedSettings()['port' as keyof DoctorSettings] || ''),
+            connected: true,
+        });
+        if (owner.kind === 'foreign_live') {
+            throw new Error(`WARN: Slack app token is claimed by ${owner.claim.home} on :${owner.claim.port}`);
+        }
+    }
     // One bot, one instance: tokens present here but the socket belongs to
     // another instance — WARN so it reads as intended, not broken.
     const attachPort = String(settings.slack.attachPort || '').trim();
@@ -1071,9 +1083,21 @@ function buildSlackStatus() {
     const { ids: channelIds, scope: channelScope } = slackChannelScope(sc.channelIds);
     let status = 'ok';
     const degradedReasons: string[] = [];
+    const tokenClaim = appTokenPresent && process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] !== '1'
+        ? inspectSlackTokenClaim({
+            appToken: sc.appToken!,
+            home: JAW_HOME,
+            port: String(s?.['port' as keyof DoctorSettings] || ''),
+            connected: true,
+        })
+        : { kind: 'none' as const };
     if (!sc.enabled) { status = 'disabled'; }
     else if (!botTokenPresent) { status = 'missing_bot_token'; degradedReasons.push('bot token missing'); }
     else if (!appTokenPresent) { status = 'missing_app_token'; degradedReasons.push('app-level token missing — outbound only, no inbound events'); }
+    else if (tokenClaim.kind === 'foreign_live') {
+        status = 'token_shared_other_home';
+        degradedReasons.push(`Slack inbound is owned by ${tokenClaim.claim.home} on :${tokenClaim.claim.port}`);
+    }
     else if (channelScope === 'malformed') {
         // Not a missing setting — a present one the gate cannot read, so it
         // denies every channel. Tokens alone used to carry this to status "ok",
@@ -1107,6 +1131,9 @@ function buildSlackStatus() {
         // MPIM lookups surface missing_scope at call time (260806 unit).
         historyLookup: botTokenPresent,
         socketModeNote: 'app-level token (xapp-) is required for inbound events; a bot token alone is outbound-only',
+        ...(tokenClaim.kind === 'foreign_live' ? {
+            tokenClaimOwner: { home: tokenClaim.claim.home, port: tokenClaim.claim.port },
+        } : {}),
         degradedReasons,
     };
 }

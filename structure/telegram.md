@@ -11,6 +11,8 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 > Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + text/image forwarder lifecycle + origin filtering + voice STT
 > 현재 Telegram/Discord/Slack은 `src/messaging/`을 공유하며, settings restart는 `core/runtime-settings.ts`에서 한 번에 처리된다
 > Slack 설정 명령과 API는 [Commands](commands.md)와 [Server API](server_api.md)를 참조
+
+Slack Socket Mode의 app-level token은 사용자 공용 `~/.cli-jaw-shared/slack-claims` lease로 home 간 단일 connected consumer를 선출한다. 다른 canonical home의 `connected:true` claim이 90초 이내이고 PID가 살아 있다는 positive evidence가 모두 있을 때만 inbound를 거절하며, realpath·파일 IO·PID probe가 불확실하면 fail-open한다. 연결 전/재연결 중 `connected:false` presence는 다른 home을 막지 않고, lease는 exact `claimId` generation만 해제한다. 충돌한 home은 inbound만 끄고 Slack Web API outbound는 유지하며 `CLI_JAW_SLACK_ALLOW_SHARED_TOKEN=1`이 명시적 process-level opt-out이다.
 > v5 Update: `forwardAll` 토글은 Telegram/Discord 각각의 channel setting으로 분리됨
 > v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P0–P4; per-topic `model`/`systemPrompt` overrides)
 

@@ -29,6 +29,7 @@ type Harness = {
     emit: (frame: unknown) => Promise<void>;
     sent: string[];
     handled: SlackEnvelope[];
+    stateChanges: string[];
 };
 
 async function makeHarness(options: {
@@ -37,6 +38,7 @@ async function makeHarness(options: {
 } = {}): Promise<Harness> {
     const sent: string[] = [];
     const handled: SlackEnvelope[] = [];
+    const stateChanges: string[] = [];
     const listeners = new Map<string, (event: unknown) => void>();
 
     const socket: SlackSocketLike = {
@@ -60,6 +62,7 @@ async function makeHarness(options: {
             handled.push(e);
             await options.onEnvelope?.(e);
         },
+        onStateChange: state => { stateChanges.push(state); },
     });
     await client.start();
 
@@ -70,7 +73,7 @@ async function makeHarness(options: {
         // let the async handler settle
         await new Promise(resolve => setImmediate(resolve));
     };
-    return { client, emit, sent, handled };
+    return { client, emit, sent, handled, stateChanges };
 }
 
 const eventsEnvelope = (id: string, event: Record<string, unknown>): SlackEnvelope => ({
@@ -88,6 +91,22 @@ test('hello moves the client to connected without acking', async () => {
     assert.equal(h.sent.length, 0, 'control frames must not be acked');
     assert.equal(h.handled.length, 0);
     h.client.stop();
+});
+
+test('waitForReady observes hello before and after waiter registration', async () => {
+    const before = await makeHarness();
+    const pending = before.client.waitForReady(1000);
+    await before.emit({ type: 'hello' });
+    assert.equal(await pending, 'connected');
+    assert.equal(await before.client.waitForReady(1000), 'connected');
+    assert.ok(before.stateChanges.includes('connected'));
+    before.client.stop();
+
+    const stopped = await makeHarness();
+    const stoppedWait = stopped.client.waitForReady(1000);
+    stopped.client.stop('disabled');
+    assert.equal(await stoppedWait, 'stopped');
+    assert.equal(stopped.stateChanges.at(-1), 'disabled');
 });
 
 test('an events envelope is acked with exactly its envelope_id', async () => {

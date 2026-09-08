@@ -8,7 +8,7 @@ import { registerSendTransport } from '../messaging/send.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 
 registerTransport('slack', {
-    init: async () => (await import('./bot.js')).initSlack(),
+    init: async (ctx) => (await import('./bot.js')).initSlack(ctx),
     shutdown: async () => (await import('./bot.js')).shutdownSlack(),
 });
 

@@ -11,8 +11,10 @@ import {
     getLatestSeenTarget,
     hydrateTargetsFromSettings,
     getMessagingTransportError,
+    getMessagingTransportNotice,
     isMessagingTransportRunning,
     registerTransport,
+    revokeMessagingTransport,
     restartMessagingRuntime,
     setLastActiveTarget,
     setLatestSeenTarget,
@@ -200,6 +202,66 @@ test('startMessagingTransport keeps a declined start out of the error record', a
     // The non-attach instance is doing exactly what it was configured to do, so it
     // must not leave a transport error behind for health to report as a fault.
     assert.equal(getMessagingTransportError('slack'), null);
+});
+
+test('current-epoch revoke before activation prevents a phantom running transport', async () => {
+    freshSettings();
+    registerTransport('slack', {
+        init: async (ctx) => {
+            revokeMessagingTransport('slack', 'token_shared_other_home', ctx!.startEpoch);
+            return transportStarted;
+        },
+        shutdown: async () => {},
+    });
+    const outcome = await startMessagingTransport('slack');
+    assert.deepEqual(outcome, { started: false, reason: 'token_shared_other_home' });
+    assert.equal(isMessagingTransportRunning('slack'), false);
+    assert.equal(getMessagingTransportNotice('slack'), 'token_shared_other_home');
+    assert.equal(getMessagingTransportError('slack'), null);
+});
+
+test('stale revoke is ignored and a later successful start clears the notice', async () => {
+    freshSettings();
+    let latestEpoch = 0;
+    registerTransport('slack', {
+        init: async (ctx) => { latestEpoch = ctx!.startEpoch; return transportStarted; },
+        shutdown: async () => {},
+    });
+    await startMessagingTransport('slack');
+    assert.equal(revokeMessagingTransport('slack', 'token_shared_other_home', latestEpoch - 1), false);
+    assert.equal(isMessagingTransportRunning('slack'), true);
+    assert.equal(revokeMessagingTransport('slack', 'token_shared_other_home', latestEpoch), true);
+    assert.equal(isMessagingTransportRunning('slack'), false);
+    await startMessagingTransport('slack');
+    assert.equal(isMessagingTransportRunning('slack'), true);
+    assert.equal(getMessagingTransportNotice('slack'), null);
+});
+
+test('overlapping superseded start does not stale the epoch that actually activated', async () => {
+    freshSettings();
+    let firstEpoch = 0;
+    let calls = 0;
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>(resolve => { releaseFirst = resolve; });
+    registerTransport('slack', {
+        init: async ctx => {
+            calls++;
+            if (calls === 1) {
+                firstEpoch = ctx!.startEpoch;
+                await firstGate;
+                return transportStarted;
+            }
+            return transportNotStarted('superseded');
+        },
+        shutdown: async () => {},
+    });
+    const first = startMessagingTransport('slack');
+    assert.deepEqual(await startMessagingTransport('slack'), { started: false, reason: 'superseded' });
+    releaseFirst();
+    assert.deepEqual(await first, { started: true });
+    assert.equal(isMessagingTransportRunning('slack'), true);
+    assert.equal(revokeMessagingTransport('slack', 'token_shared_other_home', firstEpoch), true);
+    assert.equal(isMessagingTransportRunning('slack'), false);
 });
 
 test('loadSettings migrates legacy channel to messaging.enabledChannels and homeChannel', () => {

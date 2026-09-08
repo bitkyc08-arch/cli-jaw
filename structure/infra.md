@@ -943,7 +943,7 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | `saveSettings(s)` | 설정 저장 |
 | `replaceSettings(s)` | ESM live binding 대체 |
 | `loadHeartbeatFile()` / `saveHeartbeatFile()` | `heartbeat.json` 읽기/쓰기 |
-| `deriveCdpPort(serverPort?)` | server port + offset으로 browser CDP port 계산, overflow/invalid는 9240 |
+| `deriveCdpPort(serverPort?)` | server port + offset으로 browser CDP port 계산; valid overflow는 1024–65535 modular rotation으로 고유 wrap, invalid input은 9240 |
 | `getServerUrl(port)` | `http://localhost:${port || process.env.PORT || settings.port || DEFAULT_PORT}` |
 | `getWsUrl(port)` | websocket URL 생성 |
 | `detectCli(name)` | `buildServicePath()`를 적용한 `which`/`where` 기반 바이너리 존재 확인 |

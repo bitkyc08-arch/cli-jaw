@@ -15,6 +15,7 @@ export type TransportStartFailureReason =
     | 'not_configured'
     | 'outbound_only'
     | 'not_attach_instance'
+    | 'token_shared_other_home'
     | 'superseded'
     | 'not_registered'
     | 'failed';
@@ -35,8 +36,10 @@ export function transportNotStarted(
     return detail === undefined ? { started: false, reason } : { started: false, reason, detail };
 }
 
+export type TransportInitContext = { startEpoch: number };
+
 type TransportFns = {
-    init: () => Promise<TransportStartOutcome>;
+    init: (ctx?: TransportInitContext) => Promise<TransportStartOutcome>;
     shutdown: () => Promise<void>;
 };
 
@@ -44,6 +47,11 @@ const transports = new Map<MessengerChannel, TransportFns>();
 const CHANNELS = ['telegram', 'discord', 'slack'] as const;
 const runningTransports = new Set<MessengerChannel>();
 const transportErrors = new Map<MessengerChannel, string>();
+const transportNotices = new Map<MessengerChannel, string>();
+const startEpochs = new Map<MessengerChannel, number>();
+const activatedEpochs = new Map<MessengerChannel, number>();
+const inFlightStartEpochs = new Map<MessengerChannel, Set<number>>();
+const revokedStarts = new Map<MessengerChannel, { epoch: number; reason: TransportStartFailureReason }>();
 
 function isMessengerChannel(value: unknown): value is MessengerChannel {
     return CHANNELS.includes(value as MessengerChannel);
@@ -64,6 +72,11 @@ export function __resetTransportRegistryForTests() {
     latestSeenTargets.clear();
     runningTransports.clear();
     transportErrors.clear();
+    transportNotices.clear();
+    startEpochs.clear();
+    activatedEpochs.clear();
+    inFlightStartEpochs.clear();
+    revokedStarts.clear();
 }
 
 /** Test-only: clear target maps between tests. */
@@ -184,6 +197,24 @@ export function getMessagingTransportError(channel: MessengerChannel): string | 
     return transportErrors.get(channel) ?? null;
 }
 
+export function getMessagingTransportNotice(channel: MessengerChannel): string | null {
+    return transportNotices.get(channel) ?? null;
+}
+
+export function revokeMessagingTransport(
+    channel: MessengerChannel,
+    reason: TransportStartFailureReason,
+    epoch: number,
+): boolean {
+    const activated = activatedEpochs.get(channel) ?? 0;
+    const inFlight = inFlightStartEpochs.get(channel)?.has(epoch) === true;
+    if (epoch < activated && !inFlight) return false;
+    revokedStarts.set(channel, { epoch, reason });
+    transportNotices.set(channel, reason);
+    runningTransports.delete(channel);
+    return true;
+}
+
 export async function startMessagingTransport(
     channel: MessengerChannel,
 ): Promise<TransportStartOutcome> {
@@ -193,8 +224,13 @@ export async function startMessagingTransport(
         log.warn(`[messaging] no transport registered for ${channel}`);
         return transportNotStarted('not_registered');
     }
+    const epoch = (startEpochs.get(channel) ?? 0) + 1;
+    startEpochs.set(channel, epoch);
+    const inFlight = inFlightStartEpochs.get(channel) ?? new Set<number>();
+    inFlight.add(epoch);
+    inFlightStartEpochs.set(channel, inFlight);
     try {
-        const outcome = await transport.init();
+        const outcome = await transport.init({ startEpoch: epoch });
         if (!outcome.started) {
             runningTransports.delete(channel);
             // A channel nobody configured, or one a concurrent init owns, is not a
@@ -207,7 +243,16 @@ export async function startMessagingTransport(
             }
             return outcome;
         }
+        const revoked = revokedStarts.get(channel);
+        if (revoked?.epoch === epoch) {
+            runningTransports.delete(channel);
+            transportErrors.delete(channel);
+            return transportNotStarted(revoked.reason);
+        }
         runningTransports.add(channel);
+        activatedEpochs.set(channel, epoch);
+        revokedStarts.delete(channel);
+        transportNotices.delete(channel);
         transportErrors.delete(channel);
         return outcome;
     } catch (error) {
@@ -215,6 +260,9 @@ export async function startMessagingTransport(
         transportErrors.set(channel, logErrorText(error));
         log.warn(`[messaging] ${channel} init error:`, logErrorText(error));
         return transportNotStarted('failed', logErrorText(error));
+    } finally {
+        inFlight.delete(epoch);
+        if (inFlight.size === 0) inFlightStartEpochs.delete(channel);
     }
 }
 

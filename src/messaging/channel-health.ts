@@ -1,11 +1,13 @@
-import { settings } from '../core/config.js';
+import { JAW_HOME, settings } from '../core/config.js';
 import { MALFORMED_SLACK_ALLOWLIST, readSlackAllowlist, shouldAttachSlack } from '../slack/events.js';
 import {
     getHomeChannel,
     getLastActiveTarget,
     getRunningMessagingTransports,
+    getMessagingTransportNotice,
     isMessagingTransportRunning,
 } from './runtime.js';
+import { inspectSlackTokenClaim } from '../slack/token-claim.js';
 import { getIngressJournal, type IngressJournal } from './durable-ingress.js';
 import { snapshotMetrics, type MessagingMetricsSnapshot } from './metrics.js';
 import { getSlackScopeStatus, type SlackScopeStatus } from '../slack/scope-status.js';
@@ -156,6 +158,23 @@ export function getTransportCapability(channel: MessengerChannel): TransportCapa
                 activeInbound,
                 sendCapable: slackHasSendTarget(),
                 reason: 'missing_app_token',
+            };
+        }
+        const ownershipNotice = getMessagingTransportNotice('slack') === 'token_shared_other_home';
+        const foreignConnected = !activeInbound
+            && process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] !== '1'
+            && inspectSlackTokenClaim({
+                appToken,
+                home: JAW_HOME,
+                port: String(settings['port'] ?? ''),
+                connected: true,
+            }).kind === 'foreign_live';
+        if (ownershipNotice || foreignConnected) {
+            return {
+                configured: true,
+                activeInbound: false,
+                sendCapable: slackHasSendTarget(),
+                reason: 'token_shared_other_home',
             };
         }
         if (!slackHasSendTarget()) {
