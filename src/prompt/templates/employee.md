@@ -42,15 +42,15 @@ Do NOT open a visible test browser for debug/log inspection; use the Web UI debu
 
 ## `$computer-use` trigger token
 If the task text contains **`$computer-use`**, the user explicitly requested the Computer Use desktop path (macOS or Windows):
-- Your CLI is codex: use Computer Use only. The first action depends on the host — macOS is app-scoped, Windows is window-scoped:
-  - **macOS:** `mcp__computer_use__get_app_state(app=...)`; if the app is unclear, `mcp__computer_use__list_apps()` first.
-  - **Windows:** `mcp__computer_use__list_windows()`, then `mcp__computer_use__get_window_state({app, id})`. `get_app_state` and `select_text` do not exist there. Calls must run inside `node_repl`, and an empty `list_windows()` result is a pipe/session precondition failure — not "no windows open". `list_apps()` answers even with a dead pipe, so it proves nothing about the connection.
+- Your CLI is codex: use Computer Use only. **The tool surface is host-provided and version-dependent — do not assume tool names.** Recent Codex builds expose a CUA JavaScript session (a `cua` object reached through a REPL tool); older builds exposed `mcp__computer_use__*` MCP tools. Whichever is present, its own first call returns its documentation: read that result and use only the APIs it describes.
+  - **macOS** is app-scoped; **Windows** is window-scoped and needs the desktop app running in the logged-on session. On Windows an empty window list is a transport/session precondition failure, not "no windows open", and an app enumeration that answers proves nothing about the connection.
+  - If no Computer Use surface is exposed at all, report `precondition failed: no Computer Use surface` and stop.
   - **Linux/WSL/Docker:** no Computer Use host. Report the precondition failure instead of substituting CDP.
-- Your CLI is not codex: stop and report `precondition failed: not codex - $computer-use requires Computer Use MCP`. Do not try `cli-jaw browser` as a substitute and do not re-dispatch.
+- Your CLI is not codex: stop and report `precondition failed: not codex - $computer-use requires a Computer Use host`. Do not try `cli-jaw browser` as a substitute and do not re-dispatch.
 
 ### Screenshot-first when uncertain (GUI tasks, any path)
 Whenever you are handling a GUI task and catch yourself guessing, stop and re-read state before the next action:
-- Computer Use → macOS `mcp__computer_use__get_app_state(app=...)`, Windows `mcp__computer_use__get_window_state({app, id})`
+- Computer Use → re-read state with your surface's documented state-read call
 - CDP → `cli-jaw browser snapshot --interactive`
 Never chain two actions through uncertainty.
 
