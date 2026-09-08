@@ -72,6 +72,7 @@ import { ensureDirs, loadSettings, settings } from '../core/config.js';
 import { createJawCeoRouter } from '../routes/jaw-ceo.js';
 import { registerCodeRoutes } from '../routes/code.js';
 import { registerNativeCodeRoutes } from '../routes/code-native.js';
+import { createManagerApiJsonParser } from '../routes/code-body-parser.js';
 import { createCodeHost } from '../code-mode/host.js';
 import { registerEventsRoutes } from '../routes/events.js';
 import type {
@@ -293,19 +294,7 @@ app.use(
     '/api/dashboard/notes',
     createDashboardNotesRouter({ managerPort: port, settingsPath: SETTINGS_PATH, store: notesStore, watcher: notesWatcher, wsTokenIssuer }),
 );
-const dashboardJsonParser = express.json({ limit: '64kb' });
-app.use((req, res, next) => {
-    // Legacy /i/:port proxy streams the raw request body upstream. express.json()
-    // consumes the stream first and leaves POST /api/message hanging forever.
-    if (/^\/i\/\d+(?:\/|$)/.test(req.path)) return next();
-    // Embedded-browser command results carry data-url screenshots far above
-    // 64kb; that route mounts its own bounded parser.
-    if (req.path.startsWith('/api/manager/embedded-browser/commands/')) return next();
-    // Design page file writes carry multi-megabyte artifact HTML; the design
-    // router mounts its own 8mb parser.
-    if (req.method === 'PUT' && /^\/api\/dashboard\/design\/pages\/[^/]+\/files\//.test(req.path)) return next();
-    return dashboardJsonParser(req, res, next);
-});
+app.use(createManagerApiJsonParser());
 app.use('/api/dashboard/desktop-status', createDesktopStatusRouter());
 app.use('/api/dashboard/electron-metrics', createElectronMetricsRouter());
 app.use('/api/dashboard/board', createDashboardBoardRouter());

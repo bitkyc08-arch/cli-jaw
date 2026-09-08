@@ -5,7 +5,11 @@ import { tmpdir } from 'node:os';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import express from 'express';
+import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
+import { createWorkerApiJsonParser, createManagerApiJsonParser } from '../../src/routes/code-body-parser.ts';
+import { registerCodeRoutes } from '../../src/routes/code.ts';
+import { asyncHandler } from '../../src/http/async-handler.ts';
+import { httpStatus } from '../../src/routes/_http-error.ts';
 import { registerNativeCodeRoutes, type CodeRouteService } from '../../src/routes/code-native.ts';
 import { CodeStore, CodeStoreError } from '../../src/code-mode/store.ts';
 import type { CodeSessionInfo } from '../../src/code-mode/wire.ts';
@@ -41,16 +45,33 @@ function fixture() {
     return { session, calls, service, duplicate() { duplicate = true; } };
 }
 
-async function server<T>(run: (url: string, fixture: ReturnType<typeof fixture>, reads: () => number) => Promise<T>, prefix?: string): Promise<T> {
+async function server<T>(
+    run: (url: string, fixture: ReturnType<typeof fixture>, reads: () => number) => Promise<T>,
+    prefix?: string,
+    parserFactory: () => RequestHandler = createWorkerApiJsonParser,
+): Promise<T> {
     const f = fixture();
     let reads = 0;
     const app = express();
-    app.use(express.json({ limit: '2mb' }));
+    app.use(parserFactory());
     app.get('/legacy', (_req, res) => res.json({ legacy: true }));
-    registerNativeCodeRoutes(app, (req, res, next) => {
+    const requireAuth: RequestHandler = (req, res, next) => {
         if (req.headers.authorization !== 'Bearer fixture') { res.status(401).json({ ok: false, error: 'unauthorized' }); return; }
         next();
-    }, () => { reads++; return f.service; }, prefix);
+    };
+    registerCodeRoutes(app, requireAuth);
+    registerNativeCodeRoutes(app, requireAuth, () => { reads++; return f.service; }, prefix);
+    // Observe the selected generic parser or the intact stream left to a downstream owner.
+    app.use(asyncHandler(async (req, res) => {
+        if (req.body !== undefined) { res.json({ generic: true, body: req.body }); return; }
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        res.json({ generic: true, raw: Buffer.concat(chunks).toString('utf8') });
+    }));
+    const genericError: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+        res.status(httpStatus(error, 500)).json({ genericError: true });
+    };
+    app.use(genericError);
     const http = app.listen(0, '127.0.0.1');
     await once(http, 'listening');
     const address = http.address();
@@ -88,7 +109,7 @@ test('authentication and malformed inputs cannot initialize the lazy Code host',
             headers: { authorization: 'Bearer fixture', 'content-type': 'application/json' }, body: '{"broken":' });
         assert.equal(malformed.status, 400);
         assert.deepEqual(await malformed.json(), { ok: false, error: 'invalid_body' });
-        const oversized = await request(`${url}/sessions`, 'POST', { value: 'x'.repeat(2 * 1024 * 1024) });
+        const oversized = await request(`${url}/sessions`, 'POST', { value: 'x'.repeat(6_295_552) });
         assert.equal(oversized.status, 413);
         assert.deepEqual(await oversized.json(), { ok: false, error: 'payload_too_large' });
         assert.equal(reads(), 0);
@@ -233,4 +254,168 @@ test('final prefix serves native APIs and does not keep a removed staging alias'
         assert.equal(unavailable.status, 503);
         assert.deepEqual(await unavailable.json(), { ok: false, error: 'persistence_failed' });
     }, '/api/code');
+});
+
+
+function rawRequest(url: string, body: string, method = 'POST', authorization: string | null = 'Bearer fixture') {
+    return fetch(url, { method, headers: { 'content-type': 'application/json',
+        ...(authorization === null ? {} : { authorization }) }, body });
+}
+
+function paddedJson(input: unknown, bytes: number): string {
+    const encoded = JSON.stringify(input);
+    return encoded + ' '.repeat(bytes - Buffer.byteLength(encoded));
+}
+
+const hostParsers = [
+    { name: 'worker', factory: createWorkerApiJsonParser, genericBytes: 1_048_576 },
+    { name: 'manager', factory: createManagerApiJsonParser, genericBytes: 65_536 },
+] as const;
+
+for (const host of hostParsers) {
+    test(`${host.name}: production parser admits 70k and maximally escaped decoded 1MiB prompts`, async () => {
+        await server(async (url, f, reads) => {
+            const ordinary = { text: 'x'.repeat(70_000), clientTurnKey: 'ordinary-key' };
+            const response = await request(`${url}/sessions/session-one/prompt`, 'POST', ordinary);
+            assert.equal(response.status, 202);
+            await response.json();
+            assert.deepEqual(f.calls, [{ method: 'prompt', args: ['session-one', ordinary] }]);
+
+            // Build raw JSON escapes: JSON.stringify here would double the backslashes.
+            const encoded = '{"text":"' + String.raw`\u0061`.repeat(1_048_576)
+                + '","clientTurnKey":"' + String.raw`\u006b`.repeat(240) + '"}';
+            assert.equal(Buffer.byteLength(encoded), 6_292_926);
+            const maximal = await rawRequest(`${url}/sessions/session-one/prompt`, encoded);
+            assert.equal(maximal.status, 202);
+            await maximal.json();
+            assert.deepEqual(f.calls[1], { method: 'prompt', args: ['session-one', {
+                text: 'a'.repeat(1_048_576), clientTurnKey: 'k'.repeat(240),
+            }] });
+            assert.equal(f.calls.length, 2);
+            assert.equal(reads(), 2);
+        }, '/api/code', host.factory);
+    });
+
+    test(`${host.name}: decoded character and UTF-8 byte ceilings reject before lazy admission`, async () => {
+        await server(async (url, f, reads) => {
+            const escaped = '{"text":"' + String.raw`\u0061`.repeat(1_048_577) + '","clientTurnKey":"over"}';
+            assert.ok(Buffer.byteLength(escaped) < 6_295_552, 'the envelope must reach the text validator');
+            const multibyte = 'é'.repeat(524_288) + 'a';
+            assert.ok(multibyte.length < 1_048_576, 'the character guard must not mask the UTF-8 guard');
+            assert.equal(Buffer.byteLength(multibyte), 1_048_577);
+            for (const encoded of [escaped, JSON.stringify({ text: multibyte, clientTurnKey: 'over-bytes' })]) {
+                const response = await rawRequest(`${url}/sessions/session-one/prompt`, encoded);
+                assert.equal(response.status, 400);
+                assert.deepEqual(await response.json(), { ok: false, error: 'invalid_prompt' });
+            }
+            assert.equal(reads(), 0);
+            assert.deepEqual(f.calls, []);
+        }, '/api/code', host.factory);
+    });
+
+    test(`${host.name}: exact envelope ceiling is accepted and one more byte is rejected`, async () => {
+        await server(async (url, f, reads) => {
+            const input = { text: 'bounded input', clientTurnKey: 'envelope-key' };
+            const encoded = paddedJson(input, 6_295_552);
+            assert.equal(Buffer.byteLength(encoded), 6_295_552);
+            const accepted = await rawRequest(`${url}/sessions/session-one/prompt`, encoded);
+            assert.equal(accepted.status, 202);
+            await accepted.json();
+            assert.deepEqual(f.calls, [{ method: 'prompt', args: ['session-one', input] }]);
+            const rejected = await rawRequest(`${url}/sessions/session-one/prompt`, encoded + ' ');
+            assert.equal(rejected.status, 413);
+            assert.deepEqual(await rejected.json(), { ok: false, error: 'payload_too_large' });
+            assert.equal(reads(), 1, 'oversized input must not access the host');
+            assert.equal(f.calls.length, 1);
+        }, '/api/code', host.factory);
+    });
+
+    test(`${host.name}: malformed, unauthorized, retired and unknown requests never open Code`, async () => {
+        await server(async (url, f, reads) => {
+            for (const authorization of [null, 'Bearer wrong']) {
+                const response = await rawRequest(`${url}/sessions/session-one/prompt`,
+                    JSON.stringify({ text: 'valid prompt', clientTurnKey: 'unauthorized' }), 'POST', authorization);
+                assert.equal(response.status, 401);
+                assert.deepEqual(await response.json(), { ok: false, error: 'unauthorized' });
+            }
+            // Preserve parser-before-auth precedence, including unauthenticated bad JSON.
+            for (const authorization of ['Bearer fixture', null]) {
+                const malformed = await rawRequest(`${url}/sessions`, '{"broken":', 'POST', authorization);
+                assert.equal(malformed.status, 400);
+                assert.deepEqual(await malformed.json(), { ok: false, error: 'invalid_body' });
+            }
+            for (const path of ['/sessions/stored', '/model-assignments', '/model-presets']) {
+                const response = await request(url + path);
+                assert.equal(response.status, 410);
+                assert.deepEqual(await response.json(), { ok: false, error: 'code_endpoint_retired',
+                    message: 'Use native Code sessions and session settings.' });
+            }
+            const retired = await request(`${url}/sessions/session-one/ext`, 'POST', { method: 'unsafe' });
+            assert.equal(retired.status, 410);
+            await retired.json();
+            for (const path of ['/missing', '/native/models']) {
+                const response = await request(url + path);
+                assert.equal(response.status, 404);
+                assert.deepEqual(await response.json(), { ok: false, error: 'code_route_not_found' });
+            }
+            assert.equal(reads(), 0);
+            assert.deepEqual(f.calls, []);
+        }, '/api/code', host.factory);
+    });
+
+    test(`${host.name}: exact Code prefix leaves generic envelope limits and errors unchanged`, async () => {
+        await server(async (url, f, reads) => {
+            const origin = new URL(url).origin;
+            const input = { text: 'generic input' };
+            const encoded = paddedJson(input, host.genericBytes);
+            const accepted = await rawRequest(`${origin}/ordinary`, encoded);
+            assert.equal(accepted.status, 200);
+            assert.deepEqual(await accepted.json(), { generic: true, body: input });
+            for (const path of ['/ordinary', '/api/codeevil', '/api/code-native', '/api/codex']) {
+                const response = await rawRequest(origin + path, encoded + ' ');
+                assert.equal(response.status, 413, path);
+                assert.deepEqual(await response.json(), { genericError: true }, path);
+            }
+            for (const path of ['/api/code', '/api/code/', '/api/code?probe=1', '/API/CoDe/missing']) {
+                const response = await rawRequest(origin + path, encoded + ' ');
+                assert.equal(response.status, 404, path);
+                assert.deepEqual(await response.json(), { ok: false, error: 'code_route_not_found' }, path);
+            }
+            // Workspace utilities remain before the native router's unknown-route handler.
+            const workspace = await request(`${url}/git-info?cwd=relative`);
+            assert.equal(workspace.status, 400);
+            assert.deepEqual(await workspace.json(), { ok: false, error: 'absolute cwd required' });
+            assert.equal(reads(), 0);
+            assert.deepEqual(f.calls, []);
+        }, '/api/code', host.factory);
+    });
+}
+
+test('Manager production parser leaves proxy/browser/design streams to their existing owners', async () => {
+    await server(async (url, f, reads) => {
+        const origin = new URL(url).origin;
+        const raw = 'not-json:'.repeat(8_000);
+        assert.ok(Buffer.byteLength(raw) > 65_536);
+        for (const [method, path] of [
+            ['POST', '/i/4000/api/message'],
+            ['POST', '/api/manager/embedded-browser/commands/task/result'],
+            ['PUT', '/api/dashboard/design/pages/page/files/source.html'],
+        ] as const) {
+            const response = await rawRequest(origin + path, raw, method);
+            assert.equal(response.status, 200, path);
+            assert.deepEqual(await response.json(), { generic: true, raw }, path);
+        }
+        for (const [method, path] of [
+            ['POST', '/i/not-a-port/api/message'],
+            ['POST', '/api/manager/embedded-browser/commands-evil/result'],
+            ['POST', '/api/dashboard/design/pages/page/files/source.html'],
+            ['PUT', '/api/dashboard/design/pages/page/files-evil/source.html'],
+        ] as const) {
+            const response = await rawRequest(origin + path, raw, method);
+            assert.equal(response.status, 413, path);
+            assert.deepEqual(await response.json(), { genericError: true }, path);
+        }
+        assert.equal(reads(), 0);
+        assert.deepEqual(f.calls, []);
+    }, '/api/code', createManagerApiJsonParser);
 });

@@ -7,11 +7,11 @@ import type { CodeCreateSessionRequest, CodePatchSessionRequest, CodePermissionM
 import { asyncHandler } from '../http/async-handler.js';
 import { fail } from '../http/response.js';
 import { httpCode, httpStatus } from './_http-error.js';
+import { CODE_PROMPT_MAX_BYTES } from './code-body-parser.js';
 
 export type CodeRouteService = Pick<CodeSessionManager, 'create' | 'list' | 'snapshot' | 'readEvents' | 'history'
     | 'prompt' | 'cancel' | 'attach' | 'patch' | 'answerPermission' | 'models'>;
 
-const PROMPT_MAX_BYTES = 1024 * 1024;
 const PROVIDERS: readonly CodeProviderId[] = ['codex-app', 'claude', 'cursor', 'grok'];
 const PERMISSION_MODES: readonly CodePermissionMode[] = ['ask', 'auto', 'read-only'];
 
@@ -162,8 +162,8 @@ export function registerNativeCodeRoutes(
     router.post('/sessions/:id/prompt', asyncHandler(async (req, res) => {
         const sessionId = id(req.params['id']);
         const input = body(req.body, ['text', 'clientTurnKey']);
-        const text = string(input['text'], 'prompt', PROMPT_MAX_BYTES);
-        if (Buffer.byteLength(text) > PROMPT_MAX_BYTES) return invalid('invalid_prompt');
+        const text = string(input['text'], 'prompt', CODE_PROMPT_MAX_BYTES);
+        if (Buffer.byteLength(text) > CODE_PROMPT_MAX_BYTES) return invalid('invalid_prompt');
         const key = id(input['clientTurnKey']);
         const admitted = getService().prompt(sessionId, { text, clientTurnKey: key });
         res.status(admitted.duplicate ? 200 : 202).json({ ok: true, ...admitted.receipt });

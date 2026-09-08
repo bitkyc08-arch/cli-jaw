@@ -14,6 +14,7 @@ import fs from 'fs';
 import { registerBrowserRoutes } from './src/routes/browser.js';
 import { registerCodeRoutes } from './src/routes/code.js';
 import { registerNativeCodeRoutes } from './src/routes/code-native.js';
+import { createWorkerApiJsonParser } from './src/routes/code-body-parser.js';
 import { createCodeHost } from './src/code-mode/host.js';
 import { registerRuntimeRequestRoutes } from './src/routes/runtime-requests.js';
 import { registerEmployeeRoutes } from './src/routes/employees.js';
@@ -351,7 +352,7 @@ app.use(createRateLimitMiddleware({
     limiter: rateLimiter,
 }));
 
-app.use(express.json({ limit: '1mb' }));
+app.use(createWorkerApiJsonParser());
 
 // Root + media routes → src/routes/static.ts (Phase 2 extraction).
 // Must register BEFORE express.static so GET / prefers the Vite dist build.
