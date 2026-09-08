@@ -104,3 +104,35 @@ test('RC-009: a caller can widen or narrow the radius', () => {
     assert.equal(reconcileVisionCandidate({ candidate: { point }, bundle, maxDistance: 200 }).action, 'ref');
 });
 
+test('RC-010: edge distance trades a wrong click for a refusal near a toolbar', () => {
+    // This is the real consequence of measuring to the edge, and it is not a
+    // pure win. A point between a wide toolbar and a small icon used to
+    // resolve decisively to the icon, because the toolbar's centre was far
+    // away. By edge distance they are equidistant, which the tie margin turns
+    // into a refusal.
+    //
+    // A refusal is the better failure - the previous decisiveness was an
+    // artifact of element width, not evidence about the target - but it IS a
+    // behaviour change and belongs in the record rather than in a footnote.
+    const point = { x: 810, y: 30 };
+    const bundle = {
+        refs: [
+            ref('toolbar', box(0, 0, 800, 60)),
+            ref('icon', box(820, 20, 20, 20)),
+        ],
+    };
+    const r = reconcileVisionCandidate({ candidate: { point }, bundle });
+    assert.equal(r.action, 'fail', 'equidistant neighbours must not be guessed between');
+    assert.equal(r.action === 'fail' && r.code, 'COMPUTER_TARGET_AMBIGUOUS');
+});
+
+test('RC-011: a large element does not capture points outside itself', () => {
+    // Containment is checked before distance and is unchanged, so widening the
+    // notion of "near" cannot let a big container swallow a point that is
+    // plainly inside a small element.
+    const r = reconcileVisionCandidate({
+        candidate: { point: { x: 500, y: 300 } },
+        bundle: { refs: [ref('page', box(0, 0, 1200, 800)), ref('button', box(480, 290, 40, 20))] },
+    });
+    assert.equal(r.action, 'fail', 'nested boxes both containing the point are ambiguous');
+});

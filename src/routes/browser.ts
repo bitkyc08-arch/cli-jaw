@@ -159,7 +159,7 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
             return;
         }
         try {
-            const { provider, doubleClick, prepareStable, region, clip, verifyBeforeClick } = req.body;
+            const { provider, doubleClick, prepareStable, region, clip, verifyBeforeClick, reconcile } = req.body;
             const result = await browser.visionClick(cdpPort(req), target, {
                 provider,
                 doubleClick,
@@ -167,6 +167,7 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
                 region,
                 clip,
                 verifyBeforeClick,
+                reconcile,
             });
             res.json(result);
         } catch (e: unknown) {
