@@ -149,7 +149,7 @@ export function InstanceRow(props: InstanceRowProps) {
                         <span className="instance-row-title">
                             {!hideStatusLine ? (
                                 <span className="instance-row-status-line" data-status={rowStatus}>
-                                    <span className={`instance-row-status-pill is-${rowStatus} health-${props.instance.status}`}>
+                                    <span className={`instance-row-status-pill is-${rowStatus} health-${props.instance.status}`} title={statusLabel}>
                                         {statusLabel}
                                     </span>
                                     {rowStatus === 'working' ? <WorkingDuration startedAtMs={startedAtRef.current} /> : null}
