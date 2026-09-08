@@ -6,8 +6,10 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot } from './actions.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
+import { parseCandidate, type GroundingCandidate } from './grounding-candidate.js';
 
 export { sanitizeTarget, appendBounded, MAX_TARGET_LENGTH, MAX_CODEX_STDOUT_BYTES } from './vision-input.js';
+export * from './grounding-candidate.js';
 
 export interface VisionClickOptions {
     provider?: 'codex';
@@ -38,16 +40,14 @@ function recordText(record: JsonRecord, key: string): string | null {
     return typeof value === 'string' ? value : null;
 }
 
-function parseVisionCoordinates(value: unknown): VisionCoordinates | null {
-    if (!isRecord(value)) return null;
-    if (typeof value["found"] !== 'boolean') return null;
-    if (typeof value["x"] !== 'number' || typeof value["y"] !== 'number') return null;
+/** Project the candidate onto the legacy coordinate shape this module returns. */
+function toVisionCoordinates(candidate: GroundingCandidate): VisionCoordinates {
     return {
-        found: value["found"],
-        x: value["x"],
-        y: value["y"],
+        found: candidate.found,
+        x: candidate.point.x,
+        y: candidate.point.y,
         provider: 'codex',
-        ...(typeof value["description"] === 'string' ? { description: value["description"] } : {}),
+        ...(candidate.description ? { description: candidate.description } : {}),
     };
 }
 
@@ -131,20 +131,19 @@ function codexVision(screenshotPath: string, target: string): Promise<VisionCoor
             try {
                 const lines = stdout.split('\n').filter(l => l.trim());
 
-                // Scan ALL events for coordinate JSON (agent_message, command output, etc.)
-                // Codex is agentic — JSON may appear in any event type
-                for (const line of lines.reverse()) { // Reverse: last message most likely has the answer
+                // Scan events newest-first: the answer is the last thing said.
+                // codex is agentic, so the JSON can land in any event type.
+                for (const line of lines.reverse()) {
                     try {
                         const event: unknown = JSON.parse(line);
                         const textsToSearch = collectEventTexts(event);
 
                         for (const text of textsToSearch) {
-                            // Try to extract {"found":...,"x":...,"y":...} from text
-                            const jsonMatch = text.match(/\{[^{}]*"found"\s*:\s*(true|false)[^{}]*"x"\s*:\s*\d+[^{}]*"y"\s*:\s*\d+[^{}]*\}/);
-                            if (jsonMatch) {
-                                const coords = parseVisionCoordinates(JSON.parse(jsonMatch[0]));
-                                if (coords) return resolve(coords);
-                            }
+                            // A brace scanner rather than a regex: the previous
+                            // pattern's [^{}]* class could not cross a nested
+                            // object, so a bbox-carrying answer never matched.
+                            const candidate = parseCandidate(text);
+                            if (candidate) return resolve(toVisionCoordinates(candidate));
                         }
                     } catch { /* skip non-JSON lines */ }
                 }
@@ -195,6 +194,23 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     if (!result.found) {
         return { success: false, reason: 'target not found', provider: result.provider };
+    }
+
+    // 2b. Bound the answer in its own frame before converting it. The frame is
+    // the captured image: a clip's own size, otherwise the viewport scaled by
+    // device pixel ratio. Without this a hallucinated coordinate was converted
+    // and clicked at an arbitrary place on the page.
+    const frame = clip
+        ? { width: clip.width * dpr, height: clip.height * dpr }
+        : viewportProbe.viewport
+            ? { width: viewportProbe.viewport.width * dpr, height: viewportProbe.viewport.height * dpr }
+            : null;
+    if (frame && (result.x < 0 || result.y < 0 || result.x > frame.width || result.y > frame.height)) {
+        return {
+            success: false,
+            reason: `point (${result.x}, ${result.y}) is outside the ${frame.width}x${frame.height} capture`,
+            provider: result.provider,
+        };
     }
 
     // 3. DPR correction: image pixels → CSS pixels
