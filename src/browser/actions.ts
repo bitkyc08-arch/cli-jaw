@@ -247,10 +247,11 @@ async function refToLocator(page: Page, port: number, ref: string): Promise<Loca
 export async function hitTestPoint(
     port: number,
     point: { x: number; y: number },
+    targetPoint?: { x: number; y: number },
 ): Promise<import('./occlusion.js').HitResult | null> {
     try {
         const page = await requireActivePage(port);
-        const result = await page.evaluate(HIT_TEST_SOURCE, point);
+        const result = await page.evaluate(HIT_TEST_SOURCE, { ...point, ...(targetPoint ? { targetPoint } : {}) });
         return (result ?? null) as import('./occlusion.js').HitResult | null;
     } catch {
         return null;

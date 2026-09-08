@@ -262,7 +262,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // "fall back" would do the dangerous thing on purpose, and a click that
     // actuates and then throws would fire twice.
     let decision: ReconcileResult | null = null;
-    let boxRefs: Array<{ ref: string; role: string; name: string }> = [];
+    let boxRefs: Array<{ ref: string; role: string; name: string; box: { x: number; y: number; width: number; height: number } }> = [];
     if (opts.reconcile !== false) {
         try {
             const boxes = await elementBoxes(port, { interactive: true });
@@ -309,12 +309,16 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         // blocker refuses; an unusable hit test fails open, because an
         // infrastructure failure must not block a legitimate click.
         if (opts.checkOcclusion !== false) {
-            const hit = await hitTestPoint(port, css);
-            // The reconciled ref is what we believe we are clicking. Without a
-            // descriptor for it there is nothing to contradict, and judgeHit
-            // returns 'unknown' rather than inventing a verdict.
-            const expected = boxRefs.find(r => r.ref === decision.ref);
-            const verdict = judgeHit(hit, expected ? [expected.role.toLowerCase()] : []);
+            // Relatedness is decided in the page against the real node. The
+            // reconciled box's centre is a point known to be on the target, so
+            // the page can resolve the target itself rather than matching a
+            // name we would have to invent from an ARIA ref.
+            const box = boxRefs.find(r => r.ref === decision.ref)?.box;
+            const targetPoint = box
+                ? { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+                : undefined;
+            const hit = await hitTestPoint(port, css, targetPoint);
+            const verdict = judgeHit(hit);
             if (verdict.blocked) {
                 return {
                     success: false,

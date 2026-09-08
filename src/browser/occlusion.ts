@@ -3,14 +3,16 @@
  *
  * A coordinate click dispatches wherever the point lands. If a cookie banner,
  * modal or sticky header covers the target, that element receives the click
- * and the call still reports success — the single most common silent failure
- * in coordinate-based automation, because nothing in the response says the
- * wrong thing was clicked.
+ * and the call still reports success — the most common silent failure in
+ * coordinate-based automation, because nothing in the response says the wrong
+ * thing was clicked.
  *
- * Ported from BrowserOS's hit test, with one deliberate difference. BrowserOS
- * asks "is my resolved element covered at this point"; cli-jaw's coordinate
- * path has no element yet, so this asks "what is here, and does it belong to
- * something I expected". Both questions need the same DOM walk.
+ * Ported from BrowserOS's hit test. Relatedness is decided IN THE PAGE against
+ * the actual node, because that is the only place element identity is
+ * knowable. An earlier version of this compared the reconciled ref's ARIA role
+ * against the hit's DOM tag and blocked whenever they differed — a category
+ * error that refused every `link` on an `a`, every `textbox` on an `input`,
+ * and every `button` implemented as a `div`.
  *
  * The DOM half runs in the page. The decision rules are pure and live here so
  * they can be tested without a browser.
@@ -23,6 +25,11 @@ export type HitResult = {
     ancestry: string[];
     /** True when the walk crossed into an iframe to reach the hit. */
     crossedFrame: boolean;
+    /**
+     * Whether the hit is the marked target, inside it, or contains it.
+     * Undefined when no target was marked, which is not the same as false.
+     */
+    relatesToTarget?: boolean;
 };
 
 export type OcclusionVerdict =
@@ -30,41 +37,22 @@ export type OcclusionVerdict =
     | { blocked: true; blocker: string; reason: string };
 
 /**
- * Elements that legitimately sit over a target and still deliver the click.
- *
- * A label forwards to its control, and an overlay explicitly marked
- * non-interactive cannot receive the event at all. Treating these as blockers
- * would refuse clicks that would have worked.
- */
-const TRANSPARENT_ROLES = new Set(['label', 'none', 'presentation']);
-
-/**
  * Decide whether a hit means the click would go somewhere unintended.
  *
- * `expected` is the descriptor set the caller believes it is clicking — the
- * reconciled ref's own descriptor and its ancestry. When the caller has no
- * expectation (a pure coordinate click into canvas), there is nothing to
- * contradict, so the verdict is `unknown` rather than `clear`: no evidence of
- * a problem is not evidence of no problem.
+ * With no marked target — a pure coordinate click into canvas — there is
+ * nothing to contradict, so the verdict is `unknown` rather than `clear`.
+ * No evidence of a problem is not evidence of no problem, and collapsing the
+ * two would let an unchecked click report as a verified one.
  */
-export function judgeHit(hit: HitResult | null, expected: string[] = []): OcclusionVerdict {
+export function judgeHit(hit: HitResult | null): OcclusionVerdict {
     // The hit test could not run — an unreadable cross-origin frame, a page
     // that navigated mid-check. Fail OPEN: an infrastructure failure must not
     // block a legitimate click, and pretending to know is worse than saying
     // we do not.
     if (!hit) return { blocked: false, reason: 'unknown' };
 
-    if (expected.length === 0) return { blocked: false, reason: 'unknown' };
-
-    // The hit is the expected element, or inside it, or an ancestor of it.
-    // Clicking a button's inner span is clicking the button.
-    const related = [hit.descriptor, ...hit.ancestry];
-    if (related.some(d => expected.includes(d))) return { blocked: false, reason: 'clear' };
-    if (expected.some(e => related.includes(e))) return { blocked: false, reason: 'clear' };
-
-    // A label or a presentational wrapper forwards rather than intercepts.
-    const tag = hit.descriptor.split(/[#.]/)[0] ?? '';
-    if (TRANSPARENT_ROLES.has(tag)) return { blocked: false, reason: 'clear' };
+    if (hit.relatesToTarget === undefined) return { blocked: false, reason: 'unknown' };
+    if (hit.relatesToTarget) return { blocked: false, reason: 'clear' };
 
     return {
         blocked: true,
@@ -78,37 +66,56 @@ export function judgeHit(hit: HitResult | null, expected: string[] = []): Occlus
 /**
  * The page-side hit test, as a function expression for `page.evaluate`.
  *
- * Descends nested iframes, subtracting each frame's rect and border so the
- * point stays in the child's coordinate space, and reports ancestry so the
- * caller can tell a genuine cover from a click on a target's own child.
+ * Takes the point and, optionally, a second point known to be on the intended
+ * target — the centre of its reconciled box. The target node is resolved by
+ * hit-testing THAT point, so identity comes from the DOM rather than from a
+ * name we would have to invent. Descends nested iframes, subtracting each
+ * frame's rect and border so the point stays in the child's coordinate space.
  */
-export const HIT_TEST_SOURCE = `(point) => {
+export const HIT_TEST_SOURCE = `(arg) => {
     const describe = (el) => {
         if (!el || !el.tagName) return 'element';
-        let d = el.tagName.toLowerCase();
-        if (el.id) return d + '#' + el.id;
+        const tag = el.tagName.toLowerCase();
+        if (el.id) return tag + '#' + el.id;
         if (typeof el.className === 'string' && el.className.trim()) {
-            return d + '.' + el.className.trim().split(/\\s+/)[0];
+            return tag + '.' + el.className.trim().split(/\\s+/)[0];
         }
-        return d;
+        return tag;
     };
     const up = (node) => node
         ? (node.parentNode || node.host || (node.getRootNode && node.getRootNode().host) || null)
         : null;
+    const reaches = (from, to) => {
+        for (let node = from, guard = 0; node && guard < 200; node = up(node), guard++) {
+            if (node === to) return true;
+        }
+        return false;
+    };
+
+    let target = null;
+    if (arg.targetPoint) {
+        target = document.elementFromPoint(arg.targetPoint.x, arg.targetPoint.y);
+    }
 
     let doc = document;
-    let x = point.x;
-    let y = point.y;
+    let x = arg.x;
+    let y = arg.y;
     let crossedFrame = false;
     let hit = doc.elementFromPoint(x, y);
 
-    while (hit && (hit.tagName === 'IFRAME' || hit.tagName === 'FRAME')) {
+    // Bounded: a frame chain should be shallow, and a cycle must not hang the
+    // page.
+    for (let depth = 0; depth < 16; depth++) {
+        if (!hit || (hit.tagName !== 'IFRAME' && hit.tagName !== 'FRAME')) break;
+        if (target && (hit === target || reaches(target, hit))) break;
         let childDoc = null;
         try { childDoc = hit.contentDocument; } catch (_) { childDoc = null; }
         if (!childDoc) break;
         const rect = hit.getBoundingClientRect();
-        x -= rect.x + hit.clientLeft;
-        y -= rect.y + hit.clientTop;
+        // elementFromPoint in the child is relative to the child's own
+        // viewport, so subtract the frame's position and its border.
+        x -= rect.left + hit.clientLeft;
+        y -= rect.top + hit.clientTop;
         doc = childDoc;
         crossedFrame = true;
         const next = doc.elementFromPoint(x, y);
@@ -119,9 +126,21 @@ export const HIT_TEST_SOURCE = `(point) => {
     if (!hit) return null;
 
     const ancestry = [];
-    for (let node = up(hit); node && ancestry.length < 24; node = up(node)) {
+    for (let node = up(hit), guard = 0; node && guard < 24; node = up(node), guard++) {
         if (node.tagName) ancestry.push(describe(node));
     }
-    return { descriptor: describe(hit), ancestry: ancestry, crossedFrame: crossedFrame };
-}`;
 
+    const result = { descriptor: describe(hit), ancestry: ancestry, crossedFrame: crossedFrame };
+    if (target) {
+        // The hit is the target, inside it, or contains it. Clicking a
+        // button's inner span is clicking the button. A label that forwards to
+        // this control counts too.
+        let related = hit === target || reaches(hit, target) || reaches(target, hit);
+        if (!related && hit.closest) {
+            const lbl = hit.closest('label');
+            if (lbl && (lbl.control === target || lbl.contains(target))) related = true;
+        }
+        result.relatesToTarget = related;
+    }
+    return result;
+}`;
