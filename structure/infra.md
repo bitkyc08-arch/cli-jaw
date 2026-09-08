@@ -161,7 +161,9 @@ which includes the stream compatibility fix for the older ZIP extractor. Browser
 provisioning has an eight-minute deadline. It switches to Node 24.17.0 before
 native ABI preparation, backend/frontend builds and QA, preserving the target
 runtime. Then `tests/helpers/hosted-manager-qa.mjs` owns isolated
-Manager/worker fixtures and browser processes. It runs native Code, retired
+Manager/worker fixtures and browser processes under an exclusive short
+`/tmp/jaw-qa-*` root so Chromium's Unix socket paths fit Linux limits. Artifacts
+remain in the explicit runner artifact directory. It runs native Code, retired
 settings and Manager layout files sequentially: seven named tests, including
 16 native Code scenarios, two retirement widths and five layout scenarios.
 Structured results reject skipped or missing cases; logs, screenshots, traces

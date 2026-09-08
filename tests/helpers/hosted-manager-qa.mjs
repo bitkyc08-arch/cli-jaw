@@ -424,7 +424,7 @@ async function executePhase(phase, runtimeRoot, output, chromium) {
         result.manifest = { ...manifest, token: '[owned ephemeral token omitted]' };
         json(join(dir, 'readiness.json'), await ready(manifest, helper, phase.mode === 'manager-layout'));
         const profile = join(root, 'chromium-profile'); mkdirSync(profile);
-        browserOwner = launch('chromium', chromium.executablePath(), ['--headless=new', '--no-sandbox',
+        browserOwner = launch('chromium', chromium.executablePath(), ['--headless=new', '--no-sandbox', '--enable-logging=stderr',
             '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
             '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'],
             environment(join(root, 'browser')), dir, owners);
@@ -524,7 +524,10 @@ async function main(options) {
         report.playwrightVersion = readJson(join(project, 'node_modules/playwright-core/package.json')).version;
         const { chromium } = await import('playwright-core');
         artifact(dirname(chromium.executablePath()), chromium.executablePath());
-        const runtimeRoot = realpathSync(mkdtempSync(join(dirname(output), 'qa-runtime-')));
+        // Chromium puts SingletonSocket below TMPDIR; long artifact paths exceed
+        // Linux's 108-byte Unix socket address. Keep this exclusive runtime root
+        // short while retaining all phase/home containment and artifact checks.
+        const runtimeRoot = realpathSync(mkdtempSync(join(realpathSync('/tmp'), 'jaw-qa-')));
         report.runtimeRoot = runtimeRoot;
         for (const phase of phases) {
             if (interrupted || report.phases.some(row => !row.quiescent)) {
