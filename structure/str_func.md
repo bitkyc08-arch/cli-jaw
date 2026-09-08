@@ -379,6 +379,8 @@ cli-jaw/
 │   │   ├── primitives.ts     ← low-level CDP primitives (294L)
 │   │   ├── vision.ts         ← vision-click 파이프라인 + Codex provider(--ephemeral, stdin ignore) + guardrail options (251L)
 │   │   ├── vision-input.ts   ← 미신뢰 target 정화(quote-run 붕괴, 제로폭/bidi 제거, surrogate-safe 절단) + stdout 상한 (80L)
+│   │   ├── grounding-candidate.ts ← grounding-candidate-v1 스키마 + brace 스캐너(중첩/stray-quote 복구) + 좌표 타당성/경계 검증 (282L)
+│   │   ├── image-size.ts     ← PNG/JPEG 헤더에서 캡처 픽셀 크기 판독(실패 시 null → fail-closed) (55L)
 │   │   ├── runtime-diagnostics.ts ← runtime diagnostics helper (121L)
 │   │   ├── runtime-owner.ts  ← browser runtime owner management (135L)
 │   │   ├── runtime-owner-store.ts ← runtime owner store (55L)
