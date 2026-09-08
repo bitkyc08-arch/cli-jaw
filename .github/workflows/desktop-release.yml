@@ -89,7 +89,22 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Build server and bundle sidecar
+        id: bundle-sidecar
         run: bash scripts/bundle-sidecar.sh "${{ matrix.sidecar_platform }}" "${{ matrix.sidecar_arch }}"
+
+      # Failed smoke probes retain their issues/output in the owned build root.
+      # Upload only the reports, never the source, dependencies or fixture homes.
+      - name: Upload sidecar smoke evidence on failure
+        if: failure() && steps.bundle-sidecar.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-smoke-${{ matrix.platform }}-${{ github.run_attempt }}
+          path: |
+            electron/sidecar/.server-build.*/smoke-report.json
+            electron/sidecar/.server-build.*/smoke-report.json.cleanup.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Install Electron dependencies
         run: npm ci --prefix electron
