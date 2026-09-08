@@ -63,6 +63,14 @@ async function mount(t: TestContext, element: ReactNode) {
     return { container, render, get };
 }
 
+function controlledTarget(root: HTMLElement, control: HTMLElement): HTMLElement {
+    const id = control.getAttribute('aria-controls');
+    assert.ok(id, 'disclosure must name its target');
+    const target = root.ownerDocument.getElementById(id);
+    assert.ok(target && root.contains(target), 'disclosure target must belong to this mounted tree');
+    return target;
+}
+
 async function key(target: HTMLElement, value: string, init: KeyboardEventInit = {}) {
     target.focus();
     const event = new dom.window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true, ...init });
@@ -196,6 +204,13 @@ test('offline and busy row actions keep their disabled contracts without selecti
     assert.equal(open.getAttribute('rel'), null);
     assert.equal(open.getAttribute('aria-disabled'), 'true');
     assert.equal(open.tabIndex, -1);
+    assert.equal(open.matches(':disabled'), false, 'disabled links need the explicit class guard');
+    assert.equal(open.classList.contains('is-disabled'), true);
+    assert.equal(open.matches('.quick-btn:not(:disabled):not(.is-disabled)'), false);
+    assert.equal(stop.matches('.quick-btn:not(:disabled):not(.is-disabled)'), false);
+    const blockedClick = new dom.window.MouseEvent('click', { bubbles: true, cancelable: true });
+    await act(async () => { open.dispatchEvent(blockedClick); });
+    assert.equal(blockedClick.defaultPrevented, true);
     await act(async () => { stop.click(); open.click(); });
     assert.equal(selected.mock.callCount(), 0);
     assert.equal(lifecycle.mock.callCount(), 0);
@@ -220,35 +235,143 @@ test('Selected summary retains group identity, session linkage while closed, and
     }
     const view = await mount(t, navigator(createElement(GroupsFixture, { port: 3457 }), selected));
     const summary = view.get('[aria-label="Selected instances"]');
-    assert.equal(summary.querySelector('[id="instance-group-body-active"]') != null, true);
+    assert.ok(summary.querySelector(':scope > div[id]'), 'Selected retains its group body');
     assert.equal(summary.querySelectorAll('[data-instance-port="3457"]').length, 1);
     assert.equal(view.container.querySelectorAll('[data-instance-port="3457"]').length, 2);
     const disclosureButton = view.get<HTMLButtonElement>('[aria-label="Selected instances"] .action-sessions');
-    assert.equal(disclosureButton.getAttribute('aria-controls'), 'instance-sessions-3457');
-    const wrapper = view.get('#instance-sessions-3457');
+    const wrapper = controlledTarget(summary, disclosureButton);
+    const originalSessionId = wrapper.id;
     assert.equal(wrapper.childElementCount, 0);
     assert.equal(disclosureButton.getAttribute('aria-expanded'), 'false');
     await act(async () => disclosureButton.click());
     assert.equal(disclosureButton.getAttribute('aria-expanded'), 'true');
     assert.equal(wrapper.textContent, 'Sessions for 3457');
     await act(async () => disclosureButton.click());
-    assert.equal(view.get('#instance-sessions-3457'), wrapper);
+    assert.equal(controlledTarget(summary, disclosureButton), wrapper);
     assert.equal(wrapper.childElementCount, 0);
     await view.render(navigator(createElement(GroupsFixture, { port: 3458 }), selected));
     const next = view.get<HTMLButtonElement>('[aria-label="Selected instances"] .action-sessions');
-    assert.equal(next.getAttribute('aria-controls'), 'instance-sessions-3458');
-    assert.ok(view.get('#instance-sessions-3458'));
-    assert.equal(view.container.querySelector('#instance-sessions-3457'), null);
+    const nextWrapper = controlledTarget(summary, next);
+    assert.notEqual(nextWrapper.id, originalSessionId);
+    assert.equal(dom.window.document.getElementById(originalSessionId), null);
     await act(async () => next.click());
-    assert.equal(view.get('#instance-sessions-3458').textContent, 'Sessions for 3458');
+    assert.equal(nextWrapper.textContent, 'Sessions for 3458');
     assert.deepEqual(disclosure.mock.calls.map(call => call.arguments), [[3457], [3457], [3458]]);
     await act(async () => view.get('[aria-label="Running instances"] .instance-group-toggle').click());
-    assert.equal(view.get('#instance-group-body-running').querySelectorAll('[data-instance-port]').length, 1);
-    assert.ok(view.get('#instance-group-body-running [data-instance-port="3458"]'));
-    assert.equal(view.get('#instance-group-body-settled').querySelectorAll('[data-instance-port]').length, 10);
+    const running = controlledTarget(view.container, view.get('[aria-label="Running instances"] .instance-group-toggle'));
+    const settled = controlledTarget(view.container, view.get('[aria-label="Settled instances"] .instance-group-toggle'));
+    assert.equal(running.querySelectorAll('[data-instance-port]').length, 1);
+    assert.ok(running.querySelector('[data-instance-port="3458"]'));
+    assert.equal(settled.querySelectorAll('[data-instance-port]').length, 10);
     await act(async () => view.get('.instance-settled-more').click());
-    assert.equal(view.get('#instance-group-body-settled').querySelectorAll('[data-instance-port]').length, 12);
+    assert.equal(settled.querySelectorAll('[data-instance-port]').length, 12);
     assert.equal(view.container.querySelector('.instance-settled-more'), null);
+    assert.equal(selected.mock.callCount(), 0);
+    assert.equal(lifecycle.mock.callCount(), 0);
+});
+
+test('sidebar and drawer group mounts have unique local targets through disclosure, collapse and port changes', async t => {
+    const values = [instance(3457), instance(3458), instance(3459, { status: 'offline', ok: false }), instance(3460, { group: 'Work projects / 개발' })];
+    const selected = t.mock.fn();
+    const lifecycle = t.mock.fn();
+    const disclosures = t.mock.fn();
+    function GroupsFixture({ port }: { port: number }) {
+        const [open, setOpen] = useState(false);
+        return createElement(InstanceGroups, {
+            instances: values, selectedPort: port, lifecycleBusyPort: null,
+            getLabel: value => value.label!, formatUptime: () => '1m',
+            onSelect: selected, onLifecycle: lifecycle, onPreview: () => {}, onMarkActivitySeen: () => {},
+            onInstanceLabelSave: async () => {}, activeSessionCount: 2, activeSessionsOpen: open,
+            onToggleActiveSessions: target => { disclosures(target); setOpen(value => !value); },
+            renderActiveSessionList: target => open ? createElement('div', { className: 'instance-session-list' }, `Sessions for ${target}`) : null,
+        });
+    }
+    const trees = (sidebarPort: number, drawerPort: number) => createElement('div', null,
+        createElement('div', { 'data-surface': 'sidebar' }, createElement(GroupsFixture, { port: sidebarPort })),
+        createElement('div', { 'data-surface': 'drawer' }, createElement(GroupsFixture, { port: drawerPort })),
+    );
+    const view = await mount(t, trees(3457, 3457));
+    const sidebar = view.get('[data-surface="sidebar"]');
+    const drawer = view.get('[data-surface="drawer"]');
+    const control = (surface: HTMLElement, selector: string) => {
+        const button = surface.querySelector<HTMLButtonElement>(selector);
+        assert.ok(button);
+        return button;
+    };
+    const assertLocalTargets = () => {
+        const ids = [...view.container.querySelectorAll<HTMLElement>('[id]')].map(node => node.id);
+        assert.ok(ids.length > 0);
+        assert.equal(new Set(ids).size, ids.length, 'all group-body and session IDs must be unique across mounts');
+        for (const id of ids) assert.doesNotMatch(id, /\s/, 'DOM IDs must be single ARIA tokens, even for labels with spaces');
+        for (const surface of [sidebar, drawer]) {
+            const controls = surface.querySelectorAll<HTMLElement>('[aria-controls]');
+            assert.equal(controls.length, 4, 'Sessions, custom group, Running and Settled each keep a local target');
+            for (const button of controls) {
+                const target = controlledTarget(surface, button);
+                assert.ok(button.closest('.instance-group')?.contains(target));
+            }
+        }
+    };
+    assertLocalTargets();
+    const customGroup = control(sidebar, '[aria-label="Work projects / 개발 instances"] .instance-group-toggle');
+    const customBody = controlledTarget(sidebar, customGroup);
+    const customId = customBody.id;
+    assert.ok(customBody.querySelector('[data-instance-port="3460"]'));
+    await act(async () => customGroup.click());
+    assert.equal(customBody.hidden, true);
+    assert.equal(controlledTarget(sidebar, customGroup), customBody);
+    assert.equal(customBody.id, customId);
+    assert.deepEqual(JSON.parse(dom.window.localStorage.getItem('jaw.sidebarGroupCollapsed')!), { 'group-Work projects / 개발': true });
+    assert.equal(control(drawer, '[aria-label="Work projects / 개발 instances"] .instance-group-toggle').getAttribute('aria-expanded'), 'true');
+    assertLocalTargets();
+    const sidebarSessions = control(sidebar, '.action-sessions');
+    const drawerSessions = control(drawer, '.action-sessions');
+    const sidebarWrapper = controlledTarget(sidebar, sidebarSessions);
+    const drawerWrapper = controlledTarget(drawer, drawerSessions);
+    const sidebarId = sidebarWrapper.id;
+    const drawerId = drawerWrapper.id;
+    assert.notEqual(sidebarId, drawerId);
+    assert.equal(sidebarWrapper.childElementCount, 0);
+    assert.equal(drawerWrapper.childElementCount, 0);
+    await act(async () => sidebarSessions.click());
+    assert.equal(sidebarWrapper.textContent, 'Sessions for 3457');
+    assert.equal(drawerSessions.getAttribute('aria-expanded'), 'false');
+    assert.equal(drawerWrapper.childElementCount, 0);
+    await act(async () => sidebarSessions.click());
+    assert.equal(controlledTarget(sidebar, sidebarSessions), sidebarWrapper);
+    assert.equal(sidebarWrapper.id, sidebarId);
+    assert.equal(sidebarWrapper.childElementCount, 0);
+    const sidebarRunning = control(sidebar, '[aria-label="Running instances"] .instance-group-toggle');
+    const runningBody = controlledTarget(sidebar, sidebarRunning);
+    const runningId = runningBody.id;
+    await act(async () => sidebarRunning.click());
+    assert.equal(sidebarRunning.getAttribute('aria-expanded'), 'false');
+    assert.equal(runningBody.querySelectorAll('[data-instance-port]').length, 1);
+    assert.equal(control(drawer, '[aria-label="Running instances"] .instance-group-toggle').getAttribute('aria-expanded'), 'true');
+    assert.deepEqual(JSON.parse(dom.window.localStorage.getItem('jaw.sidebarGroupCollapsed')!), { 'group-Work projects / 개발': true, running: true });
+    assertLocalTargets();
+    await view.render(trees(3458, 3457));
+    assertLocalTargets();
+    const changedSessions = control(sidebar, '.action-sessions');
+    const changedWrapper = controlledTarget(sidebar, changedSessions);
+    assert.notEqual(changedWrapper.id, sidebarId);
+    assert.equal(dom.window.document.getElementById(sidebarId), null);
+    assert.equal(changedWrapper.childElementCount, 0);
+    assert.equal(controlledTarget(drawer, drawerSessions), drawerWrapper);
+    assert.equal(drawerWrapper.id, drawerId);
+    assert.equal(controlledTarget(sidebar, sidebarRunning).id, runningId);
+    assert.ok(runningBody.querySelector('[data-instance-port="3458"]'));
+    await act(async () => changedSessions.click());
+    assert.equal(changedWrapper.textContent, 'Sessions for 3458');
+    await view.render(trees(3458, 3458));
+    assertLocalTargets();
+    const changedDrawerWrapper = controlledTarget(drawer, control(drawer, '.action-sessions'));
+    assert.notEqual(changedDrawerWrapper.id, drawerId);
+    assert.notEqual(changedDrawerWrapper.id, changedWrapper.id);
+    assert.equal(dom.window.document.getElementById(drawerId), null);
+    assert.equal(changedDrawerWrapper.childElementCount, 0);
+    assert.equal(changedWrapper.textContent, 'Sessions for 3458');
+    assert.deepEqual(disclosures.mock.calls.map(call => call.arguments), [[3457], [3457], [3458]]);
     assert.equal(selected.mock.callCount(), 0);
     assert.equal(lifecycle.mock.callCount(), 0);
 });

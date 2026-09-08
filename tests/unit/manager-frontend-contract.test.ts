@@ -741,5 +741,15 @@ test('sidebar sibling layout preserves structural span display and named seconda
     }
     assert.match(compact, /\.is-profile-merged \.instance-row-title \.instance-row-secondary\s*\{[^}]*display:\s*block;/);
     assert.match(components, /\.quick-btn:focus-visible\s*\{[^}]*outline:\s*var\(--focus-ring\)/);
-    assert.match(components, /@media \(pointer: coarse\)\s*\{\s*\.instance-row \.instance-row-quick \.quick-btn:not\(:disabled\)\s*\{[^}]*opacity:\s*1;/);
+    assert.match(components, /@media \(pointer: coarse\)\s*\{\s*\.instance-row \.instance-row-quick \.quick-btn:not\(:disabled\):not\(\.is-disabled\)\s*\{[^}]*opacity:\s*1;/);
+});
+
+
+test('sidebar quick-action reveal consistently excludes disabled buttons and links', () => {
+    const css = read('public/manager/src/manager-components.css');
+    for (const state of [':hover', ':focus-within', '.is-selected']) {
+        assert.ok(css.includes(`.instance-row${state} .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled)`));
+    }
+    assert.doesNotMatch(css, /\.quick-btn:not\(:disabled\)(?!:not\(\.is-disabled\))/);
+    assert.match(css, /\.quick-btn:disabled, \.quick-btn\.is-disabled\s*\{[^}]*pointer-events:\s*none;/);
 });

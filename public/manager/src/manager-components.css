@@ -452,9 +452,9 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     pointer-events: none;
     transition: opacity var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast), background var(--motion-fast);
 }
-.instance-row:hover .instance-row-quick .quick-btn:not(:disabled),
-.instance-row:focus-within .instance-row-quick .quick-btn:not(:disabled),
-.instance-row.is-selected .instance-row-quick .quick-btn:not(:disabled) {
+.instance-row:hover .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled),
+.instance-row:focus-within .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled),
+.instance-row.is-selected .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled) {
     opacity: 1;
     pointer-events: auto;
 }
@@ -486,7 +486,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 }
 
 @media (pointer: coarse) {
-    .instance-row .instance-row-quick .quick-btn:not(:disabled) {
+    .instance-row .instance-row-quick .quick-btn:not(:disabled):not(.is-disabled) {
         opacity: 1;
         pointer-events: auto;
     }

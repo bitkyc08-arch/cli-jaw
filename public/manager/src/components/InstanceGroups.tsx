@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { InstanceRow } from './InstanceRow';
 import type {
     DashboardInstance,
@@ -111,6 +111,7 @@ function renderInstanceRow(
     profile?: DashboardProfile,
     priority: 'active' | 'normal' = 'normal',
     jumpHint?: string | null,
+    sessionListId?: string,
 ) {
     return (
         <InstanceRow
@@ -131,6 +132,7 @@ function renderInstanceRow(
             {...(priority === 'active' && props.activeSessionCount !== undefined ? { sessionCount: props.activeSessionCount } : {})}
             {...(priority === 'active' && props.activeSessionsOpen !== undefined ? { sessionsOpen: props.activeSessionsOpen } : {})}
             {...(priority === 'active' && props.onToggleActiveSessions ? { onToggleSessions: props.onToggleActiveSessions } : {})}
+            {...(sessionListId !== undefined ? { sessionListId } : {})}
             priority={priority}
             label={props.getLabel(instance)}
             uptime={props.formatUptime(instance.uptime)}
@@ -168,9 +170,14 @@ function visibleGroupInstances(
 }
 
 function InstanceGroupSection(section: InstanceGroupSectionProps) {
+    const idNamespace = useId();
     const { group, props, profileMap, collapsed, onToggle, jumpStartIndex, showJumpHints, settledVisibleCount, onShowMoreSettled } = section;
     const settledExpanded = group.id !== 'settled' || !collapsed;
     const visible = visibleGroupInstances(group, props.selectedPort, collapsed, settledVisibleCount);
+    const groupBodyId = `instance-group-body-${idNamespace}`;
+    const sessionListId = group.id === 'active' && visible[0]?.ok
+        ? `instance-sessions-${idNamespace}-${visible[0].port}`
+        : undefined;
     const hiddenSettled = group.id === 'settled' && settledExpanded
         ? Math.max(0, group.instances.length - settledVisibleCount)
         : 0;
@@ -184,7 +191,7 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
             type="button"
             className="instance-group-header instance-group-toggle"
             aria-expanded={!collapsed}
-            aria-controls={`instance-group-body-${group.id}`}
+            aria-controls={groupBodyId}
             onClick={onToggle}
         >
             <span>
@@ -198,7 +205,7 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
     return (
         <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
             {header}
-            <div id={`instance-group-body-${group.id}`} hidden={collapsed && visible.length === 0}>
+            <div id={groupBodyId} hidden={collapsed && visible.length === 0}>
                 {visible.map((instance, rowIndex) => {
                     const jumpIndex = jumpStartIndex + rowIndex;
                     const jumpHint = showJumpHints && jumpIndex < 9 ? String(jumpIndex + 1) : null;
@@ -208,10 +215,11 @@ function InstanceGroupSection(section: InstanceGroupSectionProps) {
                         instance.profileId ? profileMap.get(instance.profileId) : undefined,
                         group.id === 'active' ? 'active' : 'normal',
                         jumpHint,
+                        sessionListId,
                     );
                 })}
                 {group.id === 'active' && visible[0]?.ok ? (
-                    <div id={`instance-sessions-${visible[0].port}`}>
+                    <div id={sessionListId}>
                         {props.renderActiveSessionList?.(visible[0].port)}
                     </div>
                 ) : null}

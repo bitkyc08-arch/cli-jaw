@@ -22,6 +22,7 @@ type InstanceRowProps = {
     showSelectedActions?: boolean;
     /** Session disclosure. */
     sessionCount?: number;
+    sessionListId?: string;
     sessionsOpen?: boolean;
     onToggleSessions?: (port: number) => void;
     onSelect: (instance: DashboardInstance) => void;
@@ -177,7 +178,7 @@ export function InstanceRow(props: InstanceRowProps) {
                         <button
                             type="button"
                             className="quick-btn action-sessions"
-                            aria-controls={`instance-sessions-${props.instance.port}`}
+                            aria-controls={props.sessionListId}
                             aria-expanded={props.sessionsOpen === true}
                             aria-label={`Sessions (${props.sessionCount})`}
                             title={`Sessions (${props.sessionCount})`}
