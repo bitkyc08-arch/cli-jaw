@@ -330,6 +330,7 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     transform: rotate(-90deg);
 }
 .instance-row {
+    container: instance-row / inline-size;
     position: relative;
     display: grid;
     gap: 8px;
@@ -354,6 +355,10 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
 }
 .instance-row:hover, .instance-row:focus-within { border-color: transparent; background: var(--sidebar-row-hover); }
 .instance-row-status-line {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -446,6 +451,15 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     align-items: center;
     gap: 4px;
     flex-shrink: 0;
+}
+@container instance-row (width < 240px) {
+    .instance-row-body { grid-template-columns: minmax(0, 1fr); }
+    .instance-row-quick {
+        justify-self: end;
+        justify-content: flex-end;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
 }
 .instance-row .instance-row-quick .quick-btn {
     opacity: 0;
@@ -599,16 +613,20 @@ button.instance-group-header[aria-expanded="false"] .instance-group-chevron {
     background: var(--surface-raised);
 }
 .instance-session-retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.instance-row-title { min-width: 0; display: grid; gap: 3px; }
+.instance-row-title { min-width: 0; width: 100%; max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
 .instance-row-title-line {
     min-width: 0;
+    width: 100%;
+    max-width: 100%;
     display: flex;
     align-items: baseline;
     gap: 5px;
     padding-top: 1px;
 }
 .instance-row-title strong {
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

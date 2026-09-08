@@ -444,6 +444,151 @@ layoutTest('manager sidebar shell resizes, persists, resets, and collapses', asy
     assert.equal(initial.role, 'separator', 'resize handle must be a focusable separator');
     assert.equal(initial.valueNow, '300', 'resize handle exposes the current width');
 
+    // Synthetic DOM geometry only: clone the shipped Selected/Running rows,
+    // retain their CSS context, and exercise worst-case controls without API writes.
+    await page.waitForSelector('.manager-sidebar .instance-group[aria-label="Selected instances"] .instance-row');
+    await page.waitForSelector('.manager-sidebar .instance-group[aria-label="Running instances"] .instance-row');
+    type Rect = { x: number; y: number; right: number; bottom: number; width: number; height: number };
+    type Part = { name: string; visible: boolean; rect: Rect };
+    type NarrowGeometry = {
+        actualSidebarWidth: number;
+        rows: Array<{ group: string; actualRowContainerWidth: number; rect: Rect; parts: Part[] }>;
+    };
+    const captures: Array<{ requestedSidebarWidth: number; sessions: boolean; syntheticDOM: true; screenshot: string; geometry: NarrowGeometry }> = [];
+    scenario(t).observations['narrowSidebar'] = captures;
+    const readNarrow = () => page.evaluate(`(() => {
+        const rect = el => {
+            const r = el.getBoundingClientRect();
+            return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+        };
+        const visible = el => {
+            for (let node = el; node; node = node.parentElement) {
+                const style = globalThis.getComputedStyle(node);
+                if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0) return false;
+            }
+            return true;
+        };
+        const sidebar = globalThis.document.querySelector('.manager-sidebar');
+        return {
+            actualSidebarWidth: sidebar.getBoundingClientRect().width,
+            rows: [...globalThis.document.querySelectorAll('[data-narrow-row]')].map(row => {
+                const style = globalThis.getComputedStyle(row);
+                const parts = [
+                    ['title', row.querySelector('.instance-row-title strong')],
+                    ['status', row.querySelector('.instance-row-status-line')],
+                    ...[...row.querySelectorAll('.instance-row-quick .quick-btn, .instance-row-quick .port')]
+                        .map(el => [el.getAttribute('aria-label') || 'port', el]),
+                ];
+                return { group: row.getAttribute('data-narrow-row'), rect: rect(row),
+                    actualRowContainerWidth: row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+                    parts: parts.map(([name, el]) => {
+                        if (!el) throw new Error('Missing narrow row part: ' + name);
+                        return { name, visible: visible(el), rect: rect(el) };
+                    }) };
+            }),
+        };
+    })()`) as Promise<NarrowGeometry>;
+    try {
+        await page.evaluate(`(() => {
+            const scroll = globalThis.document.querySelector('.manager-sidebar .instance-navigator-scroll');
+            if (!scroll) throw new Error('Missing sidebar scroll owner');
+            const fixture = globalThis.document.createElement('div');
+            fixture.className = 'instance-groups profile-instance-groups is-profile-merged';
+            fixture.setAttribute('data-narrow-fixture', 'synthetic DOM geometry, not session API proof');
+            for (const label of ['Selected', 'Running']) {
+                const source = scroll.querySelector('.instance-group[aria-label="' + label + ' instances"] .instance-row');
+                if (!source) throw new Error('Missing real ' + label + ' row');
+                const section = globalThis.document.createElement('section');
+                section.className = 'instance-group';
+                const heading = globalThis.document.createElement('div');
+                heading.className = 'instance-group-header';
+                heading.textContent = label + ' — synthetic geometry';
+                const row = source.cloneNode(true);
+                row.setAttribute('data-narrow-row', label);
+                row.querySelector('.instance-row-title strong').textContent = '아주 긴 한국어 프로젝트 이름과 작업 인스턴스 상태 확인';
+                row.querySelector('.instance-row-status-pill').textContent = '온라인 작업 준비 상태 확인';
+                row.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+                row.querySelectorAll('[aria-controls]').forEach(el => el.removeAttribute('aria-controls'));
+                row.querySelectorAll('.action-sessions').forEach(el => el.remove());
+                // Enable inert cloned quick actions to measure the largest visible set.
+                row.querySelectorAll('.instance-row-quick .quick-btn').forEach(el => {
+                    el.removeAttribute('disabled'); el.classList.remove('is-disabled'); el.removeAttribute('aria-disabled');
+                    el.removeAttribute('href'); el.removeAttribute('target');
+                });
+                row.classList.add('is-selected');
+                section.append(heading, row); fixture.append(section);
+            }
+            for (const child of scroll.children) child.style.display = 'none';
+            scroll.append(fixture);
+        })()`);
+        for (const requestedSidebarWidth of [164, 220, 300]) {
+            for (const sessions of [false, true]) {
+                await page.evaluate(({ width, sessions }) => {
+                    globalThis.document.querySelector<HTMLElement>('.manager-workspace')!.style.setProperty('--sidebar-width', `${width}px`);
+                    for (const row of globalThis.document.querySelectorAll('[data-narrow-row]')) {
+                        row.querySelector('.action-sessions')?.remove();
+                        if (sessions) {
+                            const button = globalThis.document.createElement('button');
+                            button.type = 'button'; button.className = 'quick-btn action-sessions';
+                            button.setAttribute('aria-label', 'Sessions'); button.title = 'Synthetic Sessions geometry';
+                            button.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M3.5 6l4.5 4.5L12.5 6" fill="none" stroke="currentColor"/></svg>';
+                            row.querySelector('.instance-row-quick')!.prepend(button);
+                        }
+                    }
+                }, { width: requestedSidebarWidth, sessions });
+                await page.waitForFunction(width => {
+                    const sidebar = globalThis.document.querySelector('.manager-sidebar');
+                    return sidebar && Math.abs(sidebar.getBoundingClientRect().width - width) <= 0.5;
+                }, requestedSidebarWidth);
+                // Poll measured geometry across animation frames, not a fixed delay.
+                let geometry = await readNarrow();
+                let stableFrames = 0;
+                for (let frame = 0; frame < 60 && stableFrames < 3; frame++) {
+                    await page.evaluate(() => new Promise<void>(resolve => globalThis.requestAnimationFrame(() => resolve())));
+                    const next = await readNarrow();
+                    stableFrames = JSON.stringify(next) === JSON.stringify(geometry) ? stableFrames + 1 : 0;
+                    geometry = next;
+                }
+                const screenshot = `sidebar-synthetic-${requestedSidebarWidth}-${sessions ? 'sessions' : 'no-sessions'}.png`;
+                captures.push({ requestedSidebarWidth, sessions, syntheticDOM: true, screenshot, geometry });
+                await page.screenshot({ path: join(SCREENSHOT_DIR, screenshot), fullPage: false });
+                saveEvidence();
+                assert.equal(stableFrames, 3, 'narrow fixture geometry must settle');
+                assert.ok(Math.abs(geometry.actualSidebarWidth - requestedSidebarWidth) <= 0.5);
+                assert.deepEqual(geometry.rows.map(row => row.group), ['Selected', 'Running']);
+                for (const row of geometry.rows) {
+                    const label = `${requestedSidebarWidth}px ${row.group} sessions=${sessions}`;
+                    assert.ok(row.actualRowContainerWidth > 0, label);
+                    assert.equal(row.parts.length, sessions ? 6 : 5, `${label}: title, status, Stop, Open, port and optional Sessions`);
+                    assert.deepEqual(row.parts.map(part => part.name), sessions
+                        ? ['title', 'status', 'Sessions', 'Stop', 'Open', 'port']
+                        : ['title', 'status', 'Stop', 'Open', 'port']);
+                    for (const part of row.parts) {
+                        const r = part.rect;
+                        assert.ok(part.visible && r.width > 0 && r.height > 0, `${label}: ${part.name} must be displayed with positive dimensions`);
+                        assert.ok(r.x >= row.rect.x && r.y >= row.rect.y && r.right <= row.rect.right + 0.5 && r.bottom <= row.rect.bottom + 0.5,
+                            `${label}: ${part.name} stays inside its row`);
+                        assert.ok(r.x >= 0 && r.y >= 0 && r.right <= 1280 && r.bottom <= 800, `${label}: ${part.name} stays on screen`);
+                    }
+                    for (let a = 0; a < row.parts.length; a++) {
+                        for (let b = a + 1; b < row.parts.length; b++) {
+                            const left = row.parts[a]!, right = row.parts[b]!;
+                            const overlaps = Math.min(left.rect.right, right.rect.right) - Math.max(left.rect.x, right.rect.x) > 0.5
+                                && Math.min(left.rect.bottom, right.rect.bottom) - Math.max(left.rect.y, right.rect.y) > 0.5;
+                            assert.equal(overlaps, false, `${label}: ${left.name} must not overlap ${right.name}`);
+                        }
+                    }
+                }
+            }
+        }
+    } finally {
+        // Discard all synthetic DOM and CSS overrides before the real drag flow.
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('.sidebar-resize-handle');
+        await page.waitForFunction(() => Math.abs(globalThis.document.querySelector('.manager-sidebar')!.getBoundingClientRect().width - 300) <= 0.5);
+        await settleLayout(page);
+    }
+
     const box = await page.locator('.sidebar-resize-handle').boundingBox();
     assert.ok(box, 'resize handle must have a layout box');
     const startX = box.x + box.width / 2;
@@ -481,6 +626,16 @@ layoutTest('manager sidebar shell resizes, persists, resets, and collapses', asy
     assert.equal(collapsed.width, 44, 'collapsed sidebar leaves the 44px rail');
     assert.equal(collapsed.cssVar, '44px', 'collapsed width comes from the hook constant');
     await page.keyboard.press('Meta+Shift+B');
+    await page.waitForFunction(() => {
+        const workspace = globalThis.document.querySelector('.manager-workspace');
+        const sidebar = globalThis.document.querySelector('.manager-sidebar');
+        return workspace && sidebar && !workspace.classList.contains('is-sidebar-collapsed')
+            && Math.abs(sidebar.getBoundingClientRect().width - 300) <= 0.5;
+    });
+    await settleLayout(page);
+    const expanded = await readSidebar();
+    assert.equal(expanded.width, 300, 'final capture waits for the fully expanded default sidebar');
+    scenario(t).observations['finalExpandedSidebar'] = expanded;
 });
 
 
