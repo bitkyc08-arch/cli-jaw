@@ -55,6 +55,31 @@ export type VerifyOutcome =
     | { agreed: false; reason: string; drift?: number };
 
 /**
+ * How long an observation may be trusted before the click it informs.
+ *
+ * Verification adds a second model round-trip, which roughly doubles the
+ * interval between seeing the page and acting on it. The freshness guard on
+ * the reconciliation path catches navigation, but nothing catches scroll,
+ * reflow or animation — so a long enough gap means the coordinate describes a
+ * page that no longer exists.
+ *
+ * This does not detect movement. It bounds how long we are willing to assume
+ * there was none, which is a weaker claim and the honest one.
+ */
+export const OBSERVATION_MAX_AGE_MS = 30_000;
+
+export function isObservationStale(
+    observedAt: number,
+    now: number,
+    maxAgeMs = OBSERVATION_MAX_AGE_MS,
+): boolean {
+    // A clock that ran backwards tells us nothing, so treat it as unusable
+    // rather than as freshness.
+    if (!Number.isFinite(observedAt) || !Number.isFinite(now)) return true;
+    return now - observedAt > maxAgeMs || now < observedAt;
+}
+
+/**
  * Judge a second answer taken inside `crop`.
  *
  * `localPoint` is where the re-run landed within the crop, in CSS pixels

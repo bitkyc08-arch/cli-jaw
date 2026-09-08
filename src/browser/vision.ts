@@ -6,7 +6,7 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef, hitTestPoint } from './actions.js';
 import { judgeHit } from './occlusion.js';
-import { cropAroundPoint, judgeVerification } from './verify-candidate.js';
+import { cropAroundPoint, judgeVerification, isObservationStale } from './verify-candidate.js';
 import { reconcileVisionCandidate, assertFreshObservationBundle, type ReconcileResult } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
@@ -190,6 +190,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     // 1. Screenshot (includes DPR)
     const viewportProbe = await screenshot(port, { json: true });
+    const observedAt = Date.now();
     const clip = opts.clip || resolveRegionClip(opts.region, viewportProbe.viewport);
     const ss = clip ? await screenshot(port, { clip, json: true }) : viewportProbe;
     const dpr = typeof ss.dpr === 'number' && Number.isFinite(ss.dpr) ? ss.dpr : 1;
@@ -274,6 +275,24 @@ export async function visionClick(port: number, target: string, opts: VisionClic
         verifiedPoint = outcome.point;
     }
     const clickPoint = verifiedPoint ?? css;
+
+    // The coordinate describes the page as it was at capture. A model
+    // round-trip takes seconds and verification adds a second one, so by now
+    // the page may have scrolled or reflowed — neither of which the
+    // reconciliation freshness guard can see, since both leave the URL and
+    // target id unchanged.
+    //
+    // This does not detect movement. It bounds how long we are willing to
+    // assume there was none, and says so rather than clicking on an
+    // assumption that has quietly expired.
+    if (isObservationStale(observedAt, Date.now())) {
+        return {
+            success: false,
+            reason: 'the observation is too old to act on; re-run the lookup',
+            code: 'COMPUTER_OBSERVATION_EXPIRED',
+            provider: result.provider,
+        };
+    }
 
     // 3c. Reconcile against element geometry before falling back to a raw
     // coordinate. The browser already knows where its elements are, so a point

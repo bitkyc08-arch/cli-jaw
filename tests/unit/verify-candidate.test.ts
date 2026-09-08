@@ -13,6 +13,8 @@ import {
     judgeVerification,
     VERIFY_CROP,
     VERIFY_DRIFT_LIMIT,
+    isObservationStale,
+    OBSERVATION_MAX_AGE_MS,
 } from '../../src/browser/verify-candidate.ts';
 
 const viewport = { width: 1280, height: 800 };
@@ -180,4 +182,34 @@ test('VER-010: a caller can tighten or loosen the threshold', () => {
     const point = { x: 170, y: 100 }; // 35% drift
     assert.equal(judgeVerification(point, crop).agreed, true);
     assert.equal(judgeVerification(point, crop, undefined, 0.3).agreed, false);
+});
+
+test('VER-011: an observation expires rather than being clicked on', () => {
+    // Verification adds a second model round-trip, roughly doubling the gap
+    // between seeing the page and acting on it. The reconciliation freshness
+    // guard catches navigation but not scroll or reflow, both of which leave
+    // the URL and target id untouched.
+    const t0 = 1_000_000;
+    assert.equal(isObservationStale(t0, t0), false);
+    assert.equal(isObservationStale(t0, t0 + OBSERVATION_MAX_AGE_MS), false, 'exactly at the limit is still usable');
+    assert.equal(isObservationStale(t0, t0 + OBSERVATION_MAX_AGE_MS + 1), true);
+});
+
+test('VER-012: an unusable clock is treated as stale, not as fresh', () => {
+    // A backwards clock or a missing timestamp tells us nothing about age.
+    // Reading "no evidence" as "fresh" is how a stale coordinate gets clicked.
+    const t0 = 1_000_000;
+    assert.equal(isObservationStale(t0, t0 - 1), true, 'time running backwards is not freshness');
+    assert.equal(isObservationStale(Number.NaN, t0), true);
+    assert.equal(isObservationStale(t0, Number.NaN), true);
+    assert.equal(isObservationStale(Number.POSITIVE_INFINITY, t0), true);
+});
+
+test('VER-013: the age bound is a stated assumption, not a movement detector', () => {
+    // Worth pinning explicitly: this cannot tell whether the page moved. It
+    // bounds how long we are willing to assume it did not.
+    const t0 = 1_000_000;
+    assert.equal(isObservationStale(t0, t0 + 5_000, 1_000), true, 'a caller can demand more freshness');
+    assert.equal(isObservationStale(t0, t0 + 5_000, 60_000), false, 'or accept less');
+    assert.equal(OBSERVATION_MAX_AGE_MS, 30_000);
 });
