@@ -4,7 +4,7 @@
 // handler that gates then dispatches into submitMessage/orchestrateAndCollect,
 // and a forwarder for non-Slack-origin agent output.
 
-import { isSettingsPersistenceBlocked, readPersistedSlackAttachPort, saveSettings, settings } from '../core/config.js';
+import { JAW_HOME, isSettingsPersistenceBlocked, readPersistedSlackAttachPort, saveSettings, settings } from '../core/config.js';
 import { withSessionScope } from '../core/session-context.js';
 import { log } from '../core/logger.js';
 import { t, normalizeLocale } from '../core/i18n.js';
@@ -15,7 +15,8 @@ import { isResetIntent } from '../orchestrator/pipeline.js';
 import { isContinueIntent } from '../orchestrator/parser.js';
 import {
     setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget,
-    transportStarted, transportNotStarted, type TransportStartOutcome,
+    revokeMessagingTransport, startMessagingTransport,
+    transportStarted, transportNotStarted, type TransportInitContext, type TransportStartOutcome,
 } from '../messaging/runtime.js';
 import { slackTargetFromId, resolveSlackThreadPlacement } from '../messaging/slack-target.js';
 import type { RemoteTarget } from '../messaging/types.js';
@@ -45,7 +46,14 @@ import {
     describeSlackScopeGaps,
     resetSlackScopeStatus,
 } from './scope-status.js';
-import { SlackSocketClient, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
+import { HELLO_DEADLINE_MS, SlackSocketClient, type SlackConnectionState, type SlackEnvelope, type SlackPreflightResult } from './socket.js';
+import {
+    SLACK_TOKEN_CLAIM_FRESH_MS,
+    acquireSlackTokenClaim,
+    inspectSlackTokenClaim,
+    type SlackTokenClaimAcquireResult,
+    type SlackTokenClaimLease,
+} from './token-claim.js';
 import { runSlackAutoJoin, mergeSlackAutoJoin } from './auto-join.js';
 import { createHash } from 'node:crypto';
 import { admitIngress, getIngressJournal } from '../messaging/durable-ingress.js';
@@ -88,6 +96,8 @@ let socketClient: SlackSocketClient | null = null;
 let forwarderHandler: BroadcastListener | null = null;
 let selfUserId: string | null = null;
 let slackInitLock = false;
+let activeClaimArbiter: ClaimArbiter | null = null;
+let claimRecheckTimer: ReturnType<typeof setTimeout> | null = null;
 /**
  * Request ids a live queued-reply listener is already waiting on. The
  * target-reply forwarder checks this so a result does not get posted twice: once
@@ -266,6 +276,104 @@ let lifecycleGeneration = 0;
  * Slack permanently off just because its start request landed mid-teardown.
  */
 let initRequestPending = false;
+
+type ClaimArbiter = {
+    readonly generation: number;
+    readonly client: SlackSocketClient;
+    readonly startEpoch: number;
+    readonly lease: SlackTokenClaimLease | null;
+    arbitrate(trigger: 'init' | 'hello'): Promise<SlackTokenClaimAcquireResult>;
+    recordPresence(): SlackTokenClaimAcquireResult;
+    noteDisconnected(): void;
+    releaseOwnLeaseOnly(): void;
+    applyForeignLiveOnce(fn: () => void): boolean;
+};
+
+function createClaimArbiter(options: {
+    generation: number;
+    client: SlackSocketClient;
+    startEpoch: number;
+    appToken: string;
+    home: string;
+    port: string;
+}): ClaimArbiter {
+    let lease: SlackTokenClaimLease | null = null;
+    let inFlight: Promise<SlackTokenClaimAcquireResult> | null = null;
+    let settled: SlackTokenClaimAcquireResult | null = null;
+    let foreignApplied = false;
+    const acquireConnected = (): SlackTokenClaimAcquireResult => {
+        if (lease) {
+            lease.markConnected();
+            return { kind: 'acquired', lease };
+        }
+        const result = acquireSlackTokenClaim({
+            appToken: options.appToken,
+            home: options.home,
+            port: options.port,
+            connected: true,
+        });
+        if (result.kind === 'acquired') lease = result.lease;
+        return result;
+    };
+    return {
+        generation: options.generation,
+        client: options.client,
+        startEpoch: options.startEpoch,
+        get lease() { return lease; },
+        arbitrate() {
+            if (settled) return Promise.resolve(settled);
+            if (inFlight) return inFlight;
+            inFlight = Promise.resolve().then(acquireConnected).then(result => {
+                settled = result;
+                return result;
+            }).finally(() => { inFlight = null; });
+            return inFlight;
+        },
+        recordPresence() {
+            if (lease) return { kind: 'acquired', lease };
+            const result = acquireSlackTokenClaim({
+                appToken: options.appToken,
+                home: options.home,
+                port: options.port,
+                connected: false,
+            });
+            if (result.kind === 'acquired') lease = result.lease;
+            return result;
+        },
+        noteDisconnected() {
+            lease?.markDisconnected();
+            settled = null;
+        },
+        releaseOwnLeaseOnly() {
+            lease?.release();
+            lease = null;
+            settled = null;
+        },
+        applyForeignLiveOnce(fn) {
+            if (foreignApplied) return false;
+            foreignApplied = true;
+            fn();
+            return true;
+        },
+    };
+}
+
+function clearSlackClaimRecheck(): void {
+    if (!claimRecheckTimer) return;
+    clearTimeout(claimRecheckTimer);
+    claimRecheckTimer = null;
+}
+
+function armSlackClaimRecheck(generation: number): void {
+    if (claimRecheckTimer) return;
+    claimRecheckTimer = setTimeout(() => {
+        claimRecheckTimer = null;
+        if (generation !== lifecycleGeneration || !settings['slack']?.enabled) return;
+        void startMessagingTransport('slack');
+    }, SLACK_TOKEN_CLAIM_FRESH_MS + Math.floor(Math.random() * 5001));
+    claimRecheckTimer.unref?.();
+}
+
 let slackApprovalIngress: DispatchApprovalTransport | null = null;
 function createSlackSocketIngress(): DispatchApprovalTransport {
     const transport = Object.freeze({ platform: 'slack' as const });
@@ -1186,7 +1294,7 @@ export async function handleSlackEnvelope(envelope: SlackEnvelope, approvalTrans
 
 // ─── Init / Shutdown ────────────────────────────────
 
-export async function initSlack(): Promise<TransportStartOutcome> {
+export async function initSlack(ctx?: TransportInitContext): Promise<TransportStartOutcome> {
     if (slackInitLock) {
         // Do not discard the request: the running init may be about to abort
         // because THIS caller's shutdown superseded it.
@@ -1197,17 +1305,17 @@ export async function initSlack(): Promise<TransportStartOutcome> {
     slackInitLock = true;
     let outcome: TransportStartOutcome;
     try {
-        outcome = await runSlackInit();
+        outcome = await runSlackInit(ctx);
     } catch (err) {
         // A thrown init still owes the queue a drain, exactly as the old
         // `finally` did — otherwise a crash mid-start leaves Slack off until
         // something unrelated happens to call init again.
-        await settleSlackInit();
+        await settleSlackInit(ctx);
         throw err;
     }
     // The follow-up is the call that actually opened the socket; this one only
     // lost the race, so its `superseded` outcome must not shadow the real one.
-    return (await settleSlackInit()) ?? outcome;
+    return (await settleSlackInit(ctx)) ?? outcome;
 }
 
 /**
@@ -1218,15 +1326,15 @@ export async function initSlack(): Promise<TransportStartOutcome> {
  * the follow-up runs, so the retry takes the normal path rather than queuing
  * itself forever.
  */
-async function settleSlackInit(): Promise<TransportStartOutcome | null> {
+async function settleSlackInit(ctx?: TransportInitContext): Promise<TransportStartOutcome | null> {
     slackInitLock = false;
     if (!initRequestPending) return null;
     initRequestPending = false;
-    return initSlack();
+    return initSlack(ctx);
 }
 
 /** The init body proper. Runs only under `slackInitLock`. */
-async function runSlackInit(): Promise<TransportStartOutcome> {
+async function runSlackInit(ctx?: TransportInitContext): Promise<TransportStartOutcome> {
     // Claim the generation FIRST so an external shutdown that lands while
     // we are tearing down or authenticating is not lost, then tear down
     // WITHOUT bumping it — an internal teardown must not invalidate the
@@ -1296,19 +1404,103 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
         return transportNotStarted('failed', 'team_id_unresolved');
     }
 
+    const sharingAllowed = process.env['CLI_JAW_SLACK_ALLOW_SHARED_TOKEN'] === '1';
+    if (sharingAllowed) log.info('[slack] shared app-token ownership guard disabled by environment');
+    if (!sharingAllowed) {
+        const observed = inspectSlackTokenClaim({
+            appToken: sc.appToken,
+            home: JAW_HOME,
+            port: currentPort,
+            connected: true,
+        });
+        if (observed.kind === 'foreign_live') {
+            log.warn(`[slack] app token is claimed by another home (${observed.claim.home}, :${observed.claim.port}, pid ${observed.claim.pid})`);
+            armSlackClaimRecheck(generation);
+            return transportNotStarted('token_shared_other_home');
+        }
+        if (observed.kind === 'uncertain') {
+            log.warn('[slack] token claim inspection unavailable; failing open:', observed.error);
+        }
+    }
+
+    let arb: ClaimArbiter | null = null;
     const client = new SlackSocketClient({
         appToken: sc.appToken,
         onEnvelope: envelope => handleSlackEnvelope(envelope, slackApprovalIngress),
         preflightEnvelope: preflightSlackEnvelope,
+        onStateChange: (state: SlackConnectionState) => {
+            if (!arb || sharingAllowed) return;
+            if (client !== socketClient || generation !== lifecycleGeneration) {
+                arb.releaseOwnLeaseOnly();
+                return;
+            }
+            if (state === 'connected') {
+                void arb.arbitrate('hello').then(result => {
+                    if (result.kind !== 'foreign_live') return;
+                    arb?.applyForeignLiveOnce(() => {
+                        client.stop();
+                        if (socketClient === client) socketClient = null;
+                        revokeMessagingTransport('slack', 'token_shared_other_home', ctx?.startEpoch ?? 0);
+                        armSlackClaimRecheck(generation);
+                    });
+                });
+            } else if (state === 'reconnecting') {
+                arb.noteDisconnected();
+            } else if (state === 'disconnected' || state === 'disabled') {
+                arb.releaseOwnLeaseOnly();
+            }
+        },
     });
+    arb = createClaimArbiter({
+        generation,
+        client,
+        startEpoch: ctx?.startEpoch ?? 0,
+        appToken: sc.appToken,
+        home: JAW_HOME,
+        port: currentPort,
+    });
+    activeClaimArbiter = arb;
     slackApprovalIngress = createSlackSocketIngress();
     socketClient = client;
-    await client.start();
+    try {
+        await client.start();
+    } catch (error) {
+        client.stop();
+        if (socketClient === client) socketClient = null;
+        arb.releaseOwnLeaseOnly();
+        throw error;
+    }
+    const ready = await client.waitForReady(HELLO_DEADLINE_MS + 1000);
     if (generation !== lifecycleGeneration) {
         log.info('[slack] init superseded during connect — disposing socket');
         client.stop();
         if (socketClient === client) socketClient = null;
+        arb.releaseOwnLeaseOnly();
         return transportNotStarted('superseded');
+    }
+    if (ready === 'stopped') {
+        if (socketClient === client) socketClient = null;
+        arb.releaseOwnLeaseOnly();
+        return transportNotStarted('superseded');
+    }
+    if (!sharingAllowed) {
+        const claim = ready === 'connected'
+            ? await arb.arbitrate('init')
+            : ready === 'timeout'
+                ? arb.recordPresence()
+                : null;
+        if (claim?.kind === 'unavailable') {
+            log.warn('[slack] shared token claim unavailable; failing open:', claim.error);
+        }
+        if (claim?.kind === 'foreign_live') {
+            arb.applyForeignLiveOnce(() => {
+                client.stop();
+                if (socketClient === client) socketClient = null;
+                revokeMessagingTransport('slack', 'token_shared_other_home', ctx?.startEpoch ?? 0);
+                armSlackClaimRecheck(generation);
+            });
+            return transportNotStarted('token_shared_other_home');
+        }
     }
     if (selfElectionPending) {
         // Two processes of the SAME home with attachPort unset can both reach
@@ -1322,6 +1514,7 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
             log.info(`[slack] another instance (:${onDisk}) elected itself first — disposing socket`);
             client.stop();
             if (socketClient === client) socketClient = null;
+            arb.releaseOwnLeaseOnly();
             return transportNotStarted('not_attach_instance');
         }
         if (isSettingsPersistenceBlocked()) {
@@ -1349,6 +1542,7 @@ async function runSlackInit(): Promise<TransportStartOutcome> {
     // wait for it — inbound already works the moment the connection is up.
     startSlackAutoJoin(sc, generation);
     log.info(`[slack] ✅ connected as ${selfUserId || 'unknown'}`);
+    clearSlackClaimRecheck();
     return transportStarted;
 }
 
@@ -1462,5 +1656,8 @@ async function disposeSlackRuntime(): Promise<void> {
     pendingQueueRequestIds.clear();
     socketClient?.stop();
     socketClient = null;
+    activeClaimArbiter?.releaseOwnLeaseOnly();
+    activeClaimArbiter = null;
+    clearSlackClaimRecheck();
     selfUserId = null;
 }

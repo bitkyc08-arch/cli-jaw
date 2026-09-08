@@ -184,3 +184,17 @@ test('17: pid reuse only blocks within the freshness window', t => {
     assert.equal(result.kind, 'acquired');
     if (result.kind === 'acquired') result.lease.release();
 });
+
+test('l: a non-blocking home loses safely when another home connects first', t => {
+    const f = fixture(); t.after(() => rmSync(f.base, { recursive: true, force: true }));
+    const a = acquireSlackTokenClaim({ appToken: f.token, home: f.homeA, port: '3457', connected: false, rootDir: f.rootDir });
+    assert.equal(a.kind, 'acquired');
+    const b = acquireSlackTokenClaim({ appToken: f.token, home: f.homeB, port: '3458', connected: true, rootDir: f.rootDir });
+    assert.equal(b.kind, 'acquired');
+    if (a.kind === 'acquired') a.lease.markConnected();
+    assert.equal(inspectSlackTokenClaim({ appToken: f.token, home: f.homeA, port: '3457', connected: true, rootDir: f.rootDir }).kind, 'foreign_live');
+    assert.equal(stored(f).home, realpathSync.native(f.homeB));
+    if (a.kind === 'acquired') a.lease.release();
+    assert.equal(stored(f).home, realpathSync.native(f.homeB));
+    if (b.kind === 'acquired') b.lease.release();
+});

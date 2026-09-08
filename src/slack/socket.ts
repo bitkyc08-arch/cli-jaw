@@ -53,7 +53,7 @@ const DEDUPE_TTL_MS = 10 * 60 * 1000;
  */
 const DEDUPE_SWEEP_AT = 5000;
 /** Slack sends `hello` promptly; without it the socket is not usable. */
-const HELLO_DEADLINE_MS = 15000;
+export const HELLO_DEADLINE_MS = 15000;
 
 /** Minimal socket surface used here — keeps the module testable without a real WebSocket. */
 export type SlackSocketLike = {
@@ -79,6 +79,7 @@ export type SlackSocketOptions = {
     socketFactory?: (url: string) => SlackSocketLike;
     maxReconnectAttempts?: number;
     baseReconnectDelayMs?: number;
+    onStateChange?: (state: SlackConnectionState, meta: { attempts: number }) => void;
 };
 
 export class SlackSocketClient {
@@ -94,6 +95,7 @@ export class SlackSocketClient {
     private connecting = false;
     private readonly maxReconnectAttempts: number;
     private readonly baseReconnectDelayMs: number;
+    private readyWaiters = new Set<(result: 'connected' | 'stopped') => void>();
 
     constructor(private readonly options: SlackSocketOptions) {
         this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
@@ -102,6 +104,33 @@ export class SlackSocketClient {
 
     getState(): SlackConnectionState { return this.state; }
     getReconnectAttempts(): number { return this.reconnectAttempts; }
+
+    waitForReady(timeoutMs = HELLO_DEADLINE_MS + 1000): Promise<'connected' | 'timeout' | 'stopped'> {
+        if (this.state === 'connected') return Promise.resolve('connected');
+        if (this.stopped) return Promise.resolve('stopped');
+        return new Promise(resolve => {
+            let settled = false;
+            const finish = (result: 'connected' | 'timeout' | 'stopped') => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                this.readyWaiters.delete(waiter);
+                resolve(result);
+            };
+            const waiter = (result: 'connected' | 'stopped') => finish(result);
+            const timer = setTimeout(() => finish('timeout'), timeoutMs);
+            timer.unref?.();
+            this.readyWaiters.add(waiter);
+        });
+    }
+
+    private setState(state: SlackConnectionState): void {
+        this.state = state;
+        this.options.onStateChange?.(state, { attempts: this.reconnectAttempts });
+        if (state === 'connected') {
+            for (const waiter of [...this.readyWaiters]) waiter('connected');
+        }
+    }
 
     async start(): Promise<void> {
         this.stopped = false;
@@ -117,7 +146,8 @@ export class SlackSocketClient {
         this.stopped = true;
         this.clearReconnectTimer();
         this.clearHelloTimer();
-        this.state = terminalState;
+        this.setState(terminalState);
+        for (const waiter of [...this.readyWaiters]) waiter('stopped');
         try { this.ws?.close(); } catch { /* already closing */ }
         this.ws = null;
     }
@@ -170,7 +200,7 @@ export class SlackSocketClient {
     }
 
     private async connectOnce(): Promise<void> {
-        this.state = this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting';
+        this.setState(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
         // The socket being replaced must stop influencing lifecycle decisions
         // the moment a replacement is under way: its close event would
         // otherwise schedule a second reconnect on top of this one.
@@ -261,7 +291,7 @@ export class SlackSocketClient {
 
         if (CONTROL_FRAME_TYPES.has(envelope.type)) {
             if (envelope.type === 'hello') {
-                this.state = 'connected';
+                this.setState('connected');
                 this.reconnectAttempts = 0;
                 this.clearHelloTimer();
                 log.info('[slack:socket] hello received, connected');
@@ -391,13 +421,13 @@ export class SlackSocketClient {
         }
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
             log.error(`[slack:socket] max reconnect attempts (${this.maxReconnectAttempts}) reached — giving up`);
-            this.state = 'disconnected';
+            this.setState('disconnected');
             return;
         }
         this.clearReconnectTimer();
         const delay = Math.min(this.baseReconnectDelayMs * 2 ** this.reconnectAttempts, 60000);
         this.reconnectAttempts++;
-        this.state = 'reconnecting';
+        this.setState('reconnecting');
         log.info(`[slack:socket] reconnect in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
