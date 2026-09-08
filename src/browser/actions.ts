@@ -2,6 +2,7 @@ import { getActivePage, getCdpSession, getBrowserStateVersion, markBrowserStateC
 import { JAW_HOME } from '../core/config.js';
 import { join } from 'path';
 import fs from 'fs';
+import { imageSize } from './image-size.js';
 import type { ConsoleMessage, Locator, Page, Request } from 'playwright-core';
 
 const SCREENSHOTS_DIR = join(JAW_HOME, 'screenshots');
@@ -255,9 +256,18 @@ export async function screenshot(port: number, opts: BrowserActionOptions = {}) 
         await page.screenshot({ path: filepath, fullPage: optionBoolean(opts, 'fullPage'), type, ...(clip ? { clip } : {}) });
     }
     const dpr = await page.evaluate('window.devicePixelRatio');
-    const viewport = page.viewportSize();
-    return { path: filepath, dpr, viewport, ...(clip ? { clip } : {}) };
+    // `viewportSize()` is null under connectOverCDP, which Playwright attaches
+    // with noDefaultViewport. Fall back to the page's own measurement so
+    // callers that need a frame get one.
+    const viewport = page.viewportSize()
+        ?? await page.evaluate('({ width: window.innerWidth, height: window.innerHeight })') as { width: number; height: number };
+    // The size of the file that was actually written, which is what a model
+    // sees. A clip is trimmed to the viewport before capture, so the requested
+    // rectangle is not a reliable stand-in.
+    const image = imageSize(filepath);
+    return { path: filepath, dpr, viewport, ...(image ? { image } : {}), ...(clip ? { clip } : {}) };
 }
+
 
 function normalizeClip(value: unknown): ClipRect | undefined {
     if (!value) return undefined;

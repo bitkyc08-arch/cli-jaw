@@ -6,8 +6,10 @@ import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
 import { screenshot, mouseClick, snapshot } from './actions.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
+import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
 
 export { sanitizeTarget, appendBounded, MAX_TARGET_LENGTH, MAX_CODEX_STDOUT_BYTES } from './vision-input.js';
+export * from './grounding-candidate.js';
 
 export interface VisionClickOptions {
     provider?: 'codex';
@@ -38,16 +40,14 @@ function recordText(record: JsonRecord, key: string): string | null {
     return typeof value === 'string' ? value : null;
 }
 
-function parseVisionCoordinates(value: unknown): VisionCoordinates | null {
-    if (!isRecord(value)) return null;
-    if (typeof value["found"] !== 'boolean') return null;
-    if (typeof value["x"] !== 'number' || typeof value["y"] !== 'number') return null;
+/** Project the candidate onto the legacy coordinate shape this module returns. */
+function toVisionCoordinates(candidate: GroundingCandidate): VisionCoordinates {
     return {
-        found: value["found"],
-        x: value["x"],
-        y: value["y"],
+        found: candidate.found,
+        x: candidate.point.x,
+        y: candidate.point.y,
         provider: 'codex',
-        ...(typeof value["description"] === 'string' ? { description: value["description"] } : {}),
+        ...(candidate.description ? { description: candidate.description } : {}),
     };
 }
 
@@ -131,20 +131,19 @@ function codexVision(screenshotPath: string, target: string): Promise<VisionCoor
             try {
                 const lines = stdout.split('\n').filter(l => l.trim());
 
-                // Scan ALL events for coordinate JSON (agent_message, command output, etc.)
-                // Codex is agentic — JSON may appear in any event type
-                for (const line of lines.reverse()) { // Reverse: last message most likely has the answer
+                // Scan events newest-first: the answer is the last thing said.
+                // codex is agentic, so the JSON can land in any event type.
+                for (const line of lines.reverse()) {
                     try {
                         const event: unknown = JSON.parse(line);
                         const textsToSearch = collectEventTexts(event);
 
                         for (const text of textsToSearch) {
-                            // Try to extract {"found":...,"x":...,"y":...} from text
-                            const jsonMatch = text.match(/\{[^{}]*"found"\s*:\s*(true|false)[^{}]*"x"\s*:\s*\d+[^{}]*"y"\s*:\s*\d+[^{}]*\}/);
-                            if (jsonMatch) {
-                                const coords = parseVisionCoordinates(JSON.parse(jsonMatch[0]));
-                                if (coords) return resolve(coords);
-                            }
+                            // A brace scanner rather than a regex: the previous
+                            // pattern's [^{}]* class could not cross a nested
+                            // object, so a bbox-carrying answer never matched.
+                            const candidate = parseCandidate(text);
+                            if (candidate) return resolve(toVisionCoordinates(candidate));
                         }
                     } catch { /* skip non-JSON lines */ }
                 }
@@ -195,6 +194,31 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     if (!result.found) {
         return { success: false, reason: 'target not found', provider: result.provider };
+    }
+
+    // 2b. Bound the answer in the frame it was actually given: the pixel size
+    // of the file the model saw. The requested clip is not a stand-in — it is
+    // trimmed to the viewport before capture, and it can arrive as an array
+    // whose `.width` is undefined. Comparing against `undefined` is always
+    // false, which is how a bound can look present and check nothing.
+    //
+    // This fails CLOSED. If the capture size cannot be read, the coordinate is
+    // unverifiable and the click does not happen.
+    const frame = ss.image ?? null;
+    if (!frame) {
+        return {
+            success: false,
+            reason: 'capture size unavailable, so the coordinate could not be bounds-checked',
+            provider: result.provider,
+        };
+    }
+    const checked = validateCandidate(
+        { schemaVersion: 'grounding-candidate-v1', found: true, kind: 'coordinate', bbox: null,
+          point: { x: result.x, y: result.y }, confidence: 1, riskFlags: [] },
+        frame,
+    );
+    if (!checked.found) {
+        return { success: false, reason: checked.reason ?? 'out of bounds', provider: result.provider };
     }
 
     // 3. DPR correction: image pixels → CSS pixels
