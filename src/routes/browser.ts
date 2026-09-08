@@ -3,6 +3,7 @@ import type { WebAiVendor, WebAiNotificationStatus } from '../browser/web-ai/typ
 import type { WebAiVendorScope, CapabilityFamily, FrontendObservationStatus } from '../browser/web-ai/capability-registry.js';
 import type { Express, Request, Response, NextFunction } from 'express';
 import * as browser from '../browser/index.js';
+import { sanitizeTarget } from '../browser/vision-input.js';
 import { cleanupPoolTabs } from '../browser/web-ai/tab-pool.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { DEBUG_CONSOLE_ONLY_MESSAGE, normalizeBrowserStartMode, type BrowserStartMode } from '../browser/launch-policy.js';
@@ -146,12 +147,19 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
     });
 
     app.post('/api/browser/vision-click', requireAuth, async (req: Request, res: Response) => {
+        // The target is caller-supplied text that ends up in a child process
+        // prompt. Reject a bad one here as 400 rather than letting it surface
+        // from deeper down as a 500, which would conflate caller error with
+        // infrastructure failure.
+        let target: string;
         try {
-            const { target, provider, doubleClick, prepareStable, region, clip, verifyBeforeClick } = req.body;
-            if (!target) {
-                res.status(400).json({ error: 'target required' });
-                return;
-            }
+            target = sanitizeTarget(req.body?.target);
+        } catch (e: unknown) {
+            res.status(400).json({ error: (e as Error).message });
+            return;
+        }
+        try {
+            const { provider, doubleClick, prepareStable, region, clip, verifyBeforeClick } = req.body;
             const result = await browser.visionClick(cdpPort(req), target, {
                 provider,
                 doubleClick,
