@@ -239,6 +239,45 @@ async function refToLocator(page: Page, port: number, ref: string): Promise<Loca
 
 // ─── screenshot ────────────────────────────────
 
+/**
+ * Element rectangles for the current snapshot's refs, in CSS pixels.
+ *
+ * This is the missing half of reconciliation: `candidate-reconcile.ts` has
+ * been in the tree with no caller because nothing supplied boxes. Asking the
+ * browser where an element is beats asking a model to estimate it, so the
+ * structural answer comes first and vision fills the gaps.
+ *
+ * Boxes are resolved one ref at a time through the existing locator path, so
+ * they inherit whatever staleness discipline `refToLocator` has. Refs whose
+ * element is detached, hidden, or zero-area are omitted rather than reported
+ * with a meaningless rectangle — an absent box is a truthful answer.
+ */
+export async function elementBoxes(
+    port: number,
+    opts: { interactive?: boolean; limit?: number } = {},
+): Promise<{ url: string; targetId: string | null; refs: Array<{ ref: string; role: string; name: string; box: { x: number; y: number; width: number; height: number } }> }> {
+    const page = await requireActivePage(port);
+    const nodes = await snapshot(port, { interactive: opts.interactive !== false }) as SnapshotNode[];
+    const limit = Math.max(1, Math.min(opts.limit ?? 200, 500));
+    const refs: Array<{ ref: string; role: string; name: string; box: { x: number; y: number; width: number; height: number } }> = [];
+
+    for (const node of nodes.slice(0, limit)) {
+        try {
+            const locator = page.getByRole(node.role as AriaRole, { name: node.name }).nth(node.occurrence || 0);
+            const box = await locator.boundingBox({ timeout: 250 });
+            // A zero-area box cannot contain a point, so it would only add noise
+            // to reconciliation.
+            if (!box || box.width <= 0 || box.height <= 0) continue;
+            refs.push({ ref: node.ref, role: node.role, name: node.name, box });
+        } catch {
+            // Detached, hidden, or ambiguous: no box, and that is the answer.
+        }
+    }
+
+    const activeTab = await getActiveTab(port).catch(() => ({ ok: false as const }));
+    return { url: page.url(), targetId: normalizeActiveTargetId(activeTab), refs };
+}
+
 export async function screenshot(port: number, opts: BrowserActionOptions = {}) {
     const page = await requireActivePage(port);
     fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });

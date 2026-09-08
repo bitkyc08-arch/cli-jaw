@@ -4,7 +4,8 @@
  */
 import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
-import { screenshot, mouseClick, snapshot } from './actions.js';
+import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef } from './actions.js';
+import { reconcileVisionCandidate } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
 
@@ -18,6 +19,8 @@ export interface VisionClickOptions {
     region?: 'left-panel' | 'center-map' | 'top-bar';
     clip?: { x: number; y: number; width: number; height: number };
     verifyBeforeClick?: boolean;
+    /** Reconcile against element boxes before falling back to a coordinate. Default on. */
+    reconcile?: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -226,6 +229,54 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // page.mouse.click() expects CSS pixels
     const css = toCssPoint({ x: result.x, y: result.y }, dpr, clip);
 
+    // 3b. Reconcile against element geometry before falling back to a raw
+    // coordinate. The browser already knows where its elements are, so a point
+    // that lands inside exactly one of them is really a click on that element —
+    // and clicking the ref survives scroll, reflow and animation in a way a
+    // frozen coordinate does not.
+    //
+    // Ambiguity is reported rather than guessed: several boxes containing the
+    // same point means the answer was not specific enough to act on.
+    if (opts.reconcile !== false) {
+        try {
+            const boxes = await elementBoxes(port, { interactive: true });
+            const decision = reconcileVisionCandidate({
+                candidate: { point: css, confidence: 1 },
+                bundle: { refs: boxes.refs },
+            });
+            if (decision.action === 'fail') {
+                return {
+                    success: false,
+                    reason: decision.reason,
+                    code: decision.code,
+                    candidate: css,
+                    provider: result.provider,
+                };
+            }
+            if (decision.action === 'ref') {
+                await clickRef(port, decision.ref, { doubleClick: opts.doubleClick });
+                let refSnap = null;
+                try { refSnap = await snapshot(port, { interactive: true }); } catch { /* diagnostic only */ }
+                return {
+                    success: true,
+                    via: 'ref' as const,
+                    ref: decision.ref,
+                    reason: decision.reason,
+                    clicked: css,
+                    raw: { x: result.x, y: result.y },
+                    clip,
+                    dpr,
+                    provider: result.provider,
+                    description: result.description,
+                    snap: refSnap,
+                };
+            }
+        } catch {
+            // Box capture is an improvement, not a precondition. If it fails,
+            // the coordinate path below still runs.
+        }
+    }
+
     if (opts.verifyBeforeClick) {
         const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' });
         if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
@@ -240,6 +291,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     return {
         success: true,
+        via: 'coordinate' as const,
         clicked: css,
         raw: { x: result.x, y: result.y },
         clip,

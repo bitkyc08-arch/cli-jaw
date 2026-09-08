@@ -58,7 +58,7 @@ export function reconcileVisionCandidate(input: ReconcileInput): ReconcileResult
     }
 
     const nearby = refs
-        .map((r) => ({ ref: r.ref, distance: distanceToBoxCenter(point, r.box) }))
+        .map((r) => ({ ref: r.ref, distance: distanceToBoxEdge(point, r.box) }))
         .filter((r) => r.distance <= maxDistance)
         .sort((a, b) => a.distance - b.distance);
     if (nearby.length === 1 || (nearby.length > 1 && nearby[0]!.distance + NEAR_TIE_MARGIN < nearby[1]!.distance)) {
@@ -102,9 +102,18 @@ function contains(box: ReconcileBox | undefined, point: { x: number; y: number }
     );
 }
 
-function distanceToBoxCenter(point: { x: number; y: number }, box: ReconcileBox | undefined): number {
+/**
+ * Distance from a point to the nearest edge of a box, zero when inside.
+ *
+ * Measuring to the CENTRE penalises large elements: a 400px-wide toolbar
+ * button has a centre 200px away from its own edge, so a candidate a few
+ * pixels outside it would score as far away while a tiny icon nearby scored
+ * as close. What "near this element" means is proximity to the element, not
+ * to its midpoint.
+ */
+function distanceToBoxEdge(point: { x: number; y: number }, box: ReconcileBox | undefined): number {
     if (!box) return Number.POSITIVE_INFINITY;
-    const cx = box.x + box.width / 2;
-    const cy = box.y + box.height / 2;
-    return Math.hypot(point.x - cx, point.y - cy);
+    const dx = Math.max(box.x - point.x, 0, point.x - (box.x + box.width));
+    const dy = Math.max(box.y - point.y, 0, point.y - (box.y + box.height));
+    return Math.hypot(dx, dy);
 }
