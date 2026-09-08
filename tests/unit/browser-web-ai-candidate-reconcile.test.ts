@@ -33,7 +33,10 @@ test('BWAI-RECONCILE-002: multiple boxes contain the point → ambiguous', () =>
 
 test('BWAI-RECONCILE-003: a single nearby box within maxDistance → ref click', () => {
     const r = reconcileVisionCandidate({
-        candidate: { point: { x: 110, y: 50 } }, // box center is (50,50); dist ~60 > default 32
+        // Distance runs to the nearest EDGE, so this point is 10px out, not
+        // the ~60px its centre would have been. The wide maxDistance is
+        // historical, from when distance was measured to the centre.
+        candidate: { point: { x: 110, y: 50 } },
         bundle: { refs: [{ ref: 'e1', role: 'button', name: 'A', box: box(0, 0, 100, 100) }] },
         maxDistance: 100,
     });
@@ -41,7 +44,8 @@ test('BWAI-RECONCILE-003: a single nearby box within maxDistance → ref click',
 });
 
 test('BWAI-RECONCILE-004: nearest beats runner-up by > tie margin → ref click', () => {
-    // point (35,10) is inside no box: e1 center (10,10) dist 25; e2 center (60,60) dist≈55.9 — gap ~31 > 8
+    // point (35,10) is inside no box. Edge distances: e1 is 15 away, e2 is
+    // ~42.7 — a gap of ~28, comfortably past the 8px tie margin.
     const r = reconcileVisionCandidate({
         candidate: { point: { x: 35, y: 10 } },
         bundle: {

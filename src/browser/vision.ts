@@ -4,7 +4,8 @@
  */
 import { spawn } from 'child_process';
 import { StringDecoder } from 'string_decoder';
-import { screenshot, mouseClick, snapshot } from './actions.js';
+import { screenshot, mouseClick, snapshot, elementBoxes, click as clickRef } from './actions.js';
+import { reconcileVisionCandidate, assertFreshObservationBundle, type ReconcileResult } from './web-ai/candidate-reconcile.js';
 import { sanitizeTarget, appendBounded } from './vision-input.js';
 import { parseCandidate, validateCandidate, type GroundingCandidate } from './grounding-candidate.js';
 
@@ -18,6 +19,8 @@ export interface VisionClickOptions {
     region?: 'left-panel' | 'center-map' | 'top-bar';
     clip?: { x: number; y: number; width: number; height: number };
     verifyBeforeClick?: boolean;
+    /** Reconcile against element boxes before falling back to a coordinate. Default on. */
+    reconcile?: boolean;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -226,9 +229,92 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     // page.mouse.click() expects CSS pixels
     const css = toCssPoint({ x: result.x, y: result.y }, dpr, clip);
 
+    // 3b. Reconcile against element geometry before falling back to a raw
+    // coordinate. The browser already knows where its elements are, so a point
+    // that lands inside exactly one of them is really a click on that element —
+    // and clicking the ref survives scroll, reflow and animation in a way a
+    // frozen coordinate does not.
+    //
+    // Ambiguity is reported rather than guessed: several boxes containing the
+    // same point means the answer was not specific enough to act on.
+    // 3b. Second opinion, if the caller asked for one. This runs BEFORE any
+    // dispatch, including the ref path — a caller who opted into verification
+    // must not get an unverified click just because reconciliation succeeded.
     if (opts.verifyBeforeClick) {
         const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' });
         if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
+    }
+
+    // 3c. Reconcile against element geometry before falling back to a raw
+    // coordinate. The browser already knows where its elements are, so a point
+    // landing inside exactly one of them is really a click on that element —
+    // and clicking the ref survives scroll, reflow and animation in a way a
+    // frozen coordinate does not.
+    //
+    // Only the capture and the decision are guarded. The ref click itself is
+    // deliberately OUTSIDE the catch: Playwright throws when an element is
+    // covered or intercepted, and those are exactly the cases where clicking
+    // the raw coordinate is most dangerous, because whatever covers the
+    // element is what would receive the click. Swallowing that signal to
+    // "fall back" would do the dangerous thing on purpose, and a click that
+    // actuates and then throws would fire twice.
+    let decision: ReconcileResult | null = null;
+    if (opts.reconcile !== false) {
+        try {
+            const boxes = await elementBoxes(port, { interactive: true });
+            // The screenshot was taken before a model round-trip that takes
+            // seconds. If the page moved on since, the point is stale and
+            // reconciling it against fresh geometry resolves confidently to
+            // whatever now occupies those pixels.
+            assertFreshObservationBundle(
+                {
+                    ...(boxes.url ? { url: boxes.url } : {}),
+                    ...(boxes.targetId ? { targetId: boxes.targetId } : {}),
+                },
+                {
+                    ...(viewportProbe.url ? { url: viewportProbe.url } : {}),
+                    ...(viewportProbe.targetId ? { targetId: viewportProbe.targetId } : {}),
+                },
+            );
+            decision = reconcileVisionCandidate({
+                candidate: { point: css, confidence: 1 },
+                bundle: { refs: boxes.refs },
+            });
+        } catch {
+            // Capture or freshness failed. Reconciliation is an improvement,
+            // not a precondition, so the coordinate path below still runs.
+            decision = null;
+        }
+    }
+
+    if (decision?.action === 'fail') {
+        return {
+            success: false,
+            reason: decision.reason,
+            code: decision.code,
+            candidate: css,
+            provider: result.provider,
+        };
+    }
+
+    if (decision?.action === 'ref') {
+        await clickRef(port, decision.ref, { doubleClick: opts.doubleClick });
+        let refSnap = null;
+        try { refSnap = await snapshot(port, { interactive: true }); } catch { /* diagnostic only */ }
+        return {
+            success: true,
+            via: 'ref' as const,
+            ref: decision.ref,
+            reason: decision.reason,
+            // The coordinate that resolved to this ref, not a place we clicked.
+            resolvedFrom: css,
+            raw: { x: result.x, y: result.y },
+            clip,
+            dpr,
+            provider: result.provider,
+            description: result.description,
+            snap: refSnap,
+        };
     }
 
     // 4. Click
@@ -240,6 +326,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     return {
         success: true,
+        via: 'coordinate' as const,
         clicked: css,
         raw: { x: result.x, y: result.y },
         clip,
